@@ -5,12 +5,12 @@
 //-------------------------------------------------
 
 /////////////////////Include/////////////////////
-#include "SPI.h"
+#include "src\SPI\SPI.h"
 #include <LiquidCrystal.h>
-#include "WireN.h"
+#include "src\WireN\WireN.h"
 #include "define.h"
 #include "string.h"
-#include "MIDI.h"
+#include "src\MIDI\MIDI.h"
 
 #include <Arduino.h>
 #include <MemoryFree.h>
