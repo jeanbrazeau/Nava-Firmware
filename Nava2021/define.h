@@ -252,7 +252,7 @@ boolean clearBtn;
 boolean instBtn;
 boolean shiftBtn;
 boolean trkBtn;
-boolean ptrnBtn;
+Button ptrnBtn;
 boolean doublePush = 0; //flag that CH and CH_LOW button are pressed together
 byte instOut[NBR_INST]=  { 
   BD, BD, SD, SD, LT, LT, MT, MT, HT, HT, RM, HC, CH, CH, CRASH, RIDE};
@@ -324,7 +324,7 @@ volatile boolean stepChanged = FALSE;
 volatile byte noteIndexCpt = 0;
 boolean isRunning = FALSE;
 boolean isStop = TRUE;
-SeqMode curSeqMode = PTRN_PLAY;
+SeqMode curSeqMode = TRACK_PLAY;
 SeqMode prevSeqMode;
 byte curInst = BD;//8 is BD trig out shift register
 byte curBank = 0;//0 to 7 banks

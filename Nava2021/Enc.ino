@@ -21,8 +21,11 @@ void EncGet()
   }
   //////////////////////////////////TOTAL ACCENT////////////////////////////////////
   if (curInst == TOTAL_ACC && curSeqMode == PTRN_STEP){
-    pattern[ptrnBuffer].totalAcc = EncGet(pattern[ptrnBuffer].totalAcc, 1);;
+    pattern[ptrnBuffer].totalAcc = EncGet(pattern[ptrnBuffer].totalAcc, 1);
+#ifdef DEBUG
+    Serial.print("Total Accent: ");
     Serial.println(pattern[ptrnBuffer].totalAcc);
+#endif
     pattern[ptrnBuffer].totalAcc = constrain(pattern[ptrnBuffer].totalAcc, 0, 13);
     static byte prevTotalAcc;
     if (pattern[ptrnBuffer].totalAcc != prevTotalAcc){

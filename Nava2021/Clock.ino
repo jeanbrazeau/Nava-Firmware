@@ -64,6 +64,8 @@ void CountPPQN()
       SetMux();
       SetDoutTrig(((pattern[ptrnBuffer].step[curStep]) | (bitRead(metronome,curStep)<<RM)) & (~muteInst));//patternA[curStep]<<8 |  patternB[curStep]);
 
+//      unsigned long micronow = micros();
+//      unsigned long period = micronow;
       // Send MIDI notes for the playing instruments
       for(int inst=0 ; inst < NBR_INST ; inst++ )
       {
@@ -97,6 +99,10 @@ void CountPPQN()
       }
 
       /* As this delay is in the interrupt routine it doesn't need to be replaced by a non blocking version */
+//      while ( period < micronow + 2000)
+//      {
+//        period = micros();
+//      }
       delayMicroseconds(2000);
       for(int inst=0 ; inst < NBR_INST ; inst++ )
       {
@@ -122,9 +128,7 @@ void CountPPQN()
       trackPosNeedIncremante = TRUE;
       stepCount = 0;
       //In pattern play mode this peace of code execute in the PPQNCount function
-      Serial.print("Pattern Sync: ");
-      Serial.println(seq.patternSync);
-      if(nextPatternReady && curSeqMode == PTRN_PLAY && ( (endMeasure && seq.patternSync) || !seq.patternSync)){
+      if(nextPatternReady && curSeqMode == PTRN_PLAY && (( endMeasure && seq.patternSync ) || !seq.patternSync  || !isRunning )){
         nextPatternReady = FALSE;
         keybOct = DEFAULT_OCT;
         noteIndex = 0;

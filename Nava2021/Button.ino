@@ -5,16 +5,6 @@
 
 ////////////////////////Function//////////////////////
 
-void PrintState(bool state, char *name)
-{
-  if ( state == true )
-  {
-    Serial.print(name);
-    Serial.println(" is pressed");
-  }
-  return;
-}
-
 void ButtonGet()
 {
   ScanDin();
@@ -28,10 +18,10 @@ void ButtonGet()
   instBtn =  ((firstByte & BTN_INST) ? 1:0);
   shiftBtn = ((firstByte & BTN_SHIFT) ? 1:0);
   trkBtn =  ((secondByte & BTN_TRK) ? 1:0);
-  ptrnBtn = ((secondByte & BTN_PTRN) ? 1:0);
+  //ptrnBtn = ((secondByte & BTN_PTRN) ? 1:0);
   //tapBtn.pressed = ((secondByte & BTN_TAP) ? 1:0);
   //dirBtn.pressed = ((secondByte & BTN_DIR) ? 1:0);
-  
+
   ButtonGet (&tapBtn, secondByte & BTN_TAP);
   ButtonGet (&dirBtn, secondByte & BTN_DIR);
   ButtonGet (&playBtn, firstByte & BTN_PLAY);
@@ -70,6 +60,36 @@ void ButtonGet()
     if (millis() - enterBtn.curTime > HOLD_TIME) enterBtn.hold = HIGH;
   }
 
+  //Pattern Play button-----------------------------------------------
+  ptrnBtn.justRelease = 0;
+  ptrnBtn.justPressed = 0;
+  ptrnBtn.curState = ((secondByte & BTN_PTRN) ? 1:0);
+  if (ptrnBtn.curState != ptrnBtn.prevState){
+    if (ptrnBtn.pressed == LOW && ptrnBtn.curState == HIGH){
+      ptrnBtn.justPressed = HIGH;
+      ptrnBtn.curTime = millis();
+    }
+    if (ptrnBtn.pressed == HIGH && ptrnBtn.curState == LOW){
+      ptrnBtn.justRelease = HIGH;
+      ptrnBtn.hold = LOW;
+      ptrnBtn.counter = 0;
+      Serial.print("ptrnBtn.counter: ");
+      Serial.println(ptrnBtn.counter);
+    }
+    ptrnBtn.pressed = ptrnBtn.curState;
+  }
+  ptrnBtn.prevState = ptrnBtn.curState;
+
+  if (ptrnBtn.pressed){
+    if (millis() - ptrnBtn.curTime > HOLD_TIME) ptrnBtn.hold = HIGH;
+    if ( (millis() - ptrnBtn.curTime) % HOLD_TIME == 0 && ptrnBtn.hold )
+    {
+      ptrnBtn.counter++;
+      Serial.print("ptrnBtn.counter: ");
+      Serial.println(ptrnBtn.counter);
+    }
+  }
+  
   //init step button------------------------------------------------
   for (byte a = 0; a < NBR_STEP_BTN; a++){//a = step button number
     stepBtn[a].justPressed = 0;
@@ -368,6 +388,7 @@ void InitButtonCounter()
   scaleBtn.counter = 0;
   encBtn.counter = 0;
   muteBtn.counter = 0;
+  ptrnBtn.counter = 0;
 }
 
 //Init  mute buttons counter----------------------------------------------------

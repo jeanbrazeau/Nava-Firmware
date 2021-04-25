@@ -70,7 +70,6 @@ void setup()
   MIDI.begin();//Serial1.begin(MIDI_BAUD);
   MIDI.setHandleNoteOn(HandleNoteOn);
   MIDI.setHandleNoteOff(HandleNoteOff);
-
   sei();
 
   //-----------------------------------------------

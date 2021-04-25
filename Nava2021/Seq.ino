@@ -24,7 +24,6 @@ void SeqParameter()
   }
   //-------------------play button---------------------------
   if (playBtn.justPressed || midiStart){
-    Serial.println("Running");
     isRunning = TRUE;
     isStop = FALSE;
     ppqn = 0;
@@ -43,7 +42,6 @@ void SeqParameter()
 
   //-------------------stop button------------------------------
   if ((stopBtn.justPressed && !instBtn) || midiStop || midiContinue){
-    Serial.println("Stopped");
     //Init Midi note off
     SendAllNoteOff();//InitMidiNoteOff();
     if (midiStop) stopBtn.counter = 0;
@@ -71,19 +69,19 @@ void SeqParameter()
 
   //-------------------Shift button pressed------------------------------
   if (shiftBtn){
-    if (trkBtn){
+    if (trkBtn && curSeqMode != TRACK_WRITE ){
       needLcdUpdate = TRUE;
       curSeqMode = TRACK_WRITE;
       keyboardMode = FALSE;
       seq.configMode  = FALSE;
     }
-    if (ptrnBtn) {
+    if (ptrnBtn.pressed && curSeqMode != PTRN_STEP ) {
       needLcdUpdate = TRUE;
       curSeqMode = PTRN_STEP;
       seq.configMode  = FALSE;
       trackNeedSaved = FALSE;
     }
-    if (tapBtn.justPressed){
+    if (tapBtn.justPressed && curSeqMode != PTRN_TAP ){
       curSeqMode = PTRN_TAP;
       needLcdUpdate = TRUE;
       keyboardMode = FALSE;
@@ -111,7 +109,7 @@ void SeqParameter()
   }
   //-------------------Shift button released------------------------------
   else {
-    if (trkBtn){
+    if (trkBtn && curSeqMode != TRACK_PLAY ){
       curSeqMode = TRACK_PLAY;
       needLcdUpdate = TRUE;
       keyboardMode = FALSE;
@@ -120,13 +118,31 @@ void SeqParameter()
     // if (backBtn.justPressed) ;//back  track postion
     //if (fwdBtn.justPressed) ;//foward track postion
     if (numBtn.pressed) ;//select Track number
-    if (ptrnBtn){
-      curSeqMode = PTRN_PLAY;
-      needLcdUpdate = TRUE;
-      keyboardMode = FALSE;
-      seq.configMode  = FALSE;
-      trackNeedSaved = FALSE;
+    if (ptrnBtn.pressed) {
+      if ( (ptrnBtn.counter > 1 || !isRunning ) && curSeqMode != PTRN_PLAY ){
+        curSeqMode = PTRN_PLAY;
+        needLcdUpdate = TRUE;
+        keyboardMode = FALSE;
+        seq.configMode  = FALSE;
+        trackNeedSaved = FALSE;
+      }
+    
+      if ( /*ptrnBtn.hold &&*/ ptrnBtn.counter == 0 && isRunning)
+      {
+        if ( curSeqMode == PTRN_STEP )
+        {
+          curSeqMode = PTRN_TAP;
+          ptrnBtn.counter++;
+          needLcdUpdate = TRUE;
+        } else if ( curSeqMode == PTRN_TAP )
+        {
+          curSeqMode = PTRN_STEP;
+          ptrnBtn.counter++;
+          needLcdUpdate = TRUE;
+        }
+      }
     }
+    
     if (tapBtn.justPressed) ShiftLeftPattern();
     if (dirBtn.justPressed) ShiftRightPattern();
     if (guideBtn.justPressed){
@@ -233,8 +249,20 @@ void SeqParameter()
     if (clearBtn && !keyboardMode && curSeqMode != PTRN_TAP){
       patternWasEdited = TRUE;
       if (isRunning){
-        bitClear (pattern[ptrnBuffer].inst[curInst], curStep);
-        if (curInst == CH) pattern[ptrnBuffer].velocity[CH][curStep] = instVelHigh[HH];//update HH velocity that OH is trigged correctly
+        if ( curSeqMode == PTRN_STEP )
+        {
+          byte clrStep = curStep + 1;
+          if ( clrStep > pattern[ptrnBuffer].length ) clrStep = 0;
+          Serial.print("clrStep: ");
+          Serial.println(clrStep);
+          Serial.print(pattern[ptrnBuffer].length );
+          bitClear (pattern[ptrnBuffer].inst[curInst], clrStep);
+          if (curInst == CH) pattern[ptrnBuffer].velocity[CH][clrStep] = instVelHigh[HH];//update HH velocity that OH is trigged correctly
+        }
+        if ( curSeqMode == PTRN_TAP )
+        {
+          Serial.println("Tap Instrument Clear");
+        }
       }
       else{//clear full pattern
         for (int a = 0; a < NBR_INST; a++){
@@ -708,7 +736,7 @@ void SeqParameter()
     nextPatternReady = TRUE;
   }
 
-  if(nextPatternReady && (( endMeasure && seq.patternSync ) || !seq.patternSync )){///In pattern play mode this peace of code execute in the PPQ Count function
+  if(nextPatternReady && (( endMeasure && seq.patternSync ) || !seq.patternSync  || !isRunning )){///In pattern play mode this peace of code execute in the PPQ Count function
     //Serial.println("Ready!!");
     //if ((isRunning && endMeasure) || !isRunning ){//|| (curSeqMode != PTRN_PLAY))
     // Serial.println("endMeasure!!");

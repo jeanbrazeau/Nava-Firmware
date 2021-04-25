@@ -294,7 +294,6 @@ byte LoadPatternGroup(byte patternNum, byte type)
 void InitEEprom()
 {
   unsigned long adress;
-Serial.println("InitEEprom");
 
   //Pattern init
   for (byte nbrPattern = 0; nbrPattern < MAX_PTRN ; nbrPattern++)

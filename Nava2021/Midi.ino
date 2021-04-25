@@ -18,8 +18,8 @@ void InitMidiNoteOff()
 {
   if(midiNoteOnActive){
     midiNoteOnActive = FALSE;
-    if (noteIndexCpt) MidiSendNoteOff(seq.TXchannel, pattern[ptrnBuffer].extNote[noteIndexCpt - 1]);
-    else MidiSendNoteOff(seq.TXchannel, pattern[ptrnBuffer].extNote[pattern[ptrnBuffer].extLength]);
+    if (noteIndexCpt) MidiSendNoteOff(seq.EXTchannel, pattern[ptrnBuffer].extNote[noteIndexCpt - 1]);
+    else MidiSendNoteOff(seq.EXTchannel, pattern[ptrnBuffer].extNote[pattern[ptrnBuffer].extLength]);
   }
 }
 
@@ -50,13 +50,13 @@ void HandleClock()
   CountPPQN();
   CountPPQN();
   DIN_CLK_LOW;
-
 }
 
 //handle start
 void HandleStart()
 {
   midiStart = HIGH;
+  Serial.println("Handle Midi Start()");
 }
 
 //handle stop

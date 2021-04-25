@@ -31,7 +31,3 @@ void SeqConfiguration()
   if (!seq.configMode) seq.setupNeedSaved = FALSE;
     
 }
-
-
-
-
