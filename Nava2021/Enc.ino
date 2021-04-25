@@ -246,22 +246,22 @@ int EncGet(int value, int dif)
     // A has gone from high to low 
     if(encoder_B) {
       // B is high so clockwise   
-      value -= dif;
+      value += dif;
     }   
     else {
       if(instBtn){
         switch (curIndex){
         case 0:
         case 2:
-          if (value >= 10) value += dif;
+          if (value >= 10) value -= dif;
           break;
         case 1:
-          if (value >= 16) value += dif;
+          if (value >= 16) value -= dif;
           break;
         }
       }
       else{
-        if (value != 0) value += dif;  // to not go under 0
+        if (value != 0) value -= dif;  // to not go under 0
       }
     }   
   }   

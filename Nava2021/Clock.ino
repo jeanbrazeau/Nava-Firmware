@@ -16,13 +16,13 @@ void CountPPQN()
   if (ppqn % (PPQN/2) == 0) blinkTempo = !blinkTempo;
   if (ppqn  % (pattern[ptrnBuffer].scale/2) == 0) blinkFast = LOW;
   if (ppqn % 4 == 0) MIDI.sendRealTime(Clock);//MidiSend(CLOCK_CMD);//as NAVA seq is 96ppqn we need to send clock each 4 internal ppqn
-  
+
   if (seq.sync == MASTER){
-    if (ppqn % 4 == 1){
+    if (ppqn % 4 == 0){
       DIN_CLK_HIGH;
       dinClkState = HIGH;
     }
-    else if (ppqn % 4 == 3) {
+    else if (ppqn % 4 == 2) {
       DIN_CLK_LOW;
       dinClkState = LOW;
     }    

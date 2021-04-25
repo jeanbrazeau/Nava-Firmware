@@ -73,8 +73,6 @@ void ButtonGet()
       ptrnBtn.justRelease = HIGH;
       ptrnBtn.hold = LOW;
       ptrnBtn.counter = 0;
-      Serial.print("ptrnBtn.counter: ");
-      Serial.println(ptrnBtn.counter);
     }
     ptrnBtn.pressed = ptrnBtn.curState;
   }
@@ -85,8 +83,6 @@ void ButtonGet()
     if ( (millis() - ptrnBtn.curTime) % HOLD_TIME == 0 && ptrnBtn.hold )
     {
       ptrnBtn.counter++;
-      Serial.print("ptrnBtn.counter: ");
-      Serial.println(ptrnBtn.counter);
     }
   }
   
@@ -255,8 +251,9 @@ void MuteButtonGet()
           muteStepBtn[11].counter++;//incremente step button counter
           break;
         case 12:
-        case 13:
           muteStepBtn[12].counter++;//incremente step button counter
+          break;
+        case 13:
           muteStepBtn[13].counter++;//incremente step button counter
           break;
         case 14:
@@ -300,8 +297,10 @@ void MuteButtonGet()
             muteStepBtn[11].counter = 0;
             break;
           case 12:
+            muteStepBtn[12].counter = 0;
+            break;
           case 13:
-            muteStepBtn[12].counter = muteStepBtn[13].counter = 0;
+            muteStepBtn[13].counter = 0;
             break;
           case 14:
             muteStepBtn[14].counter = 0;

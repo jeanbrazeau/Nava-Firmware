@@ -294,7 +294,7 @@ boolean enterLed;
 unsigned int instSlctLed;//[NBR_INST]={0x00, 0x00, 0x300, 0x400, 0x800, 
 byte flagLedIntensity;
 unsigned int muteLedsOrder[NBR_STEP_BTN]=  { 
-  0x03, 0x03, 0x0C, 0x0C, 0x30, 0x30, 0xC0, 0xC0, 0x300, 0x300, 0x400, 0X800, 0x3000, 0x3000, 0x4000, 0x8000};
+  0x03, 0x03, 0x0C, 0x0C, 0x30, 0x30, 0xC0, 0xC0, 0x300, 0x300, 0x400, 0X800, 0x1000, 0x2000, 0x4000, 0x8000};
 unsigned int muteLeds = 0;
 /*unsigned int muteLedsTrig[NBR_STEP_BTN]=  { 
  0, 0, 0x30, 0x400, 0x800, 0x3000, 0x4000, 0x8000, 0x03, 0x0C, 0x30, 0XC0, 0, 0, 0, 0};*/
@@ -397,7 +397,7 @@ unsigned int tempInst[NBR_INST]={
   0};
 unsigned int muteInst = 0;
 byte muteOut[NBR_STEP_BTN]=  { 
-  BD, BD, SD, SD, LT, LT, MT, MT, HT, HT, RM, HC, HH, HH, CRASH, RIDE};
+  BD, BD, SD, SD, LT, LT, MT, MT, HT, HT, RM, HC, CH, OH, CRASH, RIDE};
 volatile unsigned int tempDoutTrig;// used to know what OH or CH is trigged
 //Velocity table match with original TR909
 byte instVelHigh[NBR_INST]={

@@ -100,7 +100,7 @@ void LcdUpdate()
           lcd.setCursor(0,1);
           LcdClearLine();
           lcd.setCursor(1,1);
-          lcd.print(noteIndex);
+          lcd.print(noteIndex + 1);
           lcd.setCursor(4,1);
           char note[2];
           strcpy_P(note, (char*)pgm_read_word(&(nameNote[pattern[ptrnBuffer].extNote[noteIndex] % 12])));
@@ -150,12 +150,12 @@ void LcdUpdate()
         lcd.setCursor(0,1);
         LcdClearLine();
         lcd.setCursor(0,1);
-        lcd.print(trk.pos);
+        lcd.print(trk.pos + 1);
         lcd.setCursor(4,1);
         lcd.print((char)((curPattern / 16) + 65));
-        lcd.print((curPattern - ((curPattern / 16)*NBR_PATTERN))); 
+        lcd.print((1 + curPattern - ((curPattern / 16)*NBR_PATTERN))); 
         lcd.setCursor(8,1);
-        lcd.print(track[trkBuffer].length);
+        lcd.print(track[trkBuffer].length + 1);
         lcd.setCursor(13,1);
         lcd.print(trk.current + 1);
         break;
@@ -166,11 +166,11 @@ void LcdUpdate()
         LcdClearLine(); 
         lcd.setCursor(0,1);
         lcd.print("pos:");
-        lcd.print(trk.pos);
+        lcd.print(trk.pos + 1);
         lcd.setCursor(8,1);
         lcd.print("ptrn:");
         lcd.print((char)((curPattern / 16) + 65));
-        lcd.print((curPattern - ((curPattern / 16)*NBR_PATTERN))); 
+        lcd.print((1+ curPattern - ((curPattern / 16)*NBR_PATTERN))); 
         break;
       }
     }
@@ -183,7 +183,7 @@ void LcdClearLine()
   lcd.print("                ");//16 empty space to clear a line
 }
 
-//print special character for scale moniotring----------------
+//print special character for scale monitoring----------------
 void LcdPrintScale()
 {
   switch (pattern[ptrnBuffer].scale){

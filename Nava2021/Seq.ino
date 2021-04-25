@@ -249,20 +249,13 @@ void SeqParameter()
     if (clearBtn && !keyboardMode && curSeqMode != PTRN_TAP){
       patternWasEdited = TRUE;
       if (isRunning){
-        if ( curSeqMode == PTRN_STEP )
-        {
-          byte clrStep = curStep + 1;
-          if ( clrStep > pattern[ptrnBuffer].length ) clrStep = 0;
-          Serial.print("clrStep: ");
-          Serial.println(clrStep);
-          Serial.print(pattern[ptrnBuffer].length );
-          bitClear (pattern[ptrnBuffer].inst[curInst], clrStep);
-          if (curInst == CH) pattern[ptrnBuffer].velocity[CH][clrStep] = instVelHigh[HH];//update HH velocity that OH is trigged correctly
-        }
-        if ( curSeqMode == PTRN_TAP )
-        {
-          Serial.println("Tap Instrument Clear");
-        }
+        byte clrStep = curStep + 1;
+        if ( clrStep > pattern[ptrnBuffer].length ) clrStep = 0;
+        Serial.print("clrStep: ");
+        Serial.println(clrStep);
+        Serial.print(pattern[ptrnBuffer].length );
+        bitClear (pattern[ptrnBuffer].inst[curInst], clrStep);
+        if (curInst == CH) pattern[ptrnBuffer].velocity[CH][clrStep] = instVelHigh[HH];//update HH velocity that OH is trigged correctly        
       }
       else{//clear full pattern
         for (int a = 0; a < NBR_INST; a++){
@@ -374,13 +367,8 @@ void SeqParameter()
     }
     //////////////////////////////TAP EDIT///////////////////////////////
     else if (curSeqMode == PTRN_TAP)
-    {
-      if (clearBtn){
-        bitClear (pattern[ptrnBuffer].inst[curInst], curStep);
-        if (curInst == CH) pattern[ptrnBuffer].velocity[CH][curStep] = HIGH_VEL;//update HH velocity that OH is trigged correctly
-        patternWasEdited = TRUE;
-      } 
-      if (!lastStepBtn.pressed && !instBtn)
+    { 
+      if (!lastStepBtn.pressed && !instBtn /*&& !clearBtn*/)
       {
         if (readButtonState == OH_BTN) doublePush = 1;
         else if (readButtonState == 0) doublePush = 0;
@@ -394,46 +382,57 @@ void SeqParameter()
               int tempVel;
               switch (a){
               case BD_BTN:
+                if (clearBtn) curInst = BD;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelHigh[BD];
                 tempVel = instVelHigh[BD];
                 break;
               case BD_LOW_BTN:
+                if (clearBtn) curInst = BD;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelLow[BD];
                 tempVel = instVelLow[BD];
                 break;
               case SD_BTN:
+                if (clearBtn) curInst = SD;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelHigh[SD];
                 tempVel = instVelHigh[SD];
                 break;
               case SD_LOW_BTN:
+                if (clearBtn) curInst = SD;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelLow[SD];
                 tempVel = instVelLow[SD];
                 break;
               case LT_BTN:
+                if (clearBtn) curInst = LT;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelHigh[LT];
                 tempVel = instVelHigh[LT];
                 break;
               case LT_LOW_BTN:
+                if (clearBtn) curInst = LT;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelLow[LT];
                 tempVel = instVelLow[LT];
                 break;
               case MT_BTN:
+                if (clearBtn) curInst = MT;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelHigh[MT];
                 tempVel = instVelHigh[MT];
                 break;
               case MT_LOW_BTN:
+                if (clearBtn) curInst = MT;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelLow[MT];
                 tempVel = instVelLow[MT];
                 break;
               case HT_BTN:
+                if (clearBtn) curInst = HT;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelHigh[HT];
                 tempVel = instVelHigh[HT];
                 break;
               case HT_LOW_BTN:
+                if (clearBtn) curInst = HT;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelLow[HT];
                 tempVel = instVelLow[HT];
                 break;
               case CH_BTN:
+                if (clearBtn) curInst = CH;
                 if (!doublePush){
                   if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelHigh[CH];
                   tempVel = instVelHigh[CH];
@@ -444,20 +443,28 @@ void SeqParameter()
                   if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelLow[CH];
                   tempVel = instVelLow[CH];
                 }
+                if (clearBtn) {
+                  curInst = OH;
+                  doublePush = 1;
+                }
                 break;
               case RM_BTN:
+                if (clearBtn) curInst = RM;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelHigh[RM];
                 tempVel = instVelHigh[RM];
                 break;
               case HC_BTN:
+                if (clearBtn) curInst = HC;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelHigh[HC];
                 tempVel = instVelHigh[HC];
                 break;
               case CRASH_BTN:
+                if (clearBtn) curInst = CRASH;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelHigh[CRASH];
                 tempVel = instVelHigh[CRASH];
                 break;
               case RIDE_BTN:
+                if (clearBtn) curInst = RIDE;
                 if (isRunning) pattern[ptrnBuffer].velocity[instOut[a]][tapStepCount] = instVelHigh[RIDE];
                 tempVel = instVelHigh[RIDE];
                 break;
@@ -503,6 +510,14 @@ void SeqParameter()
           }
           stepBtn[a].prevState = stepBtn[a].curState;
         }//END FOR LOOP
+      }
+      if (clearBtn && readButtonState && !lastStepBtn.pressed && !instBtn ){
+        byte clrStep = curStep + 1;
+        if ( clrStep > pattern[ptrnBuffer].length ) clrStep = 0;
+        
+        bitClear (pattern[ptrnBuffer].inst[curInst], clrStep);
+        if (curInst == CH) pattern[ptrnBuffer].velocity[CH][clrStep] = HIGH_VEL;//update HH velocity that OH is trigged correctly
+        patternWasEdited = TRUE;
       }
       if (endMeasure){//Update pattern at the end of measure to not get a double trig
         for (int inst = 0; inst < NBR_INST; inst++){
