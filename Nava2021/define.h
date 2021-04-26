@@ -44,7 +44,7 @@
 #define ENC_SW_GET   PINB & BTN_ENCODER
 #define JUSTPRESSED 1
 #define JUSTRELEASE 0
-#define HOLD_TIME 1000 //1s to trig hold 
+#define HOLD_TIME 500 //1s to trig hold 
 #define NBR_BTN_STEP 16
 
 //Led
@@ -311,6 +311,7 @@ struct SeqConfig {
   unsigned int defaultBpm;// stored in the eeprom
   byte dir;
   byte configPage;
+  byte runMode;
   boolean configMode;
   boolean setupNeedSaved;
 }
@@ -463,7 +464,7 @@ const char *letterUpExtInst[MAX_CUR_POS]={
   "I", "N", "L", "O"};
 const char *letterUpConf[MAX_CONF_PAGE][MAX_CUR_POS]={{
   "S", "B", "M", "M"},{
-  "P", " ", "E", " "}};
+  "P", " ", "E", "M"}};
 
 //MIDI-----------------------------------------------
 volatile boolean midiNoteOnActive = FALSE;

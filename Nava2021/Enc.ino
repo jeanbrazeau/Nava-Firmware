@@ -126,7 +126,8 @@ void EncGet()
   }
   ///////////////////////////////////CONFIG MODE////////////////////////////////////
   else if (seq.configMode){
-    switch(seq.configPage) {
+    switch(seq.configPage) 
+    {
       case 1:
               switch (curIndex){
               case 0://sync select
@@ -174,19 +175,22 @@ void EncGet()
               }
               break;
       case 2:
-              switch (curIndex){
+              switch (curIndex)
+              {
               case 0://sync select
-                seq.patternSync = EncGet(seq.patternSync, 1);
-                seq.patternSync = constrain(seq.patternSync, 0, 1);
-                static boolean prevSeqpatternSync;
-                if (seq.patternSync != prevSeqpatternSync){
-                  prevSeqpatternSync = seq.patternSync;
-//                  seq.syncChanged = TRUE;
-                  seq.setupNeedSaved = TRUE;
-                  needLcdUpdate = TRUE;
+                {
+                  seq.patternSync = EncGet(seq.patternSync, 1);
+                  seq.patternSync = constrain(seq.patternSync, 0, 1);
+                  static boolean prevSeqpatternSync;
+                  if (seq.patternSync != prevSeqpatternSync){
+                    prevSeqpatternSync = seq.patternSync;
+                    seq.setupNeedSaved = TRUE;
+                    needLcdUpdate = TRUE;
+                  }
+                  break;
                 }
-                break;
-//              case 1://default bpm
+  //              case 1://default bpm
+//              {
 //                seq.defaultBpm = EncGet(seq.defaultBpm, 1);
 //                seq.defaultBpm = constrain(seq.defaultBpm, MIN_BPM, MAX_BPM);
 //                static unsigned int prevDefaultBpm;
@@ -196,7 +200,9 @@ void EncGet()
 //                  needLcdUpdate = TRUE;
 //                }
 //                break;
-              case 2://Main Midi tx channel
+//              }
+              case 2://EXT Midi tx channel
+              {
                   seq.EXTchannel = EncGet(seq.EXTchannel, 1);
                   seq.EXTchannel = constrain(seq.EXTchannel, 1, 16);
                   static unsigned int prevEXT;
@@ -206,19 +212,21 @@ void EncGet()
                     needLcdUpdate = TRUE;
                   }
                   break;
-//              case 3://Midi RX channel
-//                  seq.RXchannel = EncGet(seq.RXchannel, 1);
-//                  seq.RXchannel = constrain(seq.RXchannel, 1, 16);
-//                  static unsigned int prevRX;
-//                  if (seq.RXchannel != prevRX){
-//                    prevRX = seq.RXchannel;
-//                    MIDI.setInputChannel(seq.RXchannel);
-//                    seq.setupNeedSaved = TRUE;
-//                    needLcdUpdate = TRUE;
-//                  }
-//                  break;
-                }
               }
+              case 3://Startup Mode
+              {
+                  seq.runMode = EncGet(seq.runMode, 1);
+                  seq.runMode = constrain(seq.runMode, 0,3);
+                  static byte prevrunMode;
+                  if ( seq.runMode != prevrunMode) {
+                    prevrunMode = seq.runMode;
+                    seq.setupNeedSaved = TRUE;
+                    needLcdUpdate = TRUE;
+                  }
+                  break;
+              }
+          }
+    }
 
   }
   else{

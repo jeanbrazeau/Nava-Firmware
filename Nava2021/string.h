@@ -54,11 +54,17 @@ const char  txt_SYNC1[] PROGMEM   ="SLV";
 const char txt_PSYNC0[] PROGMEM   ="FREE";
 const char txt_PSYNC1[] PROGMEM   ="SYNC";
 
+const char txt_MODE0[] PROGMEM    ="TRPL";
+const char txt_MODE1[] PROGMEM    ="TRWR";
+const char txt_MODE2[] PROGMEM    ="PTPL";
+const char txt_MODE3[] PROGMEM    ="PTWR";
+
 //synchro name
 PROGMEM const char * const nameSync[]  ={
   txt_SYNC0, txt_SYNC1};
 
 PROGMEM const char * const patternSync[] ={ txt_PSYNC0, txt_PSYNC1};
+PROGMEM const char * const runMode[] = { txt_MODE0, txt_MODE1, txt_MODE2, txt_MODE3 };
 
 //instrument name-------------------------------------------------
 PROGMEM const char * const selectInstString[]={

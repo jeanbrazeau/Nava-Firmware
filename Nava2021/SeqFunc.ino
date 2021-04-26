@@ -30,6 +30,21 @@ void InitSeq()
     break;
     seq.syncChanged = FALSE;
   }
+  switch(seq.runMode)
+  {
+    case 0:
+      curSeqMode = TRACK_PLAY;
+      break;
+    case 1:
+      curSeqMode = TRACK_WRITE;
+      break;
+    case 2:
+      curSeqMode = PTRN_PLAY;
+      break;
+    case 3:
+      curSeqMode = PTRN_STEP;
+      break;
+  }
 }
 
 //Combine OH and CH pattern to trig HH

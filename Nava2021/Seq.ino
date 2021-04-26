@@ -75,11 +75,20 @@ void SeqParameter()
       keyboardMode = FALSE;
       seq.configMode  = FALSE;
     }
-    if (ptrnBtn.pressed && curSeqMode != PTRN_STEP ) {
+    if (ptrnBtn.pressed && ( curSeqMode != PTRN_STEP ) && ptrnBtn.counter == 0) {
       needLcdUpdate = TRUE;
       curSeqMode = PTRN_STEP;
       seq.configMode  = FALSE;
       trackNeedSaved = FALSE;
+      ptrnBtn.counter++;
+    }
+    if (ptrnBtn.pressed && curSeqMode != PTRN_PLAY && ptrnBtn.counter == 0 )
+    {
+      needLcdUpdate = TRUE;
+      curSeqMode = PTRN_PLAY;
+      seq.configMode  = FALSE;
+      trackNeedSaved = FALSE;
+      ptrnBtn.counter++;
     }
     if (tapBtn.justPressed && curSeqMode != PTRN_TAP ){
       curSeqMode = PTRN_TAP;
@@ -114,20 +123,36 @@ void SeqParameter()
       needLcdUpdate = TRUE;
       keyboardMode = FALSE;
       seq.configMode  = FALSE;
+      selectedTrackChanged = TRUE;
     }
     // if (backBtn.justPressed) ;//back  track postion
     //if (fwdBtn.justPressed) ;//foward track postion
-    if (numBtn.pressed) ;//select Track number
-    if (ptrnBtn.pressed) {
-      if ( (ptrnBtn.counter > 1 || !isRunning ) && curSeqMode != PTRN_PLAY ){
-        curSeqMode = PTRN_PLAY;
+    if (numBtn.pressed) {//select Track number
+      if(readButtonState){
+        trk.next = FirstBitOn();
+        selectedTrackChanged = TRUE;
         needLcdUpdate = TRUE;
-        keyboardMode = FALSE;
-        seq.configMode  = FALSE;
-        trackNeedSaved = FALSE;
+      }
+    }
+    if (ptrnBtn.pressed) {
+      if (  curSeqMode != PTRN_PLAY ){ // Long Press switches back to PTRN_PLAY
+        if ( curSeqMode == TRACK_PLAY || curSeqMode == TRACK_WRITE ) {
+          curBank = (curPattern / 16);
+          nextPattern = curPattern;
+          selectedPatternChanged = TRUE;
+          ptrnBtn.counter++;
+        }
+        if (ptrnBtn.counter > 1 || !isRunning )
+        {  
+          curSeqMode = PTRN_PLAY;
+          needLcdUpdate = TRUE;
+          keyboardMode = FALSE;
+          seq.configMode  = FALSE;
+          trackNeedSaved = FALSE;
+        }
       }
     
-      if ( /*ptrnBtn.hold &&*/ ptrnBtn.counter == 0 && isRunning)
+      if ( ptrnBtn.counter == 0 && isRunning)
       {
         if ( curSeqMode == PTRN_STEP )
         {
@@ -680,7 +705,7 @@ void SeqParameter()
       track[trkBuffer].patternNbr[trk.pos] = curPattern;
       trk.pos++;
       if (trk.pos > MAX_PTRN_TRACK) trk.pos = MAX_PTRN_TRACK;
-      nextPattern = track[trkBuffer].patternNbr[trk.pos];
+      nextPattern = track[trkBuffer].patternNbr[trk.pos] = curPattern;
       if(curPattern != nextPattern) selectedPatternChanged = TRUE;
       track[trkBuffer].length = trk.pos;
       trackNeedSaved = TRUE;
@@ -707,11 +732,11 @@ void SeqParameter()
       if(curPattern != nextPattern) selectedPatternChanged = TRUE;
       needLcdUpdate = TRUE;
     }
-    if(readButtonState){
-      trk.next = FirstBitOn();
-      selectedTrackChanged = TRUE;
-      needLcdUpdate = TRUE;
-    }
+//    if(readButtonState ){
+//      trk.next = FirstBitOn();
+//      selectedTrackChanged = TRUE;
+//      needLcdUpdate = TRUE;
+//    }
   }
 
   //=======================================================================================
@@ -751,7 +776,12 @@ void SeqParameter()
     nextPatternReady = TRUE;
   }
 
-  if(nextPatternReady && (( endMeasure && seq.patternSync ) || !seq.patternSync  || !isRunning )){///In pattern play mode this peace of code execute in the PPQ Count function
+  if(nextPatternReady 
+      && (( endMeasure && seq.patternSync ) 
+      || !seq.patternSync 
+      || !isRunning 
+      || curSeqMode == TRACK_PLAY )
+    ){///In pattern play mode this peace of code execute in the PPQ Count function
     //Serial.println("Ready!!");
     //if ((isRunning && endMeasure) || !isRunning ){//|| (curSeqMode != PTRN_PLAY))
     // Serial.println("endMeasure!!");

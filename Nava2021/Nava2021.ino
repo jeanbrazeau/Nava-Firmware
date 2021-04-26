@@ -77,6 +77,7 @@ void setup()
   lcd.print("   CMIX v1.017  ");
   lcd.setCursor(0,1);
   Ndelay(500);
+  if ( curSeqMode == TRACK_PLAY ) selectedTrackChanged = TRUE;
 }
 
 ////////////////////////Loop///////////////////////

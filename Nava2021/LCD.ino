@@ -27,6 +27,7 @@ void LcdUpdate()
       switch (seq.configPage)
       {
         case 1:
+        {
                 lcd.setCursor(0,0);
                 lcd.print("syn bpm mTX mRX ");
                 lcd.setCursor(cursorPos[curIndex],0);
@@ -44,9 +45,11 @@ void LcdUpdate()
                 lcd.setCursor(13,1);
                 lcd.print(seq.RXchannel);
                 break;
+        }
         case 2:
+        {
                 lcd.setCursor(0,0);
-                lcd.print("pCH     eTX     ");
+                lcd.print("pCH     eTX mode");
                 lcd.setCursor(cursorPos[curIndex],0);
                 lcd.print(letterUpConf[seq.configPage-1][curIndex]);
                 lcd.setCursor(0,1);
@@ -57,7 +60,12 @@ void LcdUpdate()
                 lcd.print(pchange);
                 lcd.setCursor(9,1);
                 lcd.print(seq.EXTchannel);
+                lcd.setCursor(12,1);
+                char mode[3];
+                strcpy_P(mode, (char*)pgm_read_word(&(runMode[seq.runMode])));
+                lcd.print(mode);
                 break;
+        }
       }
     }
     else{
