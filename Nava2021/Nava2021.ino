@@ -8,12 +8,13 @@
 #include "src\SPI\SPI.h"
 #include <LiquidCrystal.h>
 #include "src\WireN\WireN.h"
+//#include "src\WireN\utility\I2C.h"
 #include "define.h"
 #include "string.h"
 #include "src\MIDI\MIDI.h"
 
 #include <Arduino.h>
-#include <MemoryFree.h>
+//#include <MemoryFree.h>
 
 LiquidCrystal lcd(18, 19, 20, 21, 22, 23);
 ////////////////////////Setup//////////////////////

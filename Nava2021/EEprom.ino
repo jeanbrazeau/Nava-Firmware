@@ -64,7 +64,8 @@ void Ndelay(unsigned long delay_ms)
 void SavePattern(byte patternNbr)
 {
   unsigned long adress = (unsigned long)(PTRN_OFFSET + patternNbr * PTRN_SIZE);
-  WireBeginTX(adress); 
+  WireBeginTX(adress);
+
   // Serial.println(adress);
   //TRIG-----------------------------------------------
   for (byte i = 0; i < NBR_INST; i++){ 
@@ -434,7 +435,6 @@ void WireBeginTX(unsigned long address)
   byte hardwareAddress;
   if (address > 65535) hardwareAddress = HRDW_ADDRESS_UP;
   else hardwareAddress = HRDW_ADDRESS;
-  
   Wire.beginTransmission(hardwareAddress);
   Wire.write((byte)(address >> 8));
   Wire.write((byte)(address & 0xFF));
