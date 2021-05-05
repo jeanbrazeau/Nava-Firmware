@@ -236,6 +236,7 @@ void EncGet()
     static unsigned int curBpm;
     if( seq.bpm != curBpm)
     {
+      needLcdUpdate = TRUE;
       curBpm = seq.bpm;
       TimerSetFrequency();
       if (curSeqMode != PTRN_STEP || tempoBtn.pressed) needLcdUpdate = TRUE;

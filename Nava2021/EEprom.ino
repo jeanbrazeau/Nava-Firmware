@@ -52,7 +52,7 @@ void Ndelay(unsigned long delay_ms)
 {
   unsigned long time_now = millis();
   unsigned long period = time_now;
-  while ( period < time_now + delay_ms )
+  while ( period < (time_now + delay_ms) )
   {
     period=millis();
   }
@@ -154,6 +154,7 @@ void LoadPattern(byte patternNbr)
       pattern[!ptrnBuffer].extNote[j + (MAX_PAGE_SIZE * nbrPage) ] = Wire.read();
     }
   }
+  Serial.println();
   //VELOCITY-----------------------------------------------
   for(int nbrPage = 0; nbrPage < 4; nbrPage++){
     adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * nbrPage) + PTRN_EXT_OFFSET);
@@ -161,9 +162,17 @@ void LoadPattern(byte patternNbr)
     Wire.endTransmission();
     Wire.requestFrom(HRDW_ADDRESS,MAX_PAGE_SIZE); //request of  64 bytes
     for (byte i = 0; i < 4; i++){//loop as many instrument for a page
+      char instName[4];
+      strcpy_P(instName, (char*)pgm_read_word(&(selectInstString[i + 4*nbrPage])));
+      Serial.print(instName);
+      Serial.print(" = ");
       for (byte j = 0; j < NBR_STEP; j++){
         pattern[!ptrnBuffer].velocity[i + 4*nbrPage][j] = (Wire.read() & 0xFF);
+        char hex[4];
+        sprintf(hex,"%02X ",pattern[!ptrnBuffer].velocity[i + 4*nbrPage][j]);
+        Serial.print(hex);
       }
+      Serial.println();
     }
   }
 }

@@ -64,33 +64,32 @@ void CountPPQN()
       SetMux();
       SetDoutTrig(((pattern[ptrnBuffer].step[curStep]) | (bitRead(metronome,curStep)<<RM)) & (~muteInst));//patternA[curStep]<<8 |  patternB[curStep]);
 
-//      unsigned long micronow = micros();
-//      unsigned long period = micronow;
       // Send MIDI notes for the playing instruments
       for(int inst=0 ; inst < NBR_INST ; inst++ )
       {
         if ( bitRead(pattern[ptrnBuffer].inst[inst], curStep) & bitRead(~muteInst,inst) )
         {
           if (inst >= 14 && bitRead(muteInst,5)) continue;
-          if (instMidiNote[inst] != 0 )
+          if (instMidiNote[inst] != 0 && pattern[ptrnBuffer].velocity[inst][curStep] > 0 )
           {
-            unsigned int MIDIVelocity = map(pattern[ptrnBuffer].velocity[inst][curStep],instVelLow[inst],instVelHigh[inst],64,95);
-            unsigned int MIDIAccent = map(((bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) ? (pattern[ptrnBuffer].totalAcc * 4) : 0),0,52,0,32);
-//            Serial.print("Accent: ");
-//            Serial.println(MIDIAccent);
-//            Serial.print("Velocity: ");
-//            Serial.println(MIDIVelocity);
-            MidiSendNoteOn(seq.TXchannel,instMidiNote[inst]-12,MIDIVelocity+MIDIAccent);
+            unsigned int MIDIVelocity = (MIDI_LOW_VELOCITY * (pattern[ptrnBuffer].velocity[inst][curStep] == instVelLow[inst])) + 
+                                        (MIDI_HIGH_VELOCITY * (pattern[ptrnBuffer].velocity[inst][curStep] == instVelHigh[inst]));
+                                        
+            if (bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) MIDIVelocity = MIDI_ACCENT_VELOCITY;
+          
+            if (MIDIVelocity == 0 ) continue;
+            MidiSendNoteOn(seq.TXchannel,instMidiNote[inst]-12,MIDIVelocity);
           }
         }
       }
+
       if (bitRead(pattern[ptrnBuffer].inst[TRIG_OUT], curStep)) TRIG_LOW;//Trigout
 
+      InitMidiNoteOff();
       //Trig external instrument-------------------------------------
       if (bitRead(pattern[ptrnBuffer].inst[EXT_INST], curStep))
       {
-        InitMidiNoteOff();
-        MidiSendNoteOn(seq.EXTchannel, pattern[ptrnBuffer].extNote[noteIndexCpt], HIGH_VEL);
+        MidiSendNoteOn(seq.EXTchannel, pattern[ptrnBuffer].extNote[noteIndexCpt], MAX_VEL);
         midiNoteOnActive = TRUE;
         noteIndexCpt++;//incremente external inst note index
       }
@@ -99,17 +98,13 @@ void CountPPQN()
       }
 
       /* As this delay is in the interrupt routine it doesn't need to be replaced by a non blocking version */
-//      while ( period < micronow + 2000)
-//      {
-//        period = micros();
-//      }
-      delayMicroseconds(2000);
+      delayMicroseconds(10000);
       for(int inst=0 ; inst < NBR_INST ; inst++ )
       {
         if ( bitRead(pattern[ptrnBuffer].inst[inst], curStep)  & bitRead(~muteInst,inst) )
         {
           if (inst >= 14 && bitRead(muteInst,5)) continue;
-          if (instMidiNote[inst] != 0 )
+          if (instMidiNote[inst] != 0 && pattern[ptrnBuffer].velocity[inst][curStep] > 0)
           {
             MidiSendNoteOff(seq.TXchannel,instMidiNote[inst]-12);
           }

@@ -254,4 +254,5 @@ void MidiTrigOff(byte inst)
 void SendAllNoteOff()
 {
   MIDI.sendControlChange(ALL_NOTE_OFF , 0, seq.TXchannel);	
+  InitMidiNoteOff();
 }

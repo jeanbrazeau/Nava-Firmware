@@ -7,8 +7,8 @@
 /////////////////////Include/////////////////////
 #include "src\SPI\SPI.h"
 #include <LiquidCrystal.h>
+//#include <Wire.h>
 #include "src\WireN\WireN.h"
-//#include "src\WireN\utility\I2C.h"
 #include "define.h"
 #include "string.h"
 #include "src\MIDI\MIDI.h"
