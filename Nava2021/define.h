@@ -358,6 +358,7 @@ int shuffle[MAX_SHUF_TYPE][2]={
   ,{
     0,-6        }
 };
+
 volatile boolean shufPolarity;
 
 //Pattern-------------------------------------------
@@ -368,17 +369,17 @@ struct Pattern
   byte scale;
   byte dir;//0=>forward, 1=>backword, 2=>ping-pong, 3=>random
   byte shuffle;
-  byte flam;
+  byte flam; // 10, 14, 18, 22,26,30,34,38 ms, not affected by tempo
   unsigned int inst[NBR_INST];
   unsigned int step[NBR_STEP];
-  byte velocity[NBR_INST][NBR_STEP];
+  byte velocity[NBR_INST][NBR_STEP]; // Is this really needed ?
   byte extNote[128];// DUE to EEPROM 64 bytes PAGE WRITE
   byte extLength;
   byte groupPos;
   byte groupLength;
   byte totalAcc;
-  //byte bank;
 };
+
 Pattern pattern[2];//current pattern and next pattern in the buffer
 Pattern bufferedPattern;//to copy paste pattern
 boolean ptrnBuffer = 0;
