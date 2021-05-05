@@ -3,6 +3,8 @@
 //                   EEprom 1024K
 //
 //Pattern size:
+// ##
+// ## Needs recalculating
 //  -16 instruments with 2 bytes each = 32 bytes
 //  -16 steps of 16 instruments velocity (0 to 127 so 1 byte) = 256 bytes
 //  -100 notes ext instrument  = 128 bytes// to do
@@ -260,6 +262,7 @@ void LoadSeqSetup()
 //Save pattern group
 void SavePatternGroup(byte firstPattern, byte length)
 {
+  Serial.println("Saving Pattern Group");
   for (int a = 0; a <= length ; a++){
     unsigned long adress = (unsigned long)(PTRN_OFFSET + ((firstPattern + a) * PTRN_SIZE) + OFFSET_GROUP);
     WireBeginTX(adress);
@@ -292,6 +295,7 @@ void ClearPatternGroup(byte firstPattern, byte length)
 //Load pattern group type => POSITION = 0 or LENGTH = 1
 byte LoadPatternGroup(byte patternNum, byte type)
 {
+  Serial.println("Load Pattern Group");
   unsigned long adress = (unsigned long)(PTRN_OFFSET + (patternNum * PTRN_SIZE) + OFFSET_GROUP + type);
   WireBeginTX(adress);
   Wire.endTransmission();

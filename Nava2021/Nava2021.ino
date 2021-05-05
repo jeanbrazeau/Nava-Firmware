@@ -12,9 +12,10 @@
 #include "define.h"
 #include "string.h"
 #include "src\MIDI\MIDI.h"
+#include "Pattern.h"
 
 #include <Arduino.h>
-//#include <MemoryFree.h>
+#include <MemoryFree.h>
 
 LiquidCrystal lcd(18, 19, 20, 21, 22, 23);
 ////////////////////////Setup//////////////////////
@@ -96,4 +97,7 @@ void loop()
   SeqParameter();
   KeyboardUpdate();
   LcdUpdate();
+
+  Serial.print("freeMemory()=");
+  Serial.println(freeMemory());
 }

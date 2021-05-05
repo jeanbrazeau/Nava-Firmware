@@ -2,6 +2,7 @@
 //                  NAVA v1.x
 //                 SEQ Parameter
 //-------------------------------------------------
+#include "Pattern.h"
 
 /////////////////////Function//////////////////////
 void SeqParameter()
@@ -347,6 +348,7 @@ void SeqParameter()
             else{//pattern group edit------------------------------------------------------
               if (SecondBitOn())
               {
+                Serial.println("Pattern Group Edit");
                 group.length = SecondBitOn() - FirstBitOn();
                 nextPattern = group.firstPattern = FirstBitOn() + curBank * NBR_PATTERN;
                 doublePush = TRUE;
@@ -772,6 +774,8 @@ void SeqParameter()
     needLcdUpdate = TRUE;//selected pattern changed so we need to update display
     patternNeedSaved = FALSE;
     LoadPattern(nextPattern);
+    Pat::Load(nextPattern);
+    
     curPattern = nextPattern;
     nextPatternReady = TRUE;
   }
