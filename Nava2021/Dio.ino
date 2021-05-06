@@ -15,6 +15,7 @@ void InitIO()
   pinMode(DIN_CLK_PIN, OUTPUT);
   pinMode(TRIG1_PIN, OUTPUT);
   pinMode(TRIG2_PIN, OUTPUT);
+  
   SPI.begin();
   SPI.usingInterrupt(255);
   Wire.begin();

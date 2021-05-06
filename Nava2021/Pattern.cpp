@@ -1,6 +1,8 @@
-#include "Pattern.h"
+#include <Arduino.h>
+#include "src\WireN\WireN.h"
 
-CPattern Pat;
+#include "define.h"
+#include "Pattern.h"
 
 CPattern::CPattern()
 {
@@ -15,11 +17,14 @@ CPattern::CPattern()
   for (int i = 0; i < NBR_INST; i++)
   {
     inst[i] = 0;
+    for (int j = 0; j < NBR_STEP; j++)
+    {
+      Velocity[i][j] = Velo::off;
+    }
   }
   for (int i = 0; i < NBR_STEP; i++)
   {
     step[i] = 0;
-    Velocity[i] = 0;
   }
   for (int i = 0; i < MAX_EXT_INST_NOTE; i++ )
   {
@@ -32,8 +37,51 @@ void CPattern::SetHH(void)
   
 }
 
+void CPattern::printBits(size_t const size, void const * const ptr)
+{
+    unsigned char *b = (unsigned char*) ptr;
+    unsigned char by;
+    int i, j;
+    
+    for (i = 0; i < size; i++) {
+        for (j = 0; j <= 7; j++) {
+            by = (b[i] >> j) & 1;
+            Serial.print(by);
+        }
+    }
+    Serial.println();
+}
+
+void CPattern::Show()
+{
+  char instName[4];
+  Serial.println("inst[16]");
+  for(int i=0; i < NBR_INST; i++ )
+  {
+//    strcpy_P(instName, (char*)pgm_read_word(&(selectInstString[i])));
+    Serial.print(i);
+    Serial.print(" = ");
+    printBits(sizeof(inst[i]),&inst[i]);
+  }
+
+  Serial.println("step[i]");
+  for(int i=0; i <= length; i++ )
+  {
+    Serial.print(i+1);
+    Serial.print(" = ");
+    printBits(sizeof(step[i]), &step[i]);
+  }
+//    for (byte i = 0; i < NBR_INST; i++){
+//      char hex[4];
+//      sprintf(hex,"%02X ",[i + 4*nbrPage][j]);
+//      Serial.print(hex);
+//    }
+    Serial.println();
+}
+
 void CPattern::Load(byte patternNbr)
 {
+  Serial.println("CPattern::Load()");
   unsigned long adress = (unsigned long)(PTRN_OFFSET + patternNbr * PTRN_SIZE);
   WireBeginTX(adress); 
   Wire.endTransmission();
@@ -68,8 +116,10 @@ void CPattern::Load(byte patternNbr)
     }
   }
   Serial.println();
+  InstToStepWord();
+  Show();
   //VELOCITY-----------------------------------------------
-  for(int nbrPage = 0; nbrPage < 4; nbrPage++){
+/*  for(int nbrPage = 0; nbrPage < 4; nbrPage++){
     adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * nbrPage) + PTRN_EXT_OFFSET);
     WireBeginTX(adress);
     Wire.endTransmission();
@@ -87,7 +137,7 @@ void CPattern::Load(byte patternNbr)
       }
       Serial.println();
     }
-  }  
+  }*/  
 }
 
 void CPattern::Save(byte patternNbr)
@@ -118,4 +168,28 @@ void CPattern::ShiftRight(void)
 void CPattern::Group(void)
 {
   
+}
+
+void CPattern::InstToStepWord()
+{
+  for (int a = 0; a < NBR_STEP; a++){
+    step[a] = 0;
+    for (int b = 0; b < NBR_INST; b++){
+      if (bitRead(inst[b],a)) bitSet(step[a],b);
+    }
+  }
+}
+
+//Combine OH and CH pattern to trig HH
+void CPattern::SetHHPattern()
+{
+  inst[HH] = inst[CH] | inst[OH];
+  for (int a = 0; a < NBR_STEP; a++){
+    if (bitRead(inst[CH],a)) bitClear(inst[OH],a);
+    if (bitRead(inst[OH],a)){
+      bitClear(inst[CH],a);
+      Velocity[CH][a]=Velo::high;
+//      velocity[CH][a] = instVelHigh[HH];
+    }
+  }
 }

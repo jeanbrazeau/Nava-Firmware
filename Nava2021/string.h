@@ -6,8 +6,7 @@
 
 #ifndef string_h
 #define string_h
-
-
+#pragma once
 
 const char txt_INST0[] PROGMEM   ="TRG";
 const char  txt_INST1[] PROGMEM   ="   ";

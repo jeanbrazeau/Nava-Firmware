@@ -1,4 +1,4 @@
-//vgi
+//
 //-------------------------------------------------
 //                  NAVA v1.x
 //                  main program
@@ -10,14 +10,21 @@
 //#include <Wire.h>
 #include "src\WireN\WireN.h"
 #include "define.h"
+#include "vars.h"
 #include "string.h"
 #include "src\MIDI\MIDI.h"
-#include "Pattern.h"
 
 #include <Arduino.h>
 #include <MemoryFree.h>
+#include "Pattern.h"
+
+#define FREE_MEM_LIMIT 2048
+
+CPattern Pat[2];
 
 LiquidCrystal lcd(18, 19, 20, 21, 22, 23);
+
+SPISettings SPIset(4000000, MSBFIRST, SPI_MODE0);
 ////////////////////////Setup//////////////////////
 void setup()
 {
@@ -63,10 +70,12 @@ void setup()
   LoadTrack(0);
   //Load default pattern
   LoadPattern(0);
+  Pat[ptrnBuffer].Load(0);
   ptrnBuffer = !ptrnBuffer;
   InitPattern();
   SetHHPattern();
-  InstToStepWord();
+  InstToStepWord(); // Build in into CPattern Class Load function
+//  Pat.InstToStepWord();
   SetDoutTrig(0);
 
   MIDI.begin();//Serial1.begin(MIDI_BAUD);
@@ -80,6 +89,8 @@ void setup()
   lcd.setCursor(0,1);
   Ndelay(500);
   if ( curSeqMode == TRACK_PLAY ) selectedTrackChanged = TRUE;
+
+  freemem();
 }
 
 ////////////////////////Loop///////////////////////
@@ -98,6 +109,16 @@ void loop()
   KeyboardUpdate();
   LcdUpdate();
 
+#ifdef DEBUG
+  if (freeMemory() <= FREE_MEM_LIMIT )
+  {
+    freemem();
+  }
+#endif
+}
+
+void freemem()
+{
   Serial.print("freeMemory()=");
   Serial.println(freeMemory());
 }
