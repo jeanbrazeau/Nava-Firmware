@@ -7,8 +7,7 @@
 #define define_h
 
 //DEBUG
-#define NEUROMANCER 1
-#define DEBUG 1
+#define DEBUG 0
 
   #if DEBUG
    unsigned int stepValue_old = 0;
@@ -47,14 +46,6 @@
 #define BTN_BANK     B1
 #define BTN_MUTE     B10
 #define BTN_TEMPO    B100
-
-#ifdef NEUROMANCER 
-// needed because I swap some pins
-#define BTN_BANK     B100
-#define BTN_MUTE     B1
-#define BTN_TEMPO    B10
-#endif
-
 #define BTN_ENTER    B1000
 #define BTN_ENCODER  B100
 #define ENC_SW_GET   PINB & BTN_ENCODER
@@ -327,7 +318,6 @@ struct SeqConfig {
   boolean syncChanged;
   byte TXchannel;//MIDI transmit channel
   byte RXchannel;
-  byte EXTchannel; //EXT Instrument TX Channel   [Neuromancer]
   unsigned int bpm;
   unsigned int defaultBpm;// stored in the eeprom
   byte dir;
@@ -501,7 +491,7 @@ const char *letterUpExtInst[MAX_CUR_POS]={
 const char *letterUpConfPage1[MAX_CUR_POS]={
   "S", "B", "M", "M"};
 const char *letterUpConfPage2[MAX_CUR_POS]={                          // [zabox] N to M for mute mode
-  "P", "M", "E", "N"};
+  "P", "M", "N", "N"};
 
 //MIDI-----------------------------------------------
 volatile boolean midiNoteOnActive = FALSE;
@@ -512,29 +502,6 @@ boolean instWasMidiTrigged[NBR_INST] ={
   FALSE};
 byte midiVelocity[NBR_INST]={
   100};
-byte instMidiNote[NBR_INST]={ 60, // TRIG_OUT
-                              0, // HH_SLCT
-                              50, // HT
-                              37, // RM
-                              39, // HC
-                              0,  // HH
-                              51, // RIDE
-                              49, // CRASH
-                              36, // BD
-                              38, // SD
-                              41, // LT
-                              45, // MT
-                              0,  // TOTAL_ACC
-                              0,  // EXT_INST
-                              42, // CH
-                              46}; // OH
-                              
-#define MIDI_ACCENT_VELOCITY 127
-#define MIDI_HIGH_VELOCITY (MIDI_ACCENT_VELOCITY-16) 
-#define MIDI_LOW_VELOCITY (MIDI_HIGH_VELOCITY-16)
-unsigned int lastInstrumentMidiOut = 0;
-byte InstrumentMidiOutVelocity[NBR_INST] = { 0 };
-
 
 //Din synchro----------------------------------------
 boolean dinStartState = LOW;
@@ -572,3 +539,17 @@ unsigned int gateInst = 0;
 
 
 #endif//end if define_h
+
+
+
+
+
+
+
+
+
+
+
+
+
+

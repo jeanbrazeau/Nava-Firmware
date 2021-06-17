@@ -209,7 +209,6 @@ void SaveSeqSetup()
   Wire.write((byte)(seq.RXchannel));
   Wire.write((byte)(seq.ptrnChangeSync));
   Wire.write((byte)(seq.muteModeHH));                                  // [zabox]
-  Wire.write((byte)(seq.EXTchannel));  // [Neuromancer]
   Wire.endTransmission();//end page transmission
   delay(DELAY_WR);//delay between each write page
 }
@@ -233,8 +232,6 @@ void LoadSeqSetup()
   seq.ptrnChangeSync = constrain(seq.ptrnChangeSync, 0, 1);
   seq.muteModeHH = (Wire.read() & 0xFF);
   seq.muteModeHH = constrain(seq.muteModeHH, 0, 1);                       // [zabox]
-  seq.EXTchannel = (Wire.read() & 0xFF);
-  seq.EXTchannel = constrain(seq.EXTchannel, 1 ,16);
 }
 
 //Save pattern group
@@ -428,3 +425,45 @@ void WireBeginTX(unsigned long address)
   Wire.write((byte)(address >> 8));
   Wire.write((byte)(address & 0xFF));
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

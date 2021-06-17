@@ -15,7 +15,6 @@ ISR(TIMER2_COMPA_vect) {     // [zabox] [v1.028] 2ms trig off isr. improves led 
   TRIG_TIMER_STOP;           // [zabox] one shot
   TRIG_TIMER_ZERO;           // [zabox] reset
   SetDoutTrig(tempDoutTrig);
-  SendInstrumentMidiOff();   // [Neuromancer] MIDI note out
 }  
   
 
@@ -29,7 +28,6 @@ ISR(TIMER3_COMPA_vect) {       // [zabox] flam
  
   SetDoutTrig(stepValueFlam & (~muteInst) | tempDoutTrig);//Send TempDoutTrig too to prevet tick noise on HH circuit
   
-  SendInstrumentMidiOut(stepValueFlam & (~muteInst) | tempDoutTrig);	// [Neuromancer] MIDI Note out
   TRIG_TIMER_START;
   stepValueFlam = 0;
   
@@ -123,8 +121,6 @@ void CountPPQN()
         
         SetDoutTrig((stepValue) & (~temp_muteInst) | (tempDoutTrig));//Send TempDoutTrig too to prevet tick noise on HH circuit
         
-        SendInstrumentMidiOut((stepValue) & (~temp_muteInst) | (tempDoutTrig)); // [Neuromancer] MIDI Note out
-
         TRIG_TIMER_START;        // [zabox] [1.028] start trigger off timer
         
         if (stepValueFlam) {
@@ -141,7 +137,7 @@ void CountPPQN()
       if (bitRead(pattern[ptrnBuffer].inst[EXT_INST], curStep))
       {
         InitMidiNoteOff();
-        MidiSendNoteOn(seq.EXTchannel, pattern[ptrnBuffer].extNote[noteIndexCpt], HIGH_VEL);
+        MidiSendNoteOn(seq.TXchannel, pattern[ptrnBuffer].extNote[noteIndexCpt], HIGH_VEL);
         midiNoteOnActive = TRUE;
         noteIndexCpt++;//incremente external inst note index
       }
@@ -206,3 +202,33 @@ void Metronome(boolean state)
     pattern[ptrnBuffer].velocity[RM][12] = HIGH_VEL;
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
