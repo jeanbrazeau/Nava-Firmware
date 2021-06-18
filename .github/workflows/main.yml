@@ -1,0 +1,9 @@
+- name: Setup Arduino CLI
+  # You may pin to the exact commit or the version.
+  # uses: arduino/setup-arduino-cli@ce2ed333afc8a6aab2e9003d04212f588c710c77
+  uses: arduino/setup-arduino-cli@v1.1.1
+  with:
+    # Version to use. Example: 0.5.0
+#    version: # optional, default is 0.x
+    # Personal access token (PAT) used to call the Github API.
+#    token: # optional, default is ${{ github.token }}
