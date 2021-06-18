@@ -29,7 +29,7 @@ jobs:
         include:
           # This works like this: when the platform is "arduino:samd", the
           # variable `fqbn` is set to "arduino:samd:nano_33_iot".
-          - arduino-platform: "MightyCore"
+          - arduino-platform: "avr:MightyCore"
             fqbn: "https://mcudude.github.io/MightyCore/package_MCUdude_MightyCore_index.json" 
 
     # This is the platform GitHub will use to run our workflow, we
@@ -51,7 +51,7 @@ jobs:
       # dynamically by the build matrix.
       - name: Install platform
         run: |
-          arduino-cli core update-index
+          arduino-cli core update-index --additional-urls="https://mcudude.github.io/MightyCore/package_MCUdude_MightyCore_index.json"
           arduino-cli core install ${{ matrix.arduino-platform }}
 
       # Finally, we compile the sketch, using the FQBN that was set
