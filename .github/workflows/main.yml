@@ -54,9 +54,8 @@ jobs:
           arduino-cli core update-index --additional-urls="https://mcudude.github.io/MightyCore/package_MCUdude_MightyCore_index.json"
           arduino-cli core install --additional-urls="https://mcudude.github.io/MightyCore/package_MCUdude_MightyCore_index.json" ${{ matrix.arduino-platform }}
 
-      -name: Install libraries
-        run: |
-          arduino-cli lib install LiquidCrystal
+      - name: Install libraries
+        run: arduino-cli lib install LiquidCrystal
           
       # Finally, we compile the sketch, using the FQBN that was set
       # in the build matrix.
