@@ -30,7 +30,7 @@ jobs:
           # This works like this: when the platform is "arduino:samd", the
           # variable `fqbn` is set to "arduino:samd:nano_33_iot".
           - arduino-platform: "Mightycore:avr"
-            fqbn: "MightyCore:avr::1284"
+            fqbn: "MightyCore:avr:1284"
 
     # This is the platform GitHub will use to run our workflow, we
     # pick Windows for no particular reason.
