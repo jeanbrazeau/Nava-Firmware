@@ -20,8 +20,8 @@ void InitMidiNoteOff()
 {
   if(midiNoteOnActive){
     midiNoteOnActive = FALSE;
-    if (noteIndexCpt) MidiSendNoteOff(seq.EXTchannel, pattern[ptrnBuffer].extNote[noteIndexCpt - 1]);
-    else MidiSendNoteOff(seq.EXTchannel, pattern[ptrnBuffer].extNote[pattern[ptrnBuffer].extLength]);
+    if (noteIndexCpt) MidiSendNoteOff(seq.TXchannel, pattern[ptrnBuffer].extNote[noteIndexCpt - 1]);
+    else MidiSendNoteOff(seq.TXchannel, pattern[ptrnBuffer].extNote[pattern[ptrnBuffer].extLength]);
   }
 }
 
@@ -298,44 +298,4 @@ void MidiTrigOff(byte inst)
 void SendAllNoteOff()
 {
    MIDI.sendControlChange(ALL_NOTE_OFF , 0, seq.TXchannel);	
-}
-
-
-void SendInstrumentMidiOut(unsigned int value)
-{
-  // Send MIDI notes for the playing instruments
-  for(int inst=0 ; inst < NBR_INST ; inst++ )
-  {
-    if ( bitRead(value, inst))
-    {
-      if (inst >= 14 && bitRead(muteInst,5)) continue;
-      if (instMidiNote[inst] != 0 && pattern[ptrnBuffer].velocity[inst][curStep] > 0 )
-      {
-        unsigned int MIDIVelocity = InstrumentMidiOutVelocity[inst];
-        if ( inst >= 14 ) MIDIVelocity = InstrumentMidiOutVelocity[CH];
-        MIDIVelocity = map(MIDIVelocity, instVelLow[inst], instVelHigh[inst], MIDI_LOW_VELOCITY, MIDI_HIGH_VELOCITY);
-                                    
-        if (bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) MIDIVelocity = MIDI_ACCENT_VELOCITY;
-
-        MidiSendNoteOn(seq.TXchannel,instMidiNote[inst]-12,MIDIVelocity);
-      }
-    }
-    lastInstrumentMidiOut = value;
-  } 
-}
-
-void SendInstrumentMidiOff()
-{
-    for(int inst=0 ; inst < NBR_INST ; inst++ )
-  {
-    if ( bitRead(lastInstrumentMidiOut, inst))
-    {
-      if (inst >= 14 && bitRead(muteInst,5)) continue;
-      if (instMidiNote[inst] != 0 && pattern[ptrnBuffer].velocity[inst][curStep] > 0)
-      {
-        MidiSendNoteOff(seq.TXchannel,instMidiNote[inst]-12);
-      }
-    }
-  }
-
 }
