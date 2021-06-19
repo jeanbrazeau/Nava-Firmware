@@ -60,4 +60,4 @@ jobs:
       # Finally, we compile the sketch, using the FQBN that was set
       # in the build matrix.
       - name: Compile Sketch
-        run: arduino-cli compile --fqbn ${{ matrix.fqbn }} ./Nava2021
+        run: arduino-cli compile -e --fqbn ${{ matrix.fqbn }} ./Nava2021
