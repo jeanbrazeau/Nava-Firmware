@@ -38,6 +38,12 @@ jobs:
 
     # This is the list of steps this job will run.
     steps:
+      - name: Get Date
+        uses: 1466587594/get-current-time@v2
+        id: current-time
+        with:
+          format: YYYYMMDD
+
       # First of all, we clone the repo using the `checkout` action.
       - name: Checkout
         uses: actions/checkout@v2
@@ -61,3 +67,25 @@ jobs:
       # in the build matrix.
       - name: Compile Sketch
         run: arduino-cli compile -e --fqbn ${{ matrix.fqbn }} ./Nava2021
+
+      - name: Convert to sysex
+        run: python2 tools/hex2sysex/hex2sysex.py -o Nava2021/build/MightyCore.avr.1284/firmware.syx  Nava2021/build/MightyCore.avr.1284/Nava2021.ino.with_bootloader.hex -s
+
+      - name: Upload resulting binary file
+        uses: actions/upload-artifact@v2
+        with:
+          name: hex-file
+          path: Nava2021/build/MightyCore.avr.1284/Nava2021.ino.with_bootloader.hex
+
+      - name: Upload resulting sysex file
+        uses: actions/upload-artifact@v2
+        with:
+          name: firmware sysex
+          path: Nava2021/build/MightyCore.avr.1284/firmware.syx
+
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: Nava2021-${{ steps.current-time.outputs.formattedTime  }}
+          artifacts: Nava2021/build/MightyCore.avr.1284/Nava2021.ino.with_bootloader.hex,Nava2021/build/MightyCore.avr.1284/firmware.syx
+          token: ${{ secrets.GITHUB_TOKEN }}
