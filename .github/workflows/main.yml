@@ -52,7 +52,7 @@ jobs:
       - name: Install platform
         run: |
           arduino-cli core update-index --additional-urls="https://mcudude.github.io/MightyCore/package_MCUdude_MightyCore_index.json"
-          arduino-cli core install ${{ matrix.arduino-platform }}
+          arduino-cli core install --additional-urls="https://mcudude.github.io/MightyCore/package_MCUdude_MightyCore_index.json" ${{ matrix.arduino-platform }}
       # Finally, we compile the sketch, using the FQBN that was set
       # in the build matrix.
       - name: Compile Sketch
