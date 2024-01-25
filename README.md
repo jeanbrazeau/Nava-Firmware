@@ -1,2 +1,2 @@
-# Nava-v1.0-code
-An attempt to fix some of the remaining NAVA Firmware bugs and add some features I wanted for my own use.
+# Nava 2024 Oortone firmware
+work in progress, beta comming soon
