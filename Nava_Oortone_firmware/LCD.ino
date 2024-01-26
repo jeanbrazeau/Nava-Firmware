@@ -27,45 +27,119 @@ void LcdUpdate()
     if (seq.configMode)
     {
       lcd.setCursor(0,0);
-      switch (seq.configPage){
-      case 1:// first page
-        lcd.print("syn bpm mTX mRX ");
-        lcd.setCursor(cursorPos[curIndex],0);
-        lcd.print(letterUpConfPage1[curIndex]);
-        lcd.setCursor(0,1);
-        LcdClearLine();
-        lcd.setCursor(0,1);
-        char  sync[2];
-        strcpy_P(sync, (char*)pgm_read_word(&(nameSync[seq.sync])));
-        lcd.print(sync);
-        lcd.setCursor(4,1);
-        lcd.print(seq.defaultBpm);
-        lcd.setCursor(9,1);
-        lcd.print(seq.TXchannel);
-        lcd.setCursor(13,1);
-        lcd.print(seq.RXchannel);
-        break;
-      case 2:// second page
-        lcd.print("pCh mte eXT nc. ");                             // [zabox]
-        lcd.setCursor(cursorPos[curIndex],0);
-        lcd.print(letterUpConfPage2[curIndex]);
-        lcd.setCursor(0,1);
-        LcdClearLine();
-        lcd.setCursor(0,1);
-        char  ptrnSyncChange[2];
-        strcpy_P(ptrnSyncChange, (char*)pgm_read_word(&(namePtrnChange[seq.ptrnChangeSync])));
-        lcd.print(ptrnSyncChange);
-        lcd.setCursor(4,1);
-        char  mute[2];
-        strcpy_P(mute, (char*)pgm_read_word(&(nameMute[seq.muteModeHH])));
-        lcd.print(mute);
-        lcd.setCursor(8,1);
-        lcd.print("xxx");
-        lcd.setCursor(12,1);
-        lcd.print("xxx");
-        break;
+      switch (seq.configPage)
+      {
+        case 1:// first page
+        {
+#if MIDI_DRUMNOTES_OUT
+          lcd.print("syn bpm mTX mRX ");
+#else
+          lcd.print("syn bpm xxx mRX ");  //[oort] no drum notes out
+#endif
+          lcd.setCursor(cursorPos[curIndex],0);
+          lcd.print(letterUpConfPage1[curIndex]);
+          lcd.setCursor(0,1);
+          LcdClearLine();
+          lcd.setCursor(0,1);
+          char  sync[2];
+          strcpy_P(sync, (char*)pgm_read_word(&(nameSync[seq.sync])));
+          lcd.print(sync);
+          lcd.setCursor(4,1);
+          lcd.print(seq.defaultBpm);
+          lcd.setCursor(9,1);
+#if MIDI_DRUMNOTES_OUT
+          if ( seq.TXchannel > 0 )
+          {
+            lcd.print(seq.TXchannel);
+          } else {
+            lcd.setCursor(8,1);
+            lcd.print("off");
+          }
+#else          
+          //lcd.print(seq.TXchannel); [oort] comment: makes no sense if MIDI_DRUM_NOTES are deactivated
+#endif          
+          lcd.setCursor(13,1);
+          lcd.print(seq.RXchannel);
+          break;
+        }
+        case 2:// second page
+        {
+          lcd.print("pCh mte ");
+#if MIDI_EXT_CHANNEL      
+          lcd.print("eXT ");
+#else
+          lcd.print("nc. ");
+#endif
+#if CONFIG_BOOTMODE
+          lcd.print("mod ");
+#else                        
+          lcd.print("nc. ");                             // [zabox]
+#endif
+          lcd.setCursor(cursorPos[curIndex],0);
+          lcd.print(letterUpConfPage2[curIndex]);
+          lcd.setCursor(0,1);
+          LcdClearLine();
+          lcd.setCursor(0,1);
+          char  ptrnSyncChange[2];
+          strcpy_P(ptrnSyncChange, (char*)pgm_read_word(&(namePtrnChange[seq.ptrnChangeSync])));
+          lcd.print(ptrnSyncChange);
+          lcd.setCursor(4,1);
+          char  mute[2];
+          strcpy_P(mute, (char*)pgm_read_word(&(nameMute[seq.muteModeHH])));
+          lcd.print(mute);
+          lcd.setCursor(8,1);
+#if MIDI_EXT_CHANNEL        
+          lcd.print(seq.EXTchannel);
+#else
+          lcd.print("xxx");
+#endif        
+          lcd.setCursor(12,1);
+#if CONFIG_BOOTMODE
+          char bootmode[3];
+          strcpy_P(bootmode,(char*)pgm_read_word(&(nameBootMode[seq.BootMode])));
+          lcd.print(bootmode);
+#else        
+          lcd.print("xxx");
+#endif        
+          break;
+        }
+#if MIDI_HAS_SYSEX        
+      case 3: // Config page 3
+        {  
+          if ( sysExDump < SYSEX_MAXPARAM )
+          {
+            lcd.print("type    select  ");
+          } else {
+            lcd.print("type            ");
+          }
+          lcd.setCursor(cursorPos[curIndex*2],0);
+          lcd.print(letterUpConfPage3[curIndex]);
+          lcd.setCursor(0,1);
+          LcdClearLine();
+          lcd.setCursor(0,1);
+          char  sysex[5];
+          strcpy_P(sysex, (char*)pgm_read_word(&(nameSysex[sysExDump])));
+          lcd.print(sysex);
+          lcd.setCursor(8,1);
+          if ( sysExDump < SYSEX_MAXPARAM )
+          {
+            if ( sysExDump == 0 )
+            {
+              sysExParam = constrain(sysExParam, 0, MAX_BANK); // Banks
+              lcd.print(char(sysExParam+65));
+            } else if (sysExDump == 1) {
+              sysExParam = constrain(sysExParam, 0, MAX_PTRN-1); // Patterns
+              lcd.print(char((sysExParam / 16)+65));
+              lcd.print(sysExParam - ((sysExParam / 16)*NBR_PATTERN) + 1);
+            } else if  (sysExDump == 2) {
+              sysExParam = constrain(sysExParam, 0, MAX_TRACK-1); // Tracks
+              lcd.print(sysExParam + 1);
+            }
+          }
+          break;
+        }
+#endif        
       }
-
     }
     else if (seq.sync == EXPANDER) {                                               // [1.028] Expander
       lcd.setCursor(0,0);
@@ -77,55 +151,30 @@ void LcdUpdate()
     else{
       switch (curSeqMode){
       case PTRN_PLAY:
+ptrn_play:      
         lcd.setCursor(0,0);
         lcd.print("  Pattern Play  ");
         lcd.setCursor(0,1);
         LcdClearLine(); 
         lcd.setCursor(2,1);
-        lcd.print(char(curBank+65));
-        lcd.print(curPattern - (curBank*NBR_PATTERN) + 1);                          // [zabox] step button alignement
+
+        //[oort] better way to display pattern names
+        displayBank = curPattern/NBR_PATTERN;
+        displayPattern = curPattern % NBR_PATTERN;
+        lcd.print(char(displayBank+65));
+        lcd.print(displayPattern + 1);                      
+  
         lcd.setCursor(9,1);
         LcdPrintTempo(); 
         previousMode = PTRN_PLAY;
         break;
       case PTRN_STEP:
       case PTRN_TAP:
+ptrn_step:      
         if (curInst == TOTAL_ACC){
           LcdPrintTotalAcc();
         }
-        else if (shufBtn.pressed){
-  /*        
-          if (shiftBtn) {                                                           // [zabox] [1.027] flam
-            lcd.setCursor(0,0);
-            lcd.print(" Flam value     ");
-            lcd.setCursor(0,1);
-            LcdClearLine();
-            lcd.setCursor(1,1);
-            lcd.print("-");
-            lcd.setCursor(4,1);
-            LcdPrintLine(8);
-            lcd.setCursor(14,1);
-            lcd.print("+");
-            lcd.setCursor(3 + pattern[ptrnBuffer].flam,1);
-            lcd.print((char)219);
-          }
-          else {
-            lcd.setCursor(0,0);
-            lcd.print(" Shuffle value  ");
-            lcd.setCursor(0,1);
-            LcdClearLine();
-            lcd.setCursor(1,1);
-            lcd.print("-");
-            lcd.setCursor(4,1);
-            LcdPrintLine(7);
-            lcd.setCursor(14,1);
-            lcd.print("+");
-            lcd.setCursor(3 + pattern[ptrnBuffer].shuffle,1);
-            lcd.print((char)219);
-          }
-          
-          */
-          
+        else if (shufBtn.pressed){         
           lcd.setCursor(0,0);
           lcd.print("Shuffle:        ");
           lcd.setCursor(9,0);
@@ -138,7 +187,6 @@ void LcdUpdate()
           LcdPrintLine(8);
           lcd.setCursor(8 + pattern[ptrnBuffer].flam, 1);
           lcd.print((char)219);        
-          
         }
         else if (keyboardMode){
           lcd.setCursor(0,0);
@@ -184,23 +232,27 @@ void LcdUpdate()
         previousMode = PTRN_STEP;
         break;
       case MUTE:
-        if (previousMode == PTRN_STEP){
-          lcd.setCursor(0,1);
-          lcd.print("   ");
-          lcd.setCursor(0,1);
-          lcd.print(char(curBank+65));
-          lcd.print(curPattern - (curBank*NBR_PATTERN) + 1);                     // [zabox] step button alignement
+        switch (previousMode) //[oort] comment: Mute mode depends on previous modes, solved with gotos, not ideal solution.
+        {
+          case PTRN_STEP:
+            goto ptrn_step;
+            break;
+          case PTRN_TAP:
+            goto ptrn_step;
+            break;
+          case PTRN_PLAY:
+            goto ptrn_play;
+            break;
+          case TRACK_WRITE:
+            goto trck_write;
+            break;
+          case TRACK_PLAY:
+            goto trck_play;
+            break;
         }
-        else if (previousMode == PTRN_PLAY){
-          lcd.setCursor(2,1);
-          lcd.print("   ");
-          lcd.setCursor(2,1);
-          lcd.print(char(curBank+65));
-          lcd.print(curPattern - (curBank*NBR_PATTERN) + 1);                     // [zabox] step button alignement
-        }
-
         break;
       case TRACK_WRITE:
+trck_write:
         lcd.setCursor(0,0);
         lcd.print("pos ptr len num ");
         lcd.setCursor(cursorPos[curIndex],0);
@@ -210,8 +262,13 @@ void LcdUpdate()
         lcd.setCursor(0,1);
         lcd.print(trk.pos + 1);                                                 // [zabox] 
         lcd.setCursor(4,1);
-        lcd.print((char)((curPattern / 16) + 65));
-        lcd.print((curPattern - (((curPattern / 16)*NBR_PATTERN)) + 1));        // [zabox] step button alignement
+        if (curPattern == END_OF_TRACK )
+        {
+          lcd.print("END");
+        } else {
+          lcd.print((char)((curPattern / 16) + 65));
+          lcd.print((curPattern - (((curPattern / 16)*NBR_PATTERN)) + 1));        // [zabox] step button alignement
+        }
         lcd.setCursor(8,1);
         lcd.print(track[trkBuffer].length);
         lcd.setCursor(13,1);
@@ -219,22 +276,35 @@ void LcdUpdate()
         previousMode = TRACK_WRITE;
         break;
       case TRACK_PLAY:
+trck_play:      
         lcd.setCursor(0,0);
-        lcd.print("   Track Play   ");
+        lcd.print(" Track Play:    ");   //[oort] make room for track number
+        lcd.setCursor(13,0);
+        lcd.print(trk.current + 1); //[oort] track number
         lcd.setCursor(0,1);
         LcdClearLine(); 
         lcd.setCursor(0,1);
         lcd.print("pos:");
-        lcd.print(trk.pos + 1);                                                 // [zabox]
+        lcd.print(displayTrkPlayPos + 1); 
         lcd.setCursor(8,1);
         lcd.print("ptrn:");
-        lcd.print((char)((curPattern / 16) + 65));
-        lcd.print((curPattern - (((curPattern / 16)*NBR_PATTERN)) + 1));        // [zabox] step button alignement
-         previousMode = TRACK_PLAY;
+        if (curPattern == END_OF_TRACK )
+        {
+          lcd.print("END");
+        } else {
+          lcd.print((char)((curPattern / NBR_PATTERN) + 65));                       //[oort] changed to NBR_PATTERN instead of 16
+          lcd.print(curPattern - ((curPattern / NBR_PATTERN)*NBR_PATTERN) +1);      // [oort] this looks a bit strange, seems to work
+        }
+        previousMode = TRACK_PLAY;
         break;
       }
     }
   }
+#if DEBUG
+  //[oort] for traces
+  lcd.setCursor(0,0);
+  lcd.print(lcdVal);
+#endif
 }
 
 //clear 16 character line-------------------------------------
@@ -273,12 +343,14 @@ void LcdPrintTempo()
 {
   lcd.write(byte(5));
   lcd.print("-");
-  if (seq.sync == MASTER)lcd.print(seq.bpm);
-  else {
+  if (seq.sync == MASTER){
+    lcd.print(seq.bpm);
+  } else {
     lcd.print((char)219);
     lcd.print((char)219);
     lcd.print((char)219);
   }
+  lcd.print("  ");
 }
 
 //print special line--------------------------------------------------
@@ -289,7 +361,7 @@ void LcdPrintLine (byte lineSize)
   }
 }
 
-//Lcd print saved !!!!
+//Lcd print saved !!!!  //[oort] not always working or shown too briefly
 void LcdPrintSaved()
 {
   lcd.setCursor(4,0);
@@ -321,7 +393,7 @@ void  LcdPrintEEpromInit()
   lcd.setCursor(0,1);
   LcdClearLine();
   lcd.setCursor(0,1);
-  lcd.print("press PLAY/ENTER");
+  lcd.print("push START+ENTER");
 
 }
 

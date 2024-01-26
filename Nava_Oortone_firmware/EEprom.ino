@@ -133,7 +133,7 @@ void LoadPattern(byte patternNbr)
   }
   //EXT INST-----------------------------------------------
   for(int nbrPage = 0; nbrPage < 2; nbrPage++){
-      MIDI.read();
+    MIDI.read();
     adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * nbrPage) + PTRN_SETUP_OFFSET);
     WireBeginTX(adress);
     Wire.endTransmission();
@@ -145,7 +145,7 @@ void LoadPattern(byte patternNbr)
   }
   //VELOCITY-----------------------------------------------
   for(int nbrPage = 0; nbrPage < 4; nbrPage++){
-      MIDI.read();
+    MIDI.read();
     adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * nbrPage) + PTRN_EXT_OFFSET);
     WireBeginTX(adress);
     Wire.endTransmission();
@@ -153,6 +153,59 @@ void LoadPattern(byte patternNbr)
     for (byte i = 0; i < 4; i++){//loop as many instrument for a page
       for (byte j = 0; j < NBR_STEP; j++){
         pattern[!ptrnBuffer].velocity[i + 4*nbrPage][j] = (Wire.read() & 0xFF);
+      }
+    }
+  }
+}
+
+//Load Temp Pattern
+//[oort] This is a copy of LoadPattern but into another patternbuffer, needed when loading bank into RAM
+// would be better to rewrite as one function with pointer adress to buffer as argument
+void LoadTempPattern(byte patternNbr)
+{
+  unsigned long adress = (unsigned long)(PTRN_OFFSET + patternNbr * PTRN_SIZE);
+  WireBeginTX(adress); 
+  Wire.endTransmission();
+  Wire.requestFrom(HRDW_ADDRESS,MAX_PAGE_SIZE); //request a 64 bytes page
+  //TRIG-----------------------------------------------
+  for(int i =0; i<NBR_INST;i++){
+    tempPattern.inst[i] = (unsigned long)((Wire.read() & 0xFF) | (( Wire.read() << 8) & 0xFF00));
+    // Serial.println(Wire.read());
+  }
+  //SETUP-----------------------------------------------
+  tempPattern.length = Wire.read();
+  tempPattern.scale = Wire.read();
+  prevShuf = tempPattern.shuffle = Wire.read();                                                         // [zabox] [1.027] flam
+  prevFlam = tempPattern.flam = Wire.read();                                                            // [zabox] [1.027] flam
+  tempPattern.extLength = Wire.read();
+  tempPattern.groupPos = Wire.read();
+  tempPattern.groupLength = Wire.read();
+  tempPattern.totalAcc = Wire.read();
+  for(int a = 0; a < 24; a++){
+    Wire.read();
+  }
+  //EXT INST-----------------------------------------------
+  for(int nbrPage = 0; nbrPage < 2; nbrPage++){
+    MIDI.read();
+    adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * nbrPage) + PTRN_SETUP_OFFSET);
+    WireBeginTX(adress);
+    Wire.endTransmission();
+    Wire.requestFrom(HRDW_ADDRESS,MAX_PAGE_SIZE); //request of  64 bytes
+
+    for (byte j = 0; j < MAX_PAGE_SIZE; j++){
+      tempPattern.extNote[j + (MAX_PAGE_SIZE * nbrPage) ] = Wire.read();
+    }
+  }
+  //VELOCITY-----------------------------------------------
+  for(int nbrPage = 0; nbrPage < 4; nbrPage++){
+    MIDI.read();
+    adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * nbrPage) + PTRN_EXT_OFFSET);
+    WireBeginTX(adress);
+    Wire.endTransmission();
+    Wire.requestFrom(HRDW_ADDRESS,MAX_PAGE_SIZE); //request of  64 bytes
+    for (byte i = 0; i < 4; i++){//loop as many instrument for a page
+      for (byte j = 0; j < NBR_STEP; j++){
+        tempPattern.velocity[i + 4*nbrPage][j] = (Wire.read() & 0xFF);
       }
     }
   }
@@ -176,7 +229,6 @@ void SaveTrack(byte trackNbr)
     Wire.endTransmission();//end of 64 bytes transfer
     delay(DELAY_WR);//delay between each write page
   }
-
 }
 
 //Load track
@@ -209,6 +261,12 @@ void SaveSeqSetup()
   Wire.write((byte)(seq.RXchannel));
   Wire.write((byte)(seq.ptrnChangeSync));
   Wire.write((byte)(seq.muteModeHH));                                  // [zabox]
+#if MIDI_EXT_CHANNEL
+  Wire.write((byte)(seq.EXTchannel));  // [Neuromancer]
+#endif
+#if CONFIG_BOOTMODE
+  Wire.write((byte)(seq.BootMode)); // [Neuromancer]
+#endif    
   Wire.endTransmission();//end page transmission
   delay(DELAY_WR);//delay between each write page
 }
@@ -225,27 +283,43 @@ void LoadSeqSetup()
   seq.defaultBpm = (Wire.read() & 0xFF);
   seq.defaultBpm = constrain(seq.defaultBpm, MIN_BPM, MAX_BPM);
   seq.TXchannel = (Wire.read() & 0xFF);
+#if MIDI_DRUMNOTES_OUT
+  seq.TXchannel = constrain(seq.TXchannel, 0 ,16);
+#else  
   seq.TXchannel = constrain(seq.TXchannel, 1 ,16);
+#endif
   seq.RXchannel = (Wire.read() & 0xFF);
   seq.RXchannel = constrain(seq.RXchannel, 1 ,16);
   seq.ptrnChangeSync = (Wire.read() & 0xFF);
   seq.ptrnChangeSync = constrain(seq.ptrnChangeSync, 0, 1);
   seq.muteModeHH = (Wire.read() & 0xFF);
   seq.muteModeHH = constrain(seq.muteModeHH, 0, 1);                       // [zabox]
+#if MIDI_EXT_CHANNEL  
+  seq.EXTchannel = (Wire.read() & 0xFF);
+  seq.EXTchannel = constrain(seq.EXTchannel, 1 ,16);
+#endif
+#if CONFIG_BOOTMODE
+  unsigned int bootmode = (Wire.read() & 0xFF);
+  seq.BootMode = (SeqMode)constrain(bootmode, 0 ,4);
+#endif   
 }
 
-//Save pattern group
+
+//[oort] These handles group info, nothing else, no pattern data
+//saving of groups is not supported in this firmware so commented out
+/*
 void SavePatternGroup(byte firstPattern, byte length)
 {
   for (int a = 0; a <= length ; a++){
     unsigned long adress = (unsigned long)(PTRN_OFFSET + ((firstPattern + a) * PTRN_SIZE) + OFFSET_GROUP);
     WireBeginTX(adress);
-    /* Serial.print("adresse=");
+    * Serial.print("adresse=");  //[oort] nested block comments not allowed in Arduino, old block comment
      Serial.println(adress);
      Serial.print("groupPos=");
      Serial.println(a);
      Serial.print("groupLeght=");
-     Serial.println(length);*/
+     Serial.println(length);*   //[oort] end old comment block
+
     Wire.write((byte)(a)); //pattern[ptrnBuffer].groupPos
     Wire.write((byte)(length));//pattern[ptrnBuffer].groupLength
     Wire.endTransmission();//end page transmission
@@ -277,8 +351,11 @@ byte LoadPatternGroup(byte patternNum, byte type)
   return data;
 }
 
+//...mark (group functionality)
+*/
 
 //==================================================================================================
+
 //==================================================================================================
 //init pattern in the EEprom
 void InitEEprom()
@@ -352,7 +429,7 @@ void InitEEprom()
       adress = (unsigned long)(PTRN_OFFSET + (trackNbr * TRACK_SIZE) + (MAX_PAGE_SIZE * nbrPage) + TRACK_OFFSET);
       WireBeginTX(adress);
       for (byte i = 0; i < MAX_PAGE_SIZE; i++){//loop as many instrument for a page
-        Wire.write((byte)(0)); 
+          Wire.write((byte)(0));
       }
       Wire.endTransmission();//end of 64 bytes transfer
       delay(DELAY_WR);//delay between each write page
@@ -372,47 +449,19 @@ void InitEEprom()
   Wire.write((byte)(DEFAULT_BPM));//seq.defaultBpm));
   Wire.write((byte)(1));//seq.TXchannel));
   Wire.write((byte)(1));//seq.RXchannel));
-
+  Wire.write((byte)(1));//seq.ptrnChangeSync));
+  Wire.write((byte)(1));//seq.muteModeHH));  
+#if MIDI_EXT_CHANNEL
+  Wire.write((byte)(2));//seq.EXTchannel);
+#endif
+#if CONFIG_BOOTMODE
+  Wire.write((byte)(SeqMode::PTRN_STEP)); // Bootmode
+#endif   
   Wire.endTransmission();//end page transmission
   delay(DELAY_WR);//delay between each write page
   /*Serial.print("setup offset add=");
   Serial.println((unsigned long)(TRACK_OFFSET + (TRACK_SIZE * MAX_TRACK)));*/
 }
-
-//init track in the eeprom //GOT SOME ISSUES: PATTERN 0 TO 18 ARE NOT INTIALIZE CORRECTLY ?!!//
-/*void InitEEpromTrack()
-{
-  unsigned long adress;
-  for (unsigned long trackNbr = 1; trackNbr < MAX_TRACK; trackNbr++){
-    for(unsigned long nbrPage = 0; nbrPage < (TRACK_SIZE/MAX_PAGE_SIZE); nbrPage++){// to init 1024 byte track size we need 16 pages of 64 bytes
-      adress = (unsigned long)(PTRN_OFFSET + (trackNbr * TRACK_SIZE) + (MAX_PAGE_SIZE * nbrPage) + TRACK_OFFSET);
-      WireBeginTX(adress);
-      for (byte i = 0; i < MAX_PAGE_SIZE; i++){//loop as many instrument for a page
-        Wire.write((byte)(0)); 
-      }
-      Wire.endTransmission();//end of 64 bytes transfer
-      delay(DELAY_WR);//delay between each write page
-    }
-    static unsigned int tempInitLeds;
-    tempInitLeds |= bitSet(tempInitLeds, trackNbr);
-    SetDoutLed(tempInitLeds, 0, 0);
-   //delay(10);
-  }
-}
-
-//Init sequencer setup
-void InitSeqSetup()
-{
-  unsigned long adress = (unsigned long)(OFFSET_SETUP);
-  WireBeginTX(adress);
-  Wire.write((byte)(MASTER));//seq.sync)); 
-  Wire.write((byte)(DEFAULT_BPM));//seq.defaultBpm));
-  Wire.write((byte)(1));//seq.TXchannel));
-  Wire.write((byte)(1));//seq.RXchannel));
-
-  Wire.endTransmission();//end page transmission
-  delay(DELAY_WR);//delay between each write page
-}*/
 
 //wire begin
 void WireBeginTX(unsigned long address)
@@ -425,45 +474,3 @@ void WireBeginTX(unsigned long address)
   Wire.write((byte)(address >> 8));
   Wire.write((byte)(address & 0xFF));
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

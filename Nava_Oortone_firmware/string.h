@@ -55,6 +55,23 @@ const char txt_SYNC2[] PROGMEM   ="EXP";                                        
 const char txt_PTRNSYNCCHANGE[] PROGMEM   ="SYN";
 const char txt_PTRNFREECHANGE[] PROGMEM   ="FRE";
 
+#if CONFIG_BOOTMODE
+const char txt_BOOTMODE0[] PROGMEM = "TrPl";
+const char txt_BOOTMODE1[] PROGMEM = "TrWr";
+const char txt_BOOTMODE2[] PROGMEM = "Ptrn";
+const char txt_BOOTMODE3[] PROGMEM = "Step";
+const char txt_BOOTMODE4[] PROGMEM = "Tap ";
+#endif
+
+#if MIDI_HAS_SYSEX
+const char txt_SYSEX0[] PROGMEM = "Bank";
+const char txt_SYSEX1[] PROGMEM = "Pattern";
+const char txt_SYSEX2[] PROGMEM = "Track";
+const char txt_SYSEX3[] PROGMEM = "Config";
+const char txt_SYSEX4[] PROGMEM = "Full";
+PROGMEM const char * const nameSysex[]= { txt_SYSEX0, txt_SYSEX1, txt_SYSEX2, txt_SYSEX3, txt_SYSEX3 };
+#endif
+
 const char txt_MUTE0[] PROGMEM   ="C/O";                                        // [zabox] HH mute mode
 const char txt_MUTE1[] PROGMEM   ="HH";                                         //
 
@@ -65,6 +82,11 @@ PROGMEM const char * const nameSync[]={
   //Pattern change sync name--------------------------------------
 PROGMEM const char * const namePtrnChange[]={
   txt_PTRNFREECHANGE, txt_PTRNSYNCCHANGE};
+
+#if CONFIG_BOOTMODE
+PROGMEM const char * const nameBootMode[]={
+  txt_BOOTMODE0, txt_BOOTMODE1, txt_BOOTMODE2, txt_BOOTMODE3, txt_BOOTMODE4};
+#endif
   
 //Mute Mode-------------------------------------------------------            // [zabox] HH mute mode
 PROGMEM const char * const nameMute[]={
