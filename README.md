@@ -18,7 +18,7 @@ The version found here is called Nava Oortone (0Tone) and draws heavily on the p
 * Improved External Instruments (midi note sequencer)
 
 ## For developers
-I am not an expert on embedded systems and have almost completely kept my hands off code related to triggering, timing and hardware related details. I also believe these sections work pretty well. Mainly this take on the firmware tries to improve button logic and how programmed patterns are handled by the memory trying to avoid the drawbacks of slow EEprom reading and writing. I have developed by uploading via sysex which is slow, with no debugging options but easy to do.
+I am not an expert on embedded systems and have almost completely kept my hands off code related to triggering, timing and hardware related details. I also believe these sections work pretty well. Mainly this take on the firmware tries to improve button logic and how programmed patterns are handled by the memory while trying to avoid the drawbacks of slow EEprom reading and writing. I have developed by uploading the firmware to Nava via sysex, This is slow, with no debugging options but it's easy to get started.
 
 ### Tools and methods used:
 * Arduino IDE version XXX on macOS Mojave
