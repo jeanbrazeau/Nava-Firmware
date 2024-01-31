@@ -3,8 +3,8 @@ work in progress, beta comming soon...text below is not finished
 
 ## About the Nava Oortone firmware for Nava
 Nava is a hardware replica of the legendarry Roland TR909 Drummachine. The analog sound circuits are almost identical to the original while the firmware and sequencer is quite different. There are at least two previous takes on this firmware:
-* Final version of the original, "official", firmare. LINK
-* The 2021 Neuromancer version
+* Final version of the original, "official" firmare, called *1.028beta*. [Firmare](http://www.e-licktronic.com/forum/viewtopic.php?t=864), [Source code](https://github.com/e-licktronic/Nava-v1.0).
+* The 2021 Neuromancer version [Firmware and source](https://github.com/BenZonneveld/Nava-2021-Firmware/releases/tag/Nava2021Neuro-20211030).
 
 The version found here is called Nava Oortone (0Tone) and draws heavily on the previous versions but with a few improvements and changes. Please follow discussion thread on E-Lickronic for detail. LINK
 
@@ -14,13 +14,13 @@ I am not an expert on embedded systems and have almost completely kept my hands 
 ### Tools and methods used:
 * Arduino IDE version XXX on macOS Mojave
 * macOS Python version (when converting to sysex)
-* Development setup: I followed the instructions found [here] https://github.com/sandormatyi/Nava-909-firmware
+* Development setup: I followed the instructions found [here] (https://github.com/sandormatyi/Nava-909-firmware)
 
 
 This section is for release page WILL MOVE
 #Nava alternative firmware 2024 - beta release
 2024 Oortone alternative firmware for the Nava DIY 909 drum machine project. Please be aware that this is a beta version. Sysex with this firmware will be released here pretty soon.
-Follow the thread LINK on the e-licktronic forums to keep up to date.
+Follow [the thread on the E-licktronic forums] (https://www.e-licktronic.com/forum/viewtopic.php?t=3076) to keep up to date.
 
 Upload firmware using midi sysex.
 I use an ESI class compliant midi interface and Sysex Librarian 1.5.1 on macOS using these settings and it works without errors every time:
