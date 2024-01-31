@@ -12,7 +12,7 @@ The version found here is called Nava Oortone (0Tone) and draws heavily on the p
 * All patterns in current bank can be programmed independently without the need to save when changing pattern
 * Only need to save when changing banks or entering Track Mode
 * Better Working pattern chains (groups) that can be programmed on the fly
-* Groups can not be saved since it serves no real purpose
+* Groups can not be saved since it complicates things without any benefits
 * Button logic improvements with less unexpected results
 * Working metronome
 * Improved External Instruments (midi note sequencer)
