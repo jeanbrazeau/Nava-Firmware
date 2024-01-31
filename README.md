@@ -6,15 +6,24 @@ Nava is a hardware replica of the legendarry Roland TR909 Drummachine. The analo
 * Final version of the original, "official" firmare, called *1.028beta*. [Firmare](http://www.e-licktronic.com/forum/viewtopic.php?t=864), [Source code](https://github.com/e-licktronic/Nava-v1.0).
 * The 2021 Neuromancer version [Firmware and source](https://github.com/BenZonneveld/Nava-2021-Firmware/releases/tag/Nava2021Neuro-20211030).
 
-The version found here is called Nava Oortone (0Tone) and draws heavily on the previous versions but with a few improvements and changes. Please follow discussion thread on E-Lickronic for detail. LINK
+The version found here is called Nava Oortone (0Tone) and draws heavily on the previous versions but with a few improvements and changes. Please follow [discussion thread on E-Lickronic](http://www.e-licktronic.com/forum/viewtopic.php?t=3076) for details.
+
+### Main differences in this version compared to previous
+* All patterns in current bank can be programmed independently without the need to save when changing pattern
+* Only need to save when changing banks or entering Track Mode
+* Better Working pattern chains (groups) that can be programmed on the fly
+* Groups can not be saved since it serves no real purpose
+* Button logic improvements with less unexpected results
+* Working metronome
+* Improved External Instruments (midi note sequencer)
 
 ## For developers
-I am not an expert on embedded systems and have almost completely kept my hands off code related to triggering, timing and hardware related details. I also believe these sections work pretty well. Mainly this take on the firmware tries to improve button logic and how programmed patterns are handled by the memory trying to avoid the drawbacks of slow EEprom reading and witing. I have developed only by upploading via sysex and have used the tools for convertyng to sysex that was bundled with the prvious versions. I don't know how these libraries work, but they do.
+I am not an expert on embedded systems and have almost completely kept my hands off code related to triggering, timing and hardware related details. I also believe these sections work pretty well. Mainly this take on the firmware tries to improve button logic and how programmed patterns are handled by the memory trying to avoid the drawbacks of slow EEprom reading and writing. I have developed by uploading via sysex which is slow, with no debugging options but easy to do.
 
 ### Tools and methods used:
 * Arduino IDE version XXX on macOS Mojave
 * macOS Python version (when converting to sysex)
-* Development setup: I followed the instructions found [here] (https://github.com/sandormatyi/Nava-909-firmware)
+* Development setup: I followed the instructions found [here] (https://github.com/sandormatyi/Nava-909-firmware) but have no further knowledge how the sysexconversion works.
 
 
 This section is for release page WILL MOVE
