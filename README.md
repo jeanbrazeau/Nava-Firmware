@@ -23,13 +23,13 @@ I am not an expert on embedded systems and have almost completely kept my hands 
 ### Tools and methods used:
 * Arduino IDE version XXX on macOS Mojave, Intel
 * macOS Python version (when converting to sysex)
-* Development setup: I followed the instructions found [here] (https://github.com/sandormatyi/Nava-909-firmware) but have no further knowledge how the sysexconversion works.
+* Development setup: I followed the instructions found [here](https://github.com/sandormatyi/Nava-909-firmware) but have no further knowledge how the sysexconversion works.
 
 
 This section is for release page WILL MOVE
 #Nava alternative firmware 2024 - beta release
 2024 Oortone alternative firmware for the Nava DIY 909 drum machine project. Please be aware that this is a beta version. Sysex with this firmware will be released here pretty soon.
-Follow [the thread on the E-licktronic forums] (https://www.e-licktronic.com/forum/viewtopic.php?t=3076) to keep up to date.
+Follow [the thread on the E-licktronic forums](https://www.e-licktronic.com/forum/viewtopic.php?t=3076) to keep up to date.
 
 Upload firmware using midi sysex.
 I use an ESI class compliant midi interface and Sysex Librarian 1.5.1 on macOS using these settings and it works without errors every time:
