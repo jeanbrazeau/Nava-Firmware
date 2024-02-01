@@ -48,8 +48,9 @@ void SeqParameter() {
       //      tapStepCount = 0;  //[oort] in Neuro but not in Sandor (in stop instead)
 
       if (seq.sync == MASTER) MIDI.sendRealTime(midi::MidiType::Start);  //;MidiSend(START_CMD);
-      DIN_START_HIGH;
-      dinStartState = HIGH;
+      DIN_START_HIGH;           //[oort] comment: Why are there two different "din start"? 
+      dinStartState = HIGH;     //
+      //[oort] comment: According to Wikipedia DIN-socket Start pin should be HIGH 9ms before clock starts.
     }
   }
 
@@ -118,6 +119,7 @@ void SeqParameter() {
     }
     if (group.length) group.pos++;
     incrementRequired = TRUE;  //[oort] maybe not in Pattern modes?
+    //[oort] Maybe we can handle 9 ms start delay here? TO DO
   }
 
   //-------------------Shift button pressed------------------------------

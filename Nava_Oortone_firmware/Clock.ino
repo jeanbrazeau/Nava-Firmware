@@ -48,8 +48,8 @@ void CountPPQN() {
   //[oort] comment: This section is different in the 1.028beta, this is from the 2021Neuro firmware
   if (seq.sync == MASTER) {  // [zabox] has to be 0/2 for the correct phase
     if (ppqn % 4 == 0) {
-      DIN_CLK_HIGH;
-      dinClkState = HIGH;
+      DIN_CLK_HIGH;        //[oort] comment: Why are there two different DIN-socket clock settings in parallell?
+      dinClkState = HIGH;  //
       while (!(UCSR1A & (1 << UDRE1))) {};  // [zabox] directly adressing the uart fixes the midi clock lag
       UDR1 = CLOCK_CMD;                     //Tick
     } else if (ppqn % 4 == 2) {

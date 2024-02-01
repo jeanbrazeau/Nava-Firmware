@@ -46,7 +46,7 @@ void MidiSendNoteOn(byte channel, byte value, byte velocity) {
 //Handle clock
 void HandleClock() {
   DIN_CLK_HIGH;
-  CountPPQN();  //execute 4x because internal sequencer run as 96 ppqn
+  CountPPQN();  //execute 4x because internal sequencer run as 96 ppqn. [oort] comment: These functions will run all four ppqn-counts in a row compared to Master clocking with steady pace.
   CountPPQN();
   //delayMicroseconds(2000);                 // [zabox] [1.028]
   CountPPQN();
