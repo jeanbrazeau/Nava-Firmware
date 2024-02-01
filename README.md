@@ -1,5 +1,5 @@
 # Nava 2024 Oortone firmware
-The latest release of Nava 2024 Oortone firmware is available in the Release section in the right column. 
+The latest release of Nava 2024 Oortone firmware is available in the Release section in the right column, click **"Releases"**.
 
 ## About the Nava Oortone firmware for Nava
 Nava is a hardware replica of the legendarry Roland TR909 Drummachine. The analog sound circuits are almost identical to the original while the firmware and sequencer is quite different. There is also a hardware revision called Nava Extra 9 which extend the sonic possibilities beyond the original TR909. This firmware should work with both. 
