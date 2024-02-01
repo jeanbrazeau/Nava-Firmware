@@ -1,5 +1,4 @@
 # Nava 2024 Oortone firmware
-work in progress, beta comming soon...text below is not finished
 The latest release of Nava 2024 Oortone firmware is available in the Release section in the right column. 
 
 ## About the Nava Oortone firmware for Nava
@@ -20,12 +19,14 @@ The version found here is called Nava Oortone (0Tone) and draws heavily on the p
 * Improved External Instruments (midi note sequencer)
 
 ## For developers
-I am not an expert on embedded systems and have almost completely kept my hands off code related to triggering, timing and hardware related details. I also believe these sections work pretty well. Mainly this take on the firmware tries to improve button logic and how programmed patterns are handled by the memory while alsy trying to avoid the drawbacks of slow EEprom reading and writing. I have developed by uploading the firmware to Nava via sysex, This is slow, with no debugging options but it's easy to get started.
+I am not an expert on embedded systems and have almost completely kept my hands off code related to triggering, timing and hardware related details. I also believe these sections work pretty well. Mainly this take on the firmware tries to improve button logic and how programmed patterns are handled by the memory while also trying to avoid the drawbacks of slow EE-prom reading and writing. I have developed by uploading the firmware to Nava via sysex. This is a slow process, with no debugging options but it's easy to get started. I have no intentions of making a big re write at this time and have tried to follow the main design already implemented by others, although sometimes it's pretty strange stuff. :-D
 
 ### Tools and methods used:
 * Arduino IDE version 2.0.4 on macOS Mojave, Intel
 * macOS Python version 2.7.16 (when converting to sysex)
 * Development setup: I followed the instructions found [here](https://github.com/sandormatyi/Nava-909-firmware) and have no further knowledge how the conversion from the compiled Arduino code to Midi System Exclusive works. I have had no issues with these things though, it seems to work flawlessly.
+
+If you get strange midi errors it might have to do with IDE-versions or Midi Library versions but unfortunately I don't know exactly when these problems occur but I've seen them.
 
 
 
