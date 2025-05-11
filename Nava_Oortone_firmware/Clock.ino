@@ -131,7 +131,7 @@ void CountPPQN() {
         trigCounterStart = TRUE;
       }
 
-      //Trig external instrument-------------------------------------
+      //Trig external instrument------------------------------------- [SIZZLE FW]
       if (bitRead(pattern[ptrnBuffer].inst[EXT_INST], curStep)) {
         InitMidiNoteOff();
 #if MIDI_EXT_CHANNEL
@@ -139,19 +139,16 @@ void CountPPQN() {
           unsigned int MIDIVelocity = pattern[ptrnBuffer].velocity[EXT_INST][curStep];
           MIDIVelocity = map(MIDIVelocity, instVelLow[EXT_INST], instVelHigh[EXT_INST], MIDI_LOW_VELOCITY, MIDI_HIGH_VELOCITY);
           if (bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) MIDIVelocity = MIDI_ACCENT_VELOCITY;
-          MidiSendNoteOn(seq.EXTchannel, pattern[ptrnBuffer].extNote[noteIndexCpt], MIDIVelocity);
+          // Send the MIDI note that corresponds to this step [SIZZLE FW]
+          MidiSendNoteOn(seq.EXTchannel, pattern[ptrnBuffer].extNote[curStep], MIDIVelocity);
           midiNoteOnActive = TRUE;
         }
 #else
-        MidiSendNoteOn(seq.TXchannel, pattern[ptrnBuffer].extNote[noteIndexCpt], HIGH_VEL);
+        // Send the MIDI note that corresponds to this step [SIZZLE FW]
+        MidiSendNoteOn(seq.TXchannel, pattern[ptrnBuffer].extNote[curStep], HIGH_VEL);
         midiNoteOnActive = TRUE;
 #endif
-        noteIndexCpt++;  //incremente external inst note index
-      }
-      if (noteIndexCpt > pattern[ptrnBuffer].extLength) {
-        if (group.length) noteIndexCpt = 1;  //[oort] workaround, offset handling is strange TO DO
-        else
-          noteIndexCpt = 0;
+        // We no longer need to increment noteIndexCpt since each step has its own note [SIZZLE FW]
       }
 
       //TRIG_HIGH;

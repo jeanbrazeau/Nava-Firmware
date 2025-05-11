@@ -12,18 +12,20 @@ void InitMidiRealTime() {
   midiContinue = LOW;
 }
 
-//intialize note off when stop or patternChanged  or ext instrument loop back
-//[oort] noteIndexCpt starts from 1 when not empty, better to start from zero and try for length instead
-//[oort] TO DO complete rewrite of handling of noteIndexCpt to handle groups, offsets/pattern e.t.c.
+//intialize note off when stop or patternChanged [SIZZLE FW]
+//[oort] noteIndexCpt starts from 1 when not empty, better to start from zero and try for length instead [SIZZLE FW]
+//[oort] TO DO complete rewrite of handling of noteIndexCpt to handle groups, offsets/pattern e.t.c. [SIZZLE FW]
 void InitMidiNoteOff() {
   if (midiNoteOnActive) {
     midiNoteOnActive = FALSE;
 #if MIDI_EXT_CHANNEL
-    if (noteIndexCpt) MidiSendNoteOff(seq.EXTchannel, pattern[ptrnBuffer].extNote[noteIndexCpt - 1]);
-    else MidiSendNoteOff(seq.EXTchannel, pattern[ptrnBuffer].extNote[pattern[ptrnBuffer].extLength]);
+    // In the TR-909 style implementation, we need to turn off the previous step's note [SIZZLE FW]
+    // We use the current step as we're playing that note now [SIZZLE FW]
+    MidiSendNoteOff(seq.EXTchannel, pattern[ptrnBuffer].extNote[curStep]);
 #else
-    if (noteIndexCpt && seq.TXchannel) MidiSendNoteOff(seq.TXchannel, pattern[ptrnBuffer].extNote[noteIndexCpt - 1]);
-    else MidiSendNoteOff(seq.TXchannel, pattern[ptrnBuffer].extNote[pattern[ptrnBuffer].extLength]);
+    // In the TR-909 style implementation, we need to turn off the previous step's note [SIZZLE FW]
+    // We use the current step as we're playing that note now [SIZZLE FW]
+    MidiSendNoteOff(seq.TXchannel, pattern[ptrnBuffer].extNote[curStep]);
 #endif
   }
 }

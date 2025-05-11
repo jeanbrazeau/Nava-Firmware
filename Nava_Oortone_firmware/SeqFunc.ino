@@ -97,7 +97,13 @@ void InitPattern(Pattern* bufferToSet) {
     bufferToSet->velocity[RIDE][stp] = instVelHigh[RIDE];                                              //RIDE
     bufferToSet->velocity[TOTAL_ACC][stp] = HIGH_VEL;                                                  //TOTAL_ACC
     bufferToSet->velocity[TRIG_OUT][stp] = HIGH_VEL;                                                   //TRIG_OUT
-                                                                                                              //    bufferToSet->velocity[EXT_INST][stp] = HIGH_VEL;//EXT_INST
+    bufferToSet->velocity[EXT_INST][stp] = HIGH_VEL;                                                   //EXT_INST [SIZZLE FW]
+
+    // Initialize EXT_INST steps with ascending notes [SIZZLE FW]
+    // This matches TR-909 behavior where each step plays a different note [SIZZLE FW]
+    if (bufferToSet->extNote[stp] == 0) {
+      bufferToSet->extNote[stp] = 36 + stp; // Start at C3 and ascend chromatically [SIZZLE FW]
+    }
   }
   if (group.length) {
     prevShuf = bufferToSet->shuffle;

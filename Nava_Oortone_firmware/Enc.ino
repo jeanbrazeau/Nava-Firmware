@@ -103,19 +103,8 @@ void EncGet() {
               needLcdUpdate = TRUE;
             }
             break;
-          case 2:  //external instrument notes stack length
-            if (instBtn) {
-              pattern[ptrnBuffer].extLength = EncGet(pattern[ptrnBuffer].extLength, 10);
-            } else {
-              pattern[ptrnBuffer].extLength = EncGet(pattern[ptrnBuffer].extLength, 1);
-            }
-            pattern[ptrnBuffer].extLength = constrain(pattern[ptrnBuffer].extLength, 0, 99); //[oort] in key.ino MAX_EXT_INST_NOTE is used instead of 99
-            static unsigned int prevExtLength;
-            if (pattern[ptrnBuffer].extLength != prevExtLength) {
-              prevExtLength = pattern[ptrnBuffer].extLength;
-              patternWasEdited = TRUE;
-              needLcdUpdate = TRUE;
-            }
+          case 2:  // Unused in TR-909 style EXT INSTRUMENT implementation [SIZZLE FW]
+            // In the TR-909, this encoder function does nothing [SIZZLE FW]
             break;
           case 3:  //octave
             keybOct = EncGet(keybOct, 1);
