@@ -131,24 +131,40 @@ void CountPPQN() {
         trigCounterStart = TRUE;
       }
 
-      //Trig external instrument------------------------------------- [SIZZLE FW]
-      if (bitRead(pattern[ptrnBuffer].inst[EXT_INST], curStep)) {
-        InitMidiNoteOff();
+      //Trig external instrument (TR-909 STYLE - polyphonic)---------
+      InitMidiNoteOff(); // Turn off any previously playing notes
+      boolean anyExtTriggered = FALSE;
+      for (byte track = 0; track < 16; track++) {
+        if (bitRead(pattern[ptrnBuffer].extTrack[track], curStep)) {
+          anyExtTriggered = TRUE;
+
+          // Get velocity (shared across all tracks)
+          byte velocity = HIGH_VEL;
 #if MIDI_EXT_CHANNEL
-        if (pattern[ptrnBuffer].velocity[EXT_INST][curStep] > 0) {
-          unsigned int MIDIVelocity = pattern[ptrnBuffer].velocity[EXT_INST][curStep];
-          MIDIVelocity = map(MIDIVelocity, instVelLow[EXT_INST], instVelHigh[EXT_INST], MIDI_LOW_VELOCITY, MIDI_HIGH_VELOCITY);
-          if (bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) MIDIVelocity = MIDI_ACCENT_VELOCITY;
-          // Send the MIDI note that corresponds to this step [SIZZLE FW]
-          MidiSendNoteOn(seq.EXTchannel, pattern[ptrnBuffer].extNote[curStep], MIDIVelocity);
-          midiNoteOnActive = TRUE;
-        }
-#else
-        // Send the MIDI note that corresponds to this step [SIZZLE FW]
-        MidiSendNoteOn(seq.TXchannel, pattern[ptrnBuffer].extNote[curStep], HIGH_VEL);
-        midiNoteOnActive = TRUE;
+          if (pattern[ptrnBuffer].velocity[EXT_INST][curStep] > 0) {
+            velocity = pattern[ptrnBuffer].velocity[EXT_INST][curStep];
+            velocity = map(velocity, instVelLow[EXT_INST], instVelHigh[EXT_INST],
+                          MIDI_LOW_VELOCITY, MIDI_HIGH_VELOCITY);
+          }
+          if (bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) {
+            velocity = MIDI_ACCENT_VELOCITY;
+          }
 #endif
-        // We no longer need to increment noteIndexCpt since each step has its own note [SIZZLE FW]
+
+          // Send note-on for this track
+          byte noteToSend = pgm_read_byte(&EXT_TRACK_NOTES[track]);
+#if MIDI_EXT_CHANNEL
+          MidiSendNoteOn(seq.EXTchannel, noteToSend, velocity);
+#else
+          MidiSendNoteOn(seq.TXchannel, noteToSend, velocity);
+#endif
+
+          extTrackNoteOn[track] = TRUE;  // Track for note-off
+        }
+      }
+
+      if (anyExtTriggered) {
+        midiNoteOnActive = TRUE;
       }
 
       //TRIG_HIGH;

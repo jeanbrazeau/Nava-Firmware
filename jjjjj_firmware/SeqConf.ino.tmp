@@ -1,0 +1,7 @@
+  // Bootloader mode activation
+  if (seq.configMode && seq.configPage == 3) {
+    // This is the bootloader config page
+    if (encBtn.justPressed) {
+      EnterBootloaderMode();
+    }
+  }

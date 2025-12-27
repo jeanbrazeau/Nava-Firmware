@@ -161,19 +161,41 @@ void SeqParameter() {
 
     //sequencer configuration page
     if (tempoBtn.justPressed && !isRunning) {
-      seq.configMode = TRUE;
-      keyboardMode = FALSE;
-      seq.configPage++;
-      curIndex = 0;
-      if (seq.configPage == 3) seq.setupNeedSaved = FALSE;  //[oort] only if sysex
-      if (seq.configPage > MAX_CONF_PAGE) {
-        seq.configPage = 0;
-        seq.configMode = FALSE;
+      if (!seq.configMode) {
+        // First press - enter config mode
+        seq.configMode = TRUE;
+        keyboardMode = FALSE;
+        seq.configPage = 1; // Start at page 1
+      } else {
+        // Already in config mode, cycle to next page
 #if MIDI_HAS_SYSEX
-        seq.SysExMode = false; 
+        if (seq.configPage == 1) {
+          seq.configPage = 2; // Go to page 2
+        } else if (seq.configPage == 2) {
+          seq.configPage = 3; // Go to sysex page when MIDI_HAS_SYSEX is defined
+        } else if (seq.configPage == 3) {
+          seq.configPage = 4; // Go to bootloader page (page 4)
+        } else if (seq.configPage == 4) {
+          seq.configPage = 1; // Wrap back to page 1
+        }
+#else
+        if (seq.configPage == 1) {
+          seq.configPage = 2; // Go to page 2
+        } else if (seq.configPage == 2) {
+          seq.configPage = 3; // Go to bootloader page (page 3)
+        } else if (seq.configPage == 3) {
+          seq.configPage = 1; // Wrap back to page 1
+        }
 #endif
-        SetSeqSync();
       }
+
+      curIndex = 0;
+#if MIDI_HAS_SYSEX
+      if (seq.configPage == 3) seq.setupNeedSaved = FALSE;  //only if sysex
+#endif
+
+      // No debug display, just update the LCD immediately
+
       needLcdUpdate = TRUE;
     }
   }
@@ -238,7 +260,16 @@ void SeqParameter() {
     }
     if (curSeqMode != MUTE) muteBtn.counter = 0;
     if (!seq.configMode) seq.configPage = 0;
-    if (tempoBtn.justRelease) needLcdUpdate = TRUE;
+    if (tempoBtn.justPressed && !isRunning) {
+      seq.configMode = FALSE;
+      seq.configPage = 0;
+#if MIDI_HAS_SYSEX
+      seq.SysExMode = false;
+#endif
+      SetSeqSync();
+      needLcdUpdate = TRUE;
+    }
+    else if (tempoBtn.justRelease) needLcdUpdate = TRUE;
   }
 
   if (curSeqMode != TRACK_PLAY && curSeqMode != TRACK_WRITE && curSeqMode != MUTE && bankReloadNeededOnPattern) {
@@ -254,11 +285,17 @@ void SeqParameter() {
 
     static boolean curInstChanged;  //flag that curInstchanged to not update LCD more than one time
 
+    // Force instrument to EXT_INST if we're in EXT INST edit mode but somehow lost the selection
+    if (extInstEditMode && curInst != EXT_INST) {
+      curInst = EXT_INST;
+      needLcdUpdate = TRUE;
+    }
+
     //-------------------Select instrument------------------------------
     //Match with trig shift register out (cf schematic)
     if (readButtonState == 0) doublePush = 0;  //init double push if all step button  released
 
-    if (instBtn && readButtonState) {  // [zabox] [1.027] added flam
+    if (instBtn && readButtonState && !extInstEditMode && !extInstButtonHandled) {  // [zabox] [1.027] added flam, [SIZZLE] Normal instrument selection (not for EXT INST edit mode)
       curInstChanged = TRUE;
       keyboardMode = FALSE;
       switch (FirstBitOn()) {
@@ -352,17 +389,17 @@ void SeqParameter() {
       needLcdUpdate = TRUE;
       curInstChanged = FALSE;
     }
-    if (instBtn && enterBtn.justPressed) {
+    if (instBtn && enterBtn.justPressed && !extInstEditMode) {
       curInst = TOTAL_ACC;
       curFlam = 0;
       needLcdUpdate = TRUE;
     }
-    if (instBtn && stopBtn.justPressed) {
+    if (instBtn && stopBtn.justPressed && !extInstEditMode) {
       curInst = TRIG_OUT;
       curFlam = 0;
       needLcdUpdate = TRUE;
     }
-    if (shiftBtn && guideBtn.justPressed) {
+    if (shiftBtn && guideBtn.justPressed && !extInstEditMode) {
       curInst = EXT_INST;
       curFlam = 0;
       needLcdUpdate = TRUE;
@@ -401,6 +438,10 @@ void SeqParameter() {
         pattern[ptrnBuffer].velocity[HC][b] = instVelLow[HC];
         pattern[ptrnBuffer].velocity[RIDE][b] = instVelLow[RIDE];
         pattern[ptrnBuffer].velocity[CRASH][b] = instVelLow[CRASH];
+      }
+      // [TR-909 STYLE] Clear all external tracks
+      for (byte t = 0; t < 16; t++) {
+        pattern[ptrnBuffer].extTrack[t] = 0;
       }
       pattern[ptrnBuffer].shuffle = DEFAULT_SHUF;
       pattern[ptrnBuffer].flam = DEFAULT_FLAM;  // [1.028] flam

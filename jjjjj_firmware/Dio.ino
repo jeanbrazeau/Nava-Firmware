@@ -128,7 +128,7 @@ void SetDacA(byte velocity)
 //Scan Din bootloader
 void ScanDinBoot()
 {
-  SPI.beginTransaction(SPIset); 
+  SPI.beginTransaction(SPIset);
   SW_CS_HIGH;
   SPI.transfer(0);
   SPI.transfer(0);

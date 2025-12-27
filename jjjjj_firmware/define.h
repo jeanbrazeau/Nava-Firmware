@@ -75,9 +75,9 @@ byte lcdVal = 0; //[oort] for traces
 //LCD
 #define MAX_CUR_POS 4
 #if MIDI_HAS_SYSEX
-#define MAX_CONF_PAGE 3
+#define MAX_CONF_PAGE 4  // Add an extra page for bootloader when MIDI_HAS_SYSEX is defined
 #else
-#define MAX_CONF_PAGE 2
+#define MAX_CONF_PAGE 3  // Add bootloader page
 #endif
 
 //Utility
@@ -137,6 +137,13 @@ byte lcdVal = 0; //[oort] for traces
 #define MAX_OCT 8
 #define DEFAULT_OCT 3  //corresponding to +0
 #define MAX_EXT_INST_NOTE 99
+#define EXT_INST_EDIT_MODE 1  // [SIZZLE] Flag to indicate we're in EXT INST edit mode
+
+// [TR-909 STYLE] 16 chromatic notes from C2 (MIDI 36) to D#3 (MIDI 51)
+const byte EXT_TRACK_NOTES[16] PROGMEM = {
+  36, 37, 38, 39, 40, 41, 42, 43,  // C2-G#2
+  44, 45, 46, 47, 48, 49, 50, 51   // A2-D#3
+};
 
 
 //trig out  and dinsynchro
@@ -404,8 +411,7 @@ struct Pattern {
   unsigned int inst[NBR_INST];
   unsigned int step[NBR_STEP];
   byte velocity[NBR_INST][NBR_STEP];
-  byte extNote[128];  // DUE to EEPROM 64 bytes PAGE WRITE
-  byte extLength;
+  unsigned int extTrack[16];  // [TR-909 STYLE] 16 tracks × 16-bit word = 32 bytes (saves 97 bytes per pattern)
   byte groupPos;
   byte groupLength;
   byte totalAcc;
@@ -492,6 +498,11 @@ unsigned long timeSinceSaved;
 boolean keyboardMode;
 byte keybOct = DEFAULT_OCT;
 byte noteIndex = 0;  //external inst note index
+boolean extInstEditMode = FALSE;              // [TR-909 STYLE] Flag to indicate when we're in EXT INST edit mode
+byte currentExtTrack = 0;                     // [TR-909 STYLE] Selected track (0-15)
+byte currentExtNote = 36;                     // [TR-909 STYLE] Display value (C2 = MIDI 36)
+boolean extInstButtonHandled = FALSE;         // [TR-909 STYLE] Flag to indicate when an EXT INST button press has been handled
+boolean extTrackNoteOn[16] = {FALSE};         // [TR-909 STYLE] Track note-on states for polyphonic note-off
 
 //SPI------------------------------------------------ //[oort] lowered in Neuro, why? 4000000 in 1.028
 SPISettings SPIset(2000000, MSBFIRST, SPI_MODE0);

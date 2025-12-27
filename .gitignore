@@ -34,3 +34,8 @@ Nava_Oortone_firmware/build/*
 
 #macOS
 .DS_Store
+
+**/.claude/settings.local.json
+
+#Platform IO
+/.pio

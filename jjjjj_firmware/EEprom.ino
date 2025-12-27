@@ -18,6 +18,10 @@
 //
 //Setup size:
 //  -OFFSET_SETUP = TRACK_OFFSET + (TRACK_SIZE * MAX_TRACK) = 73728;
+//
+// Bootloader flag address - at the very end of EEPROM  
+#define BOOTLOADER_FLAG_ADDR 0x3FF
+#define BOOTLOADER_FLAG_VALUE 0xB0
 //  -SETUP_SIZE = 64 bytes  only 4 bytes used NOW...
 //
 //
@@ -78,18 +82,30 @@ void SavePattern(byte patternNbr)
   Wire.endTransmission();//end page transmission
   delay(DELAY_WR);//delay between each write page
 
-  //EXT INST-----------------------------------------------
-  for(int nbrPage = 0; nbrPage < 2; nbrPage++){
-      MIDI.read();
-    adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * nbrPage) + PTRN_SETUP_OFFSET);
-    //Serial.println(adress);
-    WireBeginTX(adress);
-    for (byte j = 0; j < MAX_PAGE_SIZE; j++){
-      Wire.write((byte)(pattern[ptrnBuffer].extNote[j + (MAX_PAGE_SIZE * nbrPage)] & 0xFF));
-    }//64 bytes  fisrt page
-    Wire.endTransmission();//end page transmission
-    delay(DELAY_WR);//delay between each write page
-  }//2 * 64 bytes = 128 bytes
+  //EXT TRACK----------------------------------------------- [TR-909 STYLE] 32 bytes + 32 padding
+  adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + PTRN_SETUP_OFFSET);
+  WireBeginTX(adress);
+  for (byte i = 0; i < 16; i++) {
+    byte lowbyte = (pattern[ptrnBuffer].extTrack[i] & 0xFF);
+    byte highbyte = (pattern[ptrnBuffer].extTrack[i] >> 8) & 0xFF;
+    Wire.write((byte)(lowbyte));
+    Wire.write((byte)(highbyte));
+  }
+  // Pad to 64-byte page
+  for (byte j = 0; j < 32; j++) {
+    Wire.write((byte)(0));
+  }
+  Wire.endTransmission();
+  delay(DELAY_WR);
+
+  // Second 64-byte page (all zeros for compatibility)
+  adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * 1) + PTRN_SETUP_OFFSET);
+  WireBeginTX(adress);
+  for (byte j = 0; j < MAX_PAGE_SIZE; j++) {
+    Wire.write((byte)(0));
+  }
+  Wire.endTransmission();
+  delay(DELAY_WR);
 
   //VELOCITY-----------------------------------------------
   for(int nbrPage = 0; nbrPage < 4; nbrPage++){
@@ -131,17 +147,28 @@ void LoadPattern(byte patternNbr)
   for(int a = 0; a < 24; a++){
     Wire.read();
   }
-  //EXT INST-----------------------------------------------
-  for(int nbrPage = 0; nbrPage < 2; nbrPage++){
-    MIDI.read();
-    adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * nbrPage) + PTRN_SETUP_OFFSET);
-    WireBeginTX(adress);
-    Wire.endTransmission();
-    Wire.requestFrom(HRDW_ADDRESS,MAX_PAGE_SIZE); //request of  64 bytes
+  //EXT TRACK----------------------------------------------- [TR-909 STYLE]
+  adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + PTRN_SETUP_OFFSET);
+  WireBeginTX(adress);
+  Wire.endTransmission();
+  Wire.requestFrom(HRDW_ADDRESS,MAX_PAGE_SIZE); //request of 64 bytes
 
-    for (byte j = 0; j < MAX_PAGE_SIZE; j++){
-      pattern[!ptrnBuffer].extNote[j + (MAX_PAGE_SIZE * nbrPage) ] = Wire.read();
-    }
+  for (byte i = 0; i < 16; i++) {
+    pattern[!ptrnBuffer].extTrack[i] = (unsigned int)((Wire.read() & 0xFF) |
+                                                       ((Wire.read() << 8) & 0xFF00));
+  }
+  // Skip padding
+  for (byte j = 0; j < 32; j++) {
+    Wire.read();
+  }
+
+  // Skip second 64-byte page (compatibility)
+  adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * 1) + PTRN_SETUP_OFFSET);
+  WireBeginTX(adress);
+  Wire.endTransmission();
+  Wire.requestFrom(HRDW_ADDRESS,MAX_PAGE_SIZE);
+  for (byte j = 0; j < MAX_PAGE_SIZE; j++) {
+    Wire.read();
   }
   //VELOCITY-----------------------------------------------
   for(int nbrPage = 0; nbrPage < 4; nbrPage++){
@@ -184,17 +211,28 @@ void LoadTempPattern(byte patternNbr)
   for(int a = 0; a < 24; a++){
     Wire.read();
   }
-  //EXT INST-----------------------------------------------
-  for(int nbrPage = 0; nbrPage < 2; nbrPage++){
-    MIDI.read();
-    adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * nbrPage) + PTRN_SETUP_OFFSET);
-    WireBeginTX(adress);
-    Wire.endTransmission();
-    Wire.requestFrom(HRDW_ADDRESS,MAX_PAGE_SIZE); //request of  64 bytes
+  //EXT TRACK----------------------------------------------- [TR-909 STYLE]
+  adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + PTRN_SETUP_OFFSET);
+  WireBeginTX(adress);
+  Wire.endTransmission();
+  Wire.requestFrom(HRDW_ADDRESS,MAX_PAGE_SIZE); //request of 64 bytes
 
-    for (byte j = 0; j < MAX_PAGE_SIZE; j++){
-      tempPattern.extNote[j + (MAX_PAGE_SIZE * nbrPage) ] = Wire.read();
-    }
+  for (byte i = 0; i < 16; i++) {
+    tempPattern.extTrack[i] = (unsigned int)((Wire.read() & 0xFF) |
+                                              ((Wire.read() << 8) & 0xFF00));
+  }
+  // Skip padding
+  for (byte j = 0; j < 32; j++) {
+    Wire.read();
+  }
+
+  // Skip second 64-byte page (compatibility)
+  adress = (unsigned long)(PTRN_OFFSET + (patternNbr * PTRN_SIZE) + (MAX_PAGE_SIZE * 1) + PTRN_SETUP_OFFSET);
+  WireBeginTX(adress);
+  Wire.endTransmission();
+  Wire.requestFrom(HRDW_ADDRESS,MAX_PAGE_SIZE);
+  for (byte j = 0; j < MAX_PAGE_SIZE; j++) {
+    Wire.read();
   }
   //VELOCITY-----------------------------------------------
   for(int nbrPage = 0; nbrPage < 4; nbrPage++){
@@ -473,4 +511,44 @@ void WireBeginTX(unsigned long address)
   Wire.beginTransmission(hardwareAddress);
   Wire.write((byte)(address >> 8));
   Wire.write((byte)(address & 0xFF));
+}
+
+// Helper function to write a single byte to EEPROM
+void EEpromByte(unsigned long address, byte data) 
+{
+  WireBeginTX(address);
+  Wire.write(data);
+  Wire.endTransmission();
+  delay(DELAY_WR);
+}
+
+// Helper function to read a single byte from EEPROM
+byte EEpromByteRead(unsigned long address) 
+{
+  WireBeginTX(address);
+  Wire.endTransmission();
+  
+  byte hardwareAddress;
+  if (address > 65535) hardwareAddress = HRDW_ADDRESS_UP;
+  else hardwareAddress = HRDW_ADDRESS;
+  
+  Wire.requestFrom(hardwareAddress, (unsigned long)(1));
+  return Wire.read() & 0xFF;
+}
+
+// Set bootloader flag in EEPROM
+void SetBootloaderFlag() 
+{
+  EEpromByte(BOOTLOADER_FLAG_ADDR, BOOTLOADER_FLAG_VALUE);
+}
+
+// Check bootloader flag in EEPROM
+byte CheckBootloaderFlag() 
+{
+  byte flag = EEpromByteRead(BOOTLOADER_FLAG_ADDR);
+  // Clear the flag after reading it
+  if (flag == BOOTLOADER_FLAG_VALUE) {
+    EEpromByte(BOOTLOADER_FLAG_ADDR, 0);
+  }
+  return flag == BOOTLOADER_FLAG_VALUE;
 }

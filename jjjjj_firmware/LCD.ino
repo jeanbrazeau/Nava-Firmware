@@ -103,9 +103,9 @@ void LcdUpdate()
 #endif        
           break;
         }
-#if MIDI_HAS_SYSEX        
+#if MIDI_HAS_SYSEX
       case 3: // Config page 3
-        {  
+        {
           if ( sysExDump < SYSEX_MAXPARAM )
           {
             lcd.print("type    select  ");
@@ -138,7 +138,20 @@ void LcdUpdate()
           }
           break;
         }
-#endif        
+#endif
+#if MIDI_HAS_SYSEX
+      case 4: // Bootloader mode page (when MIDI_HAS_SYSEX is defined)
+#else
+      case 3: // Bootloader mode page (when MIDI_HAS_SYSEX is not defined)
+#endif
+        {
+          lcd.print("  BOOTLOADER     ");
+          lcd.setCursor(0,1);
+          LcdClearLine();
+          lcd.setCursor(0,1);
+          lcd.print("PRESS ENC TO ACTV");
+          break;
+        }        
       }
     }
     else if (seq.sync == EXPANDER) {                                               // [1.028] Expander
@@ -227,12 +240,19 @@ ptrn_step:
           lcd.setCursor(8,1);
           LcdPrintScale();
           lcd.setCursor(12,1);
-          char instName[3];
-          strcpy_P(instName, (char*)pgm_read_word(&(selectInstString[curInst])));
-          if (curFlam) {                                                            // test
-            instName[1] = instName[1] + 32;
+          // [TR-909 STYLE] Display track number in EXT INST edit mode
+          if (curInst == EXT_INST && extInstEditMode) {
+            lcd.print("T");
+            if (currentExtTrack + 1 < 10) lcd.print(" ");  // Pad single digit
+            lcd.print(currentExtTrack + 1);  // Display as 1-16
+          } else {
+            char instName[3];
+            strcpy_P(instName, (char*)pgm_read_word(&(selectInstString[curInst])));
+            if (curFlam) {                                                            // test
+              instName[1] = instName[1] + 32;
+            }
+            lcd.print(instName);
           }
-          lcd.print(instName);
         }
         previousMode = PTRN_STEP;
         break;

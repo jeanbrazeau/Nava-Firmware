@@ -97,13 +97,7 @@ void InitPattern(Pattern* bufferToSet) {
     bufferToSet->velocity[RIDE][stp] = instVelHigh[RIDE];                                              //RIDE
     bufferToSet->velocity[TOTAL_ACC][stp] = HIGH_VEL;                                                  //TOTAL_ACC
     bufferToSet->velocity[TRIG_OUT][stp] = HIGH_VEL;                                                   //TRIG_OUT
-    bufferToSet->velocity[EXT_INST][stp] = HIGH_VEL;                                                   //EXT_INST [SIZZLE FW]
-
-    // Initialize EXT_INST steps with ascending notes [SIZZLE FW]
-    // This matches TR-909 behavior where each step plays a different note [SIZZLE FW]
-    if (bufferToSet->extNote[stp] == 0) {
-      bufferToSet->extNote[stp] = 36 + stp; // Start at C3 and ascend chromatically [SIZZLE FW]
-    }
+    bufferToSet->velocity[EXT_INST][stp] = HIGH_VEL;                                                   //EXT_INST
   }
   if (group.length) {
     prevShuf = bufferToSet->shuffle;
@@ -221,12 +215,13 @@ void CopyPatternToBuffer(byte patternNum) {
   bufferedPattern.scale = pattern[ptrnBuffer].scale;
   bufferedPattern.shuffle = pattern[ptrnBuffer].shuffle;
   bufferedPattern.flam = pattern[ptrnBuffer].flam;
-  bufferedPattern.extLength = pattern[ptrnBuffer].extLength;
   bufferedPattern.totalAcc = pattern[ptrnBuffer].totalAcc;
 
-  for (byte j = 0; j < pattern[ptrnBuffer].extLength; j++) {
-    bufferedPattern.extNote[j] = pattern[ptrnBuffer].extNote[j];
+  // [TR-909 STYLE] Copy external tracks
+  for (byte i = 0; i < 16; i++) {
+    bufferedPattern.extTrack[i] = pattern[ptrnBuffer].extTrack[i];
   }
+
   for (byte i = 0; i < NBR_INST; i++) {  //loop as many instrument for a page
     for (byte j = 0; j < NBR_STEP; j++) {
       bufferedPattern.velocity[i][j] = pattern[ptrnBuffer].velocity[i][j];
@@ -243,12 +238,13 @@ void PasteBufferToPattern(byte patternNum) {
   pattern[ptrnBuffer].scale = bufferedPattern.scale;
   pattern[ptrnBuffer].shuffle = bufferedPattern.shuffle;
   pattern[ptrnBuffer].flam = bufferedPattern.flam;
-  pattern[ptrnBuffer].extLength = bufferedPattern.extLength;
   pattern[ptrnBuffer].totalAcc = bufferedPattern.totalAcc;
 
-  for (byte j = 0; j < bufferedPattern.extLength; j++) {
-    pattern[ptrnBuffer].extNote[j] = bufferedPattern.extNote[j];
+  // [TR-909 STYLE] Paste external tracks
+  for (byte i = 0; i < 16; i++) {
+    pattern[ptrnBuffer].extTrack[i] = bufferedPattern.extTrack[i];
   }
+
   for (byte i = 0; i < NBR_INST; i++) {  //loop as many instrument for a page
     for (byte j = 0; j < NBR_STEP; j++) {
       pattern[ptrnBuffer].velocity[i][j] = bufferedPattern.velocity[i][j];

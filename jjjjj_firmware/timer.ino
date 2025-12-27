@@ -21,7 +21,7 @@ void TimerStop(void)
 
 void TimerSetFrequency()
 {
-  // Calculates frequency for Timer1 = (BPM*ppqn)/60s
+// Calculates frequency for Timer1 = (BPM*ppqn)/60s
 #define FREQUENCY (((seq.bpm)*(PPQN))/60)
   OCR1A =(F_CPU/ 8) / FREQUENCY;
 }
@@ -29,7 +29,7 @@ void TimerSetFrequency()
 
 
 
-void initTrigTimer() {                         // [zabox] [v1.028] timer 2 setup for 2ms interrupt
+void initTrigTimer() {                           // [zabox] [v1.028] timer 2 setup for 2ms interrupt
 
   TCCR2A = _BV(WGM21);                           // Set timer to ctc mode
   //TCCR2B = _BV(CS22) | (_BV(CS20);             // Set prescaler to 128
@@ -41,7 +41,7 @@ void initTrigTimer() {                         // [zabox] [v1.028] timer 2 setup
 }
 
 
-void initExpTimer() {                         // [zabox] [v1.028] timer 2 setup for 2ms interrupt
+void initExpTimer() {                             // [zabox] [v1.028] timer 2 setup for 2ms interrupt
 
   TCCR2A = 0;                                    // Set timer to normal mode
   TCCR2B = _BV(CS22) | _BV(CS21) | _BV(CS20);    // Set prescaler to 128
@@ -50,7 +50,7 @@ void initExpTimer() {                         // [zabox] [v1.028] timer 2 setup 
 }
 
 
-void initFlamTimer() {                        // [zabox] [v1.028] timer 3 setup for 2ms interrupt
+void initFlamTimer() {                          // [zabox] [v1.028] timer 3 setup for 2ms interrupt
 
  TCCR3A = 0;                                    // initialize
  TCCR3C = 0;                                    // initialize

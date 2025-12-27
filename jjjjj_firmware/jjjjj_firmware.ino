@@ -20,6 +20,15 @@
 #include "string.h"
 //#include "src/MIDI/MIDI.h". //[oort] Unknown why a local midi.h was used in https://github.com/BenZonneveld/Nava-2021-Firmware
 #include <MIDI.h>
+#include "function_declarations.h"
+
+// Special directive to tell Arduino to compile all .ino files together
+#define ARDUINO_INOFILES
+
+// Additional forward declarations
+void InitIO();
+void LoadTrack(byte trackNumber);
+void LcdUpdate();
 
 #if MIDI_HAS_SYSEX
 #include "Sysex.h"
@@ -68,6 +77,20 @@ void setup() {
   lcd.createChar(4, font4);
   lcd.createChar(5, font5);
 
+  // First, check if bootloader flag is set in EEPROM
+  if (CheckBootloaderFlag()) {
+    // If bootloader flag is set, immediately enter bootloader
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Bootloader Mode ");
+    lcd.setCursor(0, 1);
+    lcd.print("Push SysEx File ");
+    
+    // Jump to bootloader
+    asm volatile ("jmp 0x1F000");
+    // Should never reach here
+    while(1) {}
+  }
 
   ScanDinBoot();
   //Init EEprom-------------------------------------
@@ -85,8 +108,12 @@ void setup() {
       }
     }
   }
+
+  // Clear btnPlayStopByte to avoid false detection later
+  btnPlayStopByte = 0;
+
   //TM2 adjustement for velocity
-  else if (btnEnterByte == BTN_ENTER) {
+  if (btnEnterByte == BTN_ENTER) {
     LcdPrintTM2Adjust();
     while (1) {
       SetDacA(MAX_VEL);
@@ -122,9 +149,9 @@ void setup() {
 
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("Nava 0tone_0.90b");  //[oort] 16 characters
+  lcd.print("downtown");  //[oort] 16 characters
   lcd.setCursor(0, 1);
-  lcd.print("  E-licktronic  ");
+  lcd.print("  solutions 0.91b ");
   delay(2000);
   LcdUpdate();  // [1.028] if started in expader mode
 }
