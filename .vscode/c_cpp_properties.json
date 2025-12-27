@@ -1,0 +1,72 @@
+//
+// !!! WARNING !!! AUTO-GENERATED FILE!
+// PLEASE DO NOT MODIFY IT AND USE "platformio.ini":
+// https://docs.platformio.org/page/projectconf/section_env_build.html#build-flags
+//
+{
+    "configurations": [
+        {
+            "name": "PlatformIO",
+            "includePath": [
+                "/Users/admin/offline/Nava-Firmware/src",
+                "/Users/admin/offline/Nava-Firmware/.pio/libdeps/nava_sysex/MIDI Library/src",
+                "/Users/admin/offline/Nava-Firmware/.pio/libdeps/nava_sysex/LiquidCrystal/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/cores/MightyCore",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/variants/standard",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/AVR_examples/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/EEPROM/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/Flash/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/SD/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/SPI/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/SPI1/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/Servo/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/SoftwareSerial/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/Timer/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/Wire/src",
+                "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/Wire1/src",
+                ""
+            ],
+            "browse": {
+                "limitSymbolsToIncludedHeaders": true,
+                "path": [
+                    "/Users/admin/offline/Nava-Firmware/src",
+                    "/Users/admin/offline/Nava-Firmware/.pio/libdeps/nava_sysex/MIDI Library/src",
+                    "/Users/admin/offline/Nava-Firmware/.pio/libdeps/nava_sysex/LiquidCrystal/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/cores/MightyCore",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/variants/standard",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/AVR_examples/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/EEPROM/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/Flash/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/SD/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/SPI/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/SPI1/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/Servo/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/SoftwareSerial/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/Timer/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/Wire/src",
+                    "/Users/admin/.platformio/packages/framework-arduino-avr-mightycore/libraries/Wire1/src",
+                    ""
+                ]
+            },
+            "defines": [
+                "PLATFORMIO=60118",
+                "ARDUINO_AVR_ATmega1284",
+                "MIDI_HAS_SYSEX=1",
+                "SYSEX_BUFFER_SIZE=2100",
+                "F_CPU=16000000L",
+                "ARDUINO_ARCH_AVR",
+                "ARDUINO=10808",
+                "__AVR_ATmega1284P__",
+                ""
+            ],
+            "cStandard": "gnu11",
+            "cppStandard": "gnu++17",
+            "compilerPath": "/Users/admin/.platformio/packages/toolchain-atmelavr/bin/avr-gcc",
+            "compilerArgs": [
+                "-mmcu=atmega1284p",
+                ""
+            ]
+        }
+    ],
+    "version": 4
+}

@@ -89,19 +89,9 @@ void EncGet() {
           prevNoteIndex = noteIndex;
           needLcdUpdate = TRUE;
           break;
-          case 1:  //external instrument note
-            if (instBtn) {
-              pattern[ptrnBuffer].extNote[noteIndex] = EncGet(pattern[ptrnBuffer].extNote[noteIndex], 12);
-            } else {
-              pattern[ptrnBuffer].extNote[noteIndex] = EncGet(pattern[ptrnBuffer].extNote[noteIndex], 1);
-            }
-            pattern[ptrnBuffer].extNote[noteIndex] = constrain(pattern[ptrnBuffer].extNote[noteIndex], 0, 127);
-            static unsigned int prevExtNote;
-            if (pattern[ptrnBuffer].extNote[noteIndex] != prevExtNote) {
-              prevExtNote = pattern[ptrnBuffer].extNote[noteIndex];
-              patternWasEdited = TRUE;
-              needLcdUpdate = TRUE;
-            }
+          case 1:  // [TR-909] External instrument encoder - not used in TR-909 mode
+            // TR-909 uses fixed chromatic notes (C2-D#3), no encoder editing
+            // Track and note selection handled in key.ino
             break;
           case 2:  // Unused in TR-909 style EXT INSTRUMENT implementation [SIZZLE FW]
             // In the TR-909, this encoder function does nothing [SIZZLE FW]

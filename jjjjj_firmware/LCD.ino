@@ -3,7 +3,7 @@
 //                  LCD update
 //-------------------------------------------------
 
-#include "string.h"
+#include "nava_strings.h"
 
 /////////////////////Function//////////////////////
 //Initialise IO PORT and libraries
@@ -212,9 +212,9 @@ ptrn_step:
           lcd.print(noteIndex + 1);                                               // [zabox] looks better
           lcd.setCursor(4,1);
           char note[2];
-          strcpy_P(note, (char*)pgm_read_word(&(nameNote[pattern[ptrnBuffer].extNote[noteIndex] % 12])));
+          strcpy_P(note, (char*)pgm_read_word(&(nameNote[keyboardNotes[noteIndex] % 12])));
           lcd.print(note);
-          lcd.print(pattern[ptrnBuffer].extNote[noteIndex] / 12);//note octave [SIZZLE FW]
+          lcd.print(keyboardNotes[noteIndex] / 12);//note octave [SIZZLE FW]
           // Display if this step is active or not [SIZZLE FW]
           lcd.setCursor(9,1);
           if (bitRead(pattern[ptrnBuffer].inst[EXT_INST], noteIndex)) {

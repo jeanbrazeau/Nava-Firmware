@@ -69,18 +69,18 @@ void KeyboardUpdate()
     if (backBtn.justPressed){
       noteIndex--;
       if( noteIndex < 0 || noteIndex > NBR_STEP - 1) noteIndex = 0;
-      MidiSendNoteOn(seq.TXchannel, pattern[ptrnBuffer].extNote[noteIndex], HIGH_VEL);
+      MidiSendNoteOn(seq.TXchannel, keyboardNotes[noteIndex], HIGH_VEL);
       needLcdUpdate = TRUE;
     }
-    if (backBtn.justRelease)MidiSendNoteOff(seq.TXchannel, pattern[ptrnBuffer].extNote[noteIndex]);
+    if (backBtn.justRelease)MidiSendNoteOff(seq.TXchannel, keyboardNotes[noteIndex]);
 
     if (fwdBtn.justPressed){
       noteIndex++;
       if( noteIndex >= NBR_STEP ) noteIndex = NBR_STEP - 1;
-      MidiSendNoteOn(seq.TXchannel, pattern[ptrnBuffer].extNote[noteIndex], HIGH_VEL);
+      MidiSendNoteOn(seq.TXchannel, keyboardNotes[noteIndex], HIGH_VEL);
       needLcdUpdate = TRUE;
     }
-    if (fwdBtn.justRelease)MidiSendNoteOff(seq.TXchannel, pattern[ptrnBuffer].extNote[noteIndex]);
+    if (fwdBtn.justRelease)MidiSendNoteOff(seq.TXchannel, keyboardNotes[noteIndex]);
 
     if(clearBtn.justPressed){
       // Reset step counter if SHIFT is not pressed [SIZZLE FW]
@@ -120,7 +120,7 @@ void KeyboardUpdate()
           if (stepBtn[a].curState != stepBtn[a].prevState){
             if ((stepBtn[a].pressed == LOW) && (stepBtn[a].curState == HIGH)){
               // Set the note for the current step position being edited [SIZZLE FW]
-              pattern[ptrnBuffer].extNote[noteIndex] = a + (12* keybOct);
+              keyboardNotes[noteIndex] = a + (12* keybOct);
   #if MIDI_EXT_CHANNEL
               MidiSendNoteOn(seq.EXTchannel, a + 12*keybOct, HIGH_VEL);
   #else

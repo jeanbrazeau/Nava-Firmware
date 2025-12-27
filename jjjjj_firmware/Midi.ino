@@ -100,6 +100,30 @@ void DisconnectMidiHandleRealTime() {
 }
 
 #if MIDI_HAS_SYSEX
+// [SYSEX] Handle incoming system exclusive messages
+void HandleSystemExclusive(byte* array, unsigned size) {
+  // TODO: Full sysex implementation for firmware transfer via bootloader
+  // This is a stub to allow compilation - full implementation required for bootloader functionality
+  (void)array;  // Suppress unused parameter warning
+  (void)size;
+}
+
+// [SYSEX] Send system exclusive message
+void MidiSendSysex(byte dumpType, byte param) {
+  // TODO: Full sysex implementation for firmware transfer
+  // This is a stub to allow compilation - full implementation required for bootloader functionality
+  (void)dumpType;  // Suppress unused parameter warning
+  (void)param;
+}
+
+// [SYSEX] Enable sysex mode
+void EnableSysexMode() {
+  // TODO: Full sysex mode implementation
+  // This is a stub to allow compilation - full implementation required for bootloader functionality
+  seq.SysExMode = TRUE;
+  ConnectMidiSysex();
+}
+
 void ConnectMidiSysex() {
   MIDI.setHandleSystemExclusive(HandleSystemExclusive);
 }

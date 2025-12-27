@@ -70,7 +70,7 @@ void SavePattern(byte patternNbr)
   Wire.write((byte)(pattern[ptrnBuffer].scale));
   Wire.write((byte)(pattern[ptrnBuffer].shuffle));
   Wire.write((byte)(pattern[ptrnBuffer].flam));
-  Wire.write((byte)(pattern[ptrnBuffer].extLength));
+  Wire.write((byte)(0));  // [TR-909] Placeholder for old extLength (not used)
   Wire.write((byte)(pattern[ptrnBuffer].groupPos));
   Wire.write((byte)(pattern[ptrnBuffer].groupLength));
   Wire.write((byte)(pattern[ptrnBuffer].totalAcc));
@@ -140,7 +140,7 @@ void LoadPattern(byte patternNbr)
   pattern[!ptrnBuffer].scale = Wire.read();
   prevShuf = pattern[!ptrnBuffer].shuffle = Wire.read();                                                         // [zabox] [1.027] flam
   prevFlam = pattern[!ptrnBuffer].flam = Wire.read();                                                            // [zabox] [1.027] flam
-  pattern[!ptrnBuffer].extLength = Wire.read();
+  Wire.read();  // [TR-909] Skip old extLength byte (not used)
   pattern[!ptrnBuffer].groupPos = Wire.read();
   pattern[!ptrnBuffer].groupLength = Wire.read();
   pattern[!ptrnBuffer].totalAcc = Wire.read();
@@ -204,7 +204,7 @@ void LoadTempPattern(byte patternNbr)
   tempPattern.scale = Wire.read();
   prevShuf = tempPattern.shuffle = Wire.read();                                                         // [zabox] [1.027] flam
   prevFlam = tempPattern.flam = Wire.read();                                                            // [zabox] [1.027] flam
-  tempPattern.extLength = Wire.read();
+  Wire.read();  // [TR-909] Skip old extLength byte (not used)
   tempPattern.groupPos = Wire.read();
   tempPattern.groupLength = Wire.read();
   tempPattern.totalAcc = Wire.read();

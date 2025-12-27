@@ -17,7 +17,7 @@
 //#include <Wire.h>                // [zabox] [1.028] (wire.h/twi.h 130 byte buffer length)
 #include "features.h"
 #include "define.h"
-#include "string.h"
+#include "nava_strings.h"
 //#include "src/MIDI/MIDI.h". //[oort] Unknown why a local midi.h was used in https://github.com/BenZonneveld/Nava-2021-Firmware
 #include <MIDI.h>
 #include "function_declarations.h"
