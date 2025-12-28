@@ -28,7 +28,7 @@ ISR(TIMER3_COMPA_vect) {  // [zabox] flam
 
   SetMuxFlam();
 
-  SetDoutTrig(stepValueFlam & (~muteInst) | tempDoutTrig);  //Send TempDoutTrig too to prevet tick noise on HH circuit
+  SetDoutTrig((stepValueFlam & (~muteInst)) | tempDoutTrig);  //Send TempDoutTrig too to prevet tick noise on HH circuit
 
 #if MIDI_DRUMNOTES_OUT
   SendInstrumentMidiOut(stepValueFlam & (~muteInst) | tempDoutTrig);  // [Neuromancer] MIDI Note out
@@ -114,7 +114,7 @@ void CountPPQN() {
         if (bitRead(pattern[ptrnBuffer].inst[CH], curStep) && !bitRead(muteInst, CH)) tempDoutTrig = B10;     //CH trig                        // [zabox] + check if OH/CH mute
         else if (bitRead(pattern[ptrnBuffer].inst[OH], curStep) && !bitRead(muteInst, OH)) tempDoutTrig = 0;  // OH trig                    // [zabox] + check if OH/CH mute
 
-        SetDoutTrig((stepValue) & (~temp_muteInst) | (tempDoutTrig));  //Send TempDoutTrig too to prevet tick noise on HH circuit
+        SetDoutTrig((stepValue & (~temp_muteInst)) | tempDoutTrig);  //Send TempDoutTrig too to prevet tick noise on HH circuit
 
 #if MIDI_DRUMNOTES_OUT
         SendInstrumentMidiOut((stepValue) & (~temp_muteInst) | (tempDoutTrig));  // [Neuromancer] MIDI Note out

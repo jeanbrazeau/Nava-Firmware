@@ -15,7 +15,7 @@ void SetLeds()
   scaleLed = scaleBtn.pressed;
   lastStepLed = lastStepBtn.pressed;
   if (isRunning){
-    menuLed = LED_PLAY & ~LED_STOP | shiftLed<<1 | instLed<<2 | clearLed<<3 | shufLed<<4 | lastStepLed<<5 | scaleLed<<6 ;
+    menuLed = (LED_PLAY & ~LED_STOP) | (shiftLed<<1) | (instLed<<2) | (clearLed<<3) | (shufLed<<4) | (lastStepLed<<5) | (scaleLed<<6);
     //stepLeds = pattern[ptrnBuffer].inst[curInst] ^ (blinkFast << curStep-1);
   }
   else{
@@ -170,7 +170,7 @@ void SetLeds()
             for (byte a = 0; a <= group.length; a++){
               bitSet(temp,(group.firstPattern % NBR_PATTERN) + a);
             }
-            stepLeds = temp & ~(!blinkTempo << (curPattern % NBR_PATTERN)) ^ (blinkFast<< curStep); //[oort] led show current pattern in group
+            stepLeds = (temp & ~(!blinkTempo << (curPattern % NBR_PATTERN))) ^ (blinkFast << curStep); //[oort] led show current pattern in group
           }
           else {
             stepLeds = (blinkTempo <<(nextPattern % NBR_PATTERN)) ^ (blinkFast<< curStep); //[oort] nextPattern becomes curPattern when there's only one seleted
@@ -242,7 +242,7 @@ void SetLeds()
         }
         //this function is to fade low velocity leds
         if(flagLedIntensity >= 3){    //[oort] Sandor uses 8 instead of 3
-          stepLeds = stepLedsHigh | stepLedsLow ^ blinkFast << curStep;//B1111111111111111;
+          stepLeds = (stepLedsHigh | stepLedsLow) ^ (blinkFast << curStep);//B1111111111111111;
           flagLedIntensity = 0;
         }
         else{
