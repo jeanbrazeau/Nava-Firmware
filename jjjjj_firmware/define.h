@@ -499,6 +499,7 @@ unsigned int volatile extPendingOn = 0;       // [TR-909 STYLE] Tracks the clock
 byte volatile extPendingVel = 0;              // [TR-909 STYLE] Velocity that goes with extPendingOn
 boolean volatile extPendingOff = FALSE;       // [TR-909 STYLE] Sticky request to silence the previous step before the queued one starts
 unsigned long extInstSplashUntil = 0;         // [TR-909 STYLE] Deadline of the non-blocking EXT INST splash (millis)
+boolean extInstSplashArmed = FALSE;           // [TR-909 STYLE] TRUE while extInstSplashUntil is a live deadline
 byte previewNote = 0;                         // [TR-909 STYLE] Note currently held open by the preview
 boolean previewActive = FALSE;                // [TR-909 STYLE] TRUE while a preview note is sounding
 unsigned long previewOffAt = 0;               // [TR-909 STYLE] Preview note-off deadline, 0 = hold until released

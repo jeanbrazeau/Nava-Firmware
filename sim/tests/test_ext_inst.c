@@ -41,6 +41,10 @@
 #define WIRE_T0   0x30u   /* track 0: 36+12 = 48 */
 #define WIRE_T3   0x33u   /* track 3: 39+12 = 51 */
 
+/* Step programmed by the front-panel test.  FX_PTRN_BASIC has extTrack[] empty, so
+ * any step works; 4 is far enough into the bar to be unambiguous. */
+#define PROG_STEP 4
+
 static void test_ext_note_on_polyphonic(nava_sim_t *ctx) {
     boot_wait_ready(ctx, BOOT_CYCLES);
     event_log_clear(&ctx->log);
@@ -167,7 +171,57 @@ static void test_ext_notes_only_midi_traffic(nava_sim_t *ctx) {
     (void)t0;
 }
 
+/* Front-panel regression for ext step programming.
+ *
+ * Drives the real panel: SHIFT+GUIDE to enter EXT INST edit mode, then a bare step
+ * button to program a step on the selected track (track 0 by default), then PLAY,
+ * and asserts the sequencer emits that track's note when the step comes round.
+ *
+ * This is the case none of the MIDI-level tests could see, because they seed
+ * extTrack[] through the EEPROM fixture and never press a step button.  The bug it
+ * pins: key.ino tested stepBtn[].justPressed, whose only live setter is InstValueGet,
+ * which SeqParameter stops calling once edit mode owns the step buttons — so the flag
+ * was always 0 and programming never executed.  The fixture starts with extTrack[]
+ * empty, so a note-on here can only come from the button press.
+ */
+static void test_ext_step_programming_via_panel(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+
+    /* Enter EXT INST edit mode: SHIFT held, GUIDE tapped. */
+    fp_press_button(ctx, FP_BTN_SHIFT);
+    fp_press_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    fp_settle(ctx);
+
+    /* The 800ms splash owns the LCD; let it expire so the mode line is observable
+     * and so nothing about the splash overlaps the programming press. */
+    nava_sim_run_cycles(ctx, 16000000ULL);   /* 1s at 16MHz */
+    assert_lcd_contains("ext/panel/edit_mode_entered", ctx, 0, "ptr len scl ins");
+    assert_lcd_contains("ext/panel/track_shown", ctx, 1, "T");
+
+    /* Program step PROG_STEP on the selected track (track 0) with a bare step press. */
+    fp_press_step(ctx, PROG_STEP);
+    fp_release_step(ctx, PROG_STEP);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    uint64_t t0 = ctx->avr->cycle;
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+
+    /* Run two full bars so the programmed step fires regardless of where in the bar
+     * the transport started. */
+    nava_sim_run_cycles(ctx, BAR_CYCLES * 2);
+
+    assert_midi_note_on("ext/panel/programmed_step_sounds",
+                        &ctx->log, EXT_CH, WIRE_T0,
+                        t0, t0 + BAR_CYCLES * 2);
+}
+
 int main(void) {
+    TEST_WITH_PATTERN("ext_inst_step_programming_via_panel",
+                      test_ext_step_programming_via_panel, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_polyphonic_note_on",
                       test_ext_note_on_polyphonic, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_note_off_at_next_step",

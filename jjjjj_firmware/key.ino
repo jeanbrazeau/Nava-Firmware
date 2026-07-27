@@ -23,6 +23,13 @@ void ExitExtInstEditMode()
 // time, otherwise a second track select strands the first note on the synth.
 void ExtPreviewOn(byte note, unsigned long holdMs)
 {
+  // The preview and the sequencer have no shared ownership of a note: both send on
+  // seq.EXTchannel from EXT_TRACK_NOTES, so if the running pattern uses this track
+  // its per-step SendExtTrackNoteOff() would cut the preview and the preview's
+  // note-off would truncate a sequenced note. Decline the preview instead - the
+  // sequencer is already sounding the pitch the user wanted to hear.
+  if (isRunning && pattern[ptrnBuffer].extTrack[currentExtTrack]) return;
+
   if (previewActive) ExtPreviewOff();
 #if MIDI_EXT_CHANNEL
   MidiSendNoteOn(seq.EXTchannel, note, HIGH_VEL);
@@ -31,7 +38,15 @@ void ExtPreviewOn(byte note, unsigned long holdMs)
 #endif
   previewNote = note;
   previewActive = TRUE;
-  previewOffAt = holdMs ? (millis() + holdMs) : 0;  // 0 = sustain until the button is released
+  if (holdMs) {
+    previewOffAt = millis() + holdMs;
+    // 0 is the sustain sentinel, so a deadline landing exactly on the millis() wrap
+    // would turn a timed audition into a note that never stops
+    if (!previewOffAt) previewOffAt = 1;
+  }
+  else {
+    previewOffAt = 0;  // sustain until the button is released
+  }
 }
 
 void ExtPreviewOff()
@@ -48,14 +63,32 @@ void ExtPreviewOff()
 
 void ExtPreviewCheck()
 {
-  if (previewActive && previewOffAt && millis() >= previewOffAt) ExtPreviewOff();
+  // Signed elapsed comparison so the deadline survives the millis() wrap
+  if (previewActive && previewOffAt && (long)(millis() - previewOffAt) >= 0) ExtPreviewOff();
 }
 
 void ExtInstUpdate()
 {
+  // Edge source for ext step programming. stepBtn[].justPressed cannot serve here:
+  // its only live setter is InstValueGet, which SeqParameter no longer calls while
+  // this mode owns the step buttons, and ButtonGet clears the flags every scan.
+  // Sampled on every pass rather than inside the edit block below, so a button held
+  // across a mode change cannot present a stale edge on the way back in.
+  static unsigned int prevExtStepState;
+
+  unsigned int currentButtonState = StepButtonGet(MOMENTARY);
+
   // Unconditional: a timed preview started just before leaving edit mode still has
   // to be retired, and the edit block below no longer runs to do it.
   ExtPreviewCheck();
+
+  // A sustained preview is released by the step-button release inside the edit block,
+  // which stops running the moment the mode changes. MUTE assigns curSeqMode directly
+  // rather than going through ExitExtInstEditMode(), so it would strand the note with
+  // no way to clear it: InitMidiNoteOff() only walks extTrackNoteOn[] and
+  // SendAllNoteOff() targets seq.TXchannel. Retire it when its context is gone.
+  if (previewActive && !previewOffAt &&
+      (!extInstEditMode || curSeqMode != PTRN_STEP || !stepsBtn.pressed)) ExtPreviewOff();
 
   // [SIZZLE] Exit EXT INST edit mode only when INSTRUMENT SELECT + GUIDE is pressed again
   if (extInstEditMode && instBtn && guideBtn.justPressed) {
@@ -73,9 +106,6 @@ void ExtInstUpdate()
   /////////////////////////////EXT INST Edit Mode (TR-909 STYLE)//////////////////////////////
   if (extInstEditMode && curSeqMode == PTRN_STEP)
   {
-    // Get the current button state
-    unsigned int currentButtonState = StepButtonGet(MOMENTARY);
-
     // [TR-909 STYLE] INST + step button (1-16) = select track
     if (instBtn && currentButtonState) {
       extInstButtonHandled = TRUE;
@@ -103,7 +133,7 @@ void ExtInstUpdate()
     // [TR-909 STYLE] Program steps when INST NOT held
     if (!instBtn && !extInstButtonHandled && currentButtonState) {
       for (byte step = 0; step < NBR_STEP; step++) {
-        if (stepBtn[step].justPressed) {
+        if (bitRead(currentButtonState, step) && !bitRead(prevExtStepState, step)) {
           // Toggle step for current track
           if (bitRead(pattern[ptrnBuffer].extTrack[currentExtTrack], step)) {
             bitClear(pattern[ptrnBuffer].extTrack[currentExtTrack], step);
@@ -119,4 +149,9 @@ void ExtInstUpdate()
       }
     }
   }
+
+  // Once per pass, after both branches: a press consumed by track select is already
+  // recorded here, so releasing INST while still holding the step cannot re-fire it
+  // as a programming edge.
+  prevExtStepState = currentButtonState;
 }

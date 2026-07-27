@@ -8,10 +8,11 @@
 
 The 16-track external instrument sequencer is implemented and integrated. The previous
 revision of this document declared the feature verified on the strength of static code
-analysis alone. That claim did not hold: three subsequent commits found and fixed seven
-real defects in code this document had marked as passing, several of them user-visible on
-the first press of a button. The verification matrix below therefore separates what has
-been checked mechanically from what has only been read.
+analysis alone. That claim did not hold: four subsequent commits found and fixed nine real
+defects in code this document had marked as passing, several of them user-visible on the
+first press of a button, and one of them introduced by the fix for another. The
+verification matrix below therefore separates what has been checked mechanically from what
+has only been read.
 
 **Status:** implemented; regression-covered for MIDI note behaviour; not yet validated on
 hardware.
@@ -31,6 +32,8 @@ exists, not that it is correct, reachable, or exclusive of the paths around it.
 | Velocity truncation | Clock.ino / SeqFunc.ino | `InitPattern` seeded `velocity[EXT_INST]` with HIGH_VEL (80), outside the EXT_INST table range of 25..50. `map()` returned 168, the MIDI library masked to 7 bits, and every unaccented note left the machine at 40. |
 | Inverted accent | Clock.ino | An accented step was assigned MIDI_ACCENT_VELOCITY (16) — quieter than every unaccented note. |
 | ISR-blocking MIDI | Clock.ino | The step handler transmitted up to 96 MIDI bytes from the timer ISR against a 64-byte TX buffer, busy-waiting on UDRE with interrupts disabled. A dense step blocked `CountPPQN()` for roughly 30ms against a PPQN tick of about 5ms, collapsing the MIDI clock and DIN sync generated in the same function. |
+| Step programming dead | key.ino vs Button.ino | Programming tested `stepBtn[].justPressed`, whose only live setter is `InstValueGet`. Fixing the input double-handling stopped `SeqParameter` calling it in edit mode, and `ButtonGet` clears the flags every scan, so the flag was always 0 and no step could be programmed at all. The fix that caused this was still correct; it removed the feature's only edge source without replacing it. |
+| Preview hung via MUTE | key.ino vs Seq.ino | A sustained track-select preview is released by the step-button release inside the edit block. MUTE assigns `curSeqMode` directly instead of going through `ExitExtInstEditMode()`, so the release was never observed and the note sustained with no way to clear it — `InitMidiNoteOff()` only walks `extTrackNoteOn[]` and `SendAllNoteOff()` targets `seq.TXchannel`. |
 
 ---
 
@@ -83,9 +86,9 @@ reading the code, not exercised; **HW** — requires hardware.
 | # | Feature | File:Line | Status | Notes |
 |---|---------|-----------|--------|-------|
 | 1 | Mode entry/exit | Button.ino:59-76, key.ino:61-66 | READ | SHIFT+GUIDE toggles, INST+GUIDE exits; both route through `ExitExtInstEditMode()` |
-| 2 | Mode-state teardown | key.ino:9-19, Seq.ino:130,149,166,206,223 | READ | Every mode change clears the flag and restores `curInst = BD` |
+| 2 | Mode-state teardown | key.ino:9-19, Seq.ino:130,149,166,206,223 | READ | TRK, PTRN, TAP and config entry clear the flag and restore `curInst = BD`. MUTE does neither by design — see below |
 | 3 | Track selection (1-16) | key.ino:79-95 | READ | INST + step selects track, preview sustains until step release |
-| 4 | Step programming | key.ino:103-120 | READ | Toggles bits in `extTrack[currentExtTrack]`, 50ms audition on add only |
+| 4 | Step programming | key.ino:133-150 | TESTED | `ext_inst_step_programming_via_panel` drives the panel and asserts the resulting note. Toggles bits in `extTrack[currentExtTrack]`, 50ms audition on add only |
 | 5 | Preview note ownership | key.ino:22-52, 99 | READ | One note at a time; note-off on release, on timeout, and on leaving the mode |
 | 6 | Polyphonic note-on | Clock.ino:134-169, Midi.ino:51-81 | TESTED | `ext_inst_polyphonic_note_on` |
 | 7 | Note-off at next step | Midi.ino:16-32 | TESTED | `ext_inst_note_off_at_next_step` |
@@ -113,24 +116,28 @@ because .ino files are concatenated in name order and renaming it would reorder 
 ## Regression Coverage
 
 `sim/` holds a simavr-based harness that boots the real firmware ELF and drives it through
-the emulated panel and MIDI ports. `cd sim && make test` runs 17 tests across 5 binaries.
-Four cover this feature directly, in `sim/tests/test_ext_inst.c`:
+the emulated panel and MIDI ports. `cd sim && make test` runs 18 tests across 5 binaries.
+Five cover this feature directly, in `sim/tests/test_ext_inst.c`:
 
 | Test | Asserts |
 |---|---|
+| `ext_inst_step_programming_via_panel` | SHIFT+GUIDE enters edit mode, a bare step press programs the step, and the sequencer sounds it |
 | `ext_inst_polyphonic_note_on` | Multiple tracks programmed on one step all emit note-on |
 | `ext_inst_note_off_at_next_step` | The previous step's notes are silenced before the next step's note-ons |
 | `ext_inst_accent_velocity` | An accented step is louder than an unaccented one |
 | `ext_inst_no_drum_notes_in_midi` | Drum voices do not leak onto the external channel |
 
 The accent test previously pinned the buggy value as expected behaviour; it now asserts the
-corrected one.
+corrected one. The panel test is the first to exercise the edit-mode UI: it was written
+against the broken firmware, confirmed failing, and only then made to pass. The four
+MIDI-level tests could not have caught the dead-programming defect, because they seed
+`extTrack[]` through the EEPROM fixture and never press a step button.
 
-**Not covered by the suite:** everything in the edit-mode user interface — mode entry and
-exit, track selection, step programming, preview notes, LED and LCD feedback, and the splash.
-Those rows are marked READ above, and every defect in the table at the top of this document
-was in that uncovered surface. Extending the harness to drive the panel through an edit
-session is the highest-value next step.
+**Still not covered by the suite:** track selection, preview note lifecycle, LED feedback,
+the splash, and mode-state teardown — including the MUTE path that stranded a preview note.
+Those rows are marked READ above. The lesson from the defect table stands: every defect
+found so far was in the untested UI surface, and one round of tests has not changed that for
+the rows still marked READ.
 
 ---
 
@@ -141,6 +148,9 @@ session is the highest-value next step.
 3. **Velocity:** one velocity per step, shared by every track firing on it
 4. **Pattern groups:** external track data is not included in group save/load (groups are not fully implemented in this firmware)
 5. **Queue depth:** one step. A step overtaken before the loop drains it is coalesced away; this is intentional, since its notes were about to be cut by the newer step anyway and the note-off request is sticky
+6. **External notes inherit main-loop stalls that drum triggers do not.** Triggers fire from the clock ISR; external MIDI is queued there and transmitted from `loop()`. Anything that blocks the loop therefore drops queued external steps while the drums stay in time — a pattern bank load (Seq.ino:531) or a bank save (Seq.ino:1108, tens of `delay(DELAY_WR)` page writes) are the realistic cases. Accepted: the alternative is transmitting from the ISR, which is the defect this design replaced
+7. **A pattern change drops one in-flight external step.** `InitMidiNoteOff()` discards the queue on every `selectedPatternChanged`, including SYNC mode, so selecting a pattern mid-bar loses at most one step of external notes. Accepted: the discard is what stops notes arriving after a stop or sounding twice
+8. **No preview while the sequencer owns the track.** `ExtPreviewOn()` declines when the running pattern has any step programmed on the selected track, because preview and sequencer share the note and channel with no ownership arbitration and would cut each other off. The pitch is audible from the sequencer anyway
 
 ---
 
@@ -180,15 +190,18 @@ matter most: that is where the defects were.
 
 7. **No stuck notes**
    - [ ] On STOP, on pattern change, on mode exit, on track switch
+   - [ ] Hold INST + a step to preview, press MUTE, then release: the note must stop
 
 ---
 
 ## Conclusion
 
-The feature is implemented and its MIDI note behaviour is pinned by automated regression
-tests. Its user interface is not covered by tests and has been the source of every defect
-found so far. Hardware validation is required before this can be called verified, and the
-UI checks above should be run first.
+The feature is implemented, its MIDI note behaviour is pinned by automated regression
+tests, and one edit-mode path — entering the mode and programming a step — is now driven
+through the emulated front panel. The rest of the user interface is still untested and has
+been the source of every defect found so far, including one introduced by the fix for
+another. Hardware validation is required before this can be called verified, and the UI
+checks above should be run first.
 
 ---
 

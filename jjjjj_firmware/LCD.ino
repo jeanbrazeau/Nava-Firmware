@@ -13,29 +13,33 @@ void LcdUpdate()
 
   // [TR-909 STYLE] Non-blocking EXT INST splash, painted once on entry. The falling
   // edge has to request a redraw or the display stays stuck on the message.
-  static boolean splashWasActive = FALSE;
-  if (millis() < extInstSplashUntil) {
-    if (!splashWasActive) {
-      splashWasActive = TRUE;
-      lcd.clear();
-      lcd.setCursor(0,0);
-      if (extInstEditMode) {
-        lcd.print("EXT TRCK EDIT ON");
-        lcd.setCursor(0,1);
-        // MIDI note number rather than a note name: the pitch depends on the
-        // reader's octave convention, the number does not
-        lcd.print("TRK:1 NOTE:48");
+  // The deadline is tested by signed elapsed time and disarmed once it passes: an
+  // absolute millis() < deadline test reads a stale deadline as still in the future
+  // across the 49.7 day wrap and would freeze the display for up to 800 seconds.
+  static boolean splashPainted = FALSE;
+  if (extInstSplashArmed) {
+    if ((long)(millis() - extInstSplashUntil) < 0) {
+      if (!splashPainted) {
+        splashPainted = TRUE;
+        lcd.clear();
+        lcd.setCursor(0,0);
+        if (extInstEditMode) {
+          lcd.print("EXT TRCK EDIT ON");
+          lcd.setCursor(0,1);
+          // MIDI note number rather than a note name: the pitch depends on the
+          // reader's octave convention, the number does not
+          lcd.print("TRK:1 NOTE:48");
+        }
+        else {
+          lcd.print("EXT TRCK EDIT");
+          lcd.setCursor(0,1);
+          lcd.print("MODE OFF");
+        }
       }
-      else {
-        lcd.print("EXT TRCK EDIT");
-        lcd.setCursor(0,1);
-        lcd.print("MODE OFF");
-      }
+      return;
     }
-    return;
-  }
-  if (splashWasActive) {
-    splashWasActive = FALSE;
+    extInstSplashArmed = FALSE;
+    splashPainted = FALSE;
     needLcdUpdate = TRUE;
   }
 

@@ -369,7 +369,11 @@ name for a given MIDI number depends on the octave convention.
 - SHIFT + GUIDE toggles the mode; INST + GUIDE also exits it
 - Entering forces `curInst = EXT_INST` and selects track 1; leaving restores `curInst = BD`
   so the user never lands on a voice that drives no drum circuit
-- Only active in PTRN_STEP. Any mode change clears the flag via `ExitExtInstEditMode()`
+- Only active in PTRN_STEP. The TRK, PTRN, TAP and config-entry handlers clear the flag
+  via `ExitExtInstEditMode()`. MUTE is the deliberate exception: it assigns `curSeqMode`
+  directly so the mode stays re-enterable, which means the flag survives it. Nothing in
+  the edit block runs while `curSeqMode != PTRN_STEP`, and `ExtInstUpdate()` retires a
+  sustained preview whose owning context has gone away
 - Entry and exit paint a splash for 800ms; the deadline is `extInstSplashUntil` and
   `LcdUpdate()` renders it without blocking the loop
 

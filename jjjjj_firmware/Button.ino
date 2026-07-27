@@ -72,6 +72,7 @@ void ButtonGet()
     // MIDI.read() for a full second and stalled SLAVE/EXPANDER sync. LcdUpdate()
     // paints the message and clears it once this deadline passes.
     extInstSplashUntil = millis() + 800;
+    extInstSplashArmed = TRUE;
     needLcdUpdate = TRUE;
   }
 
