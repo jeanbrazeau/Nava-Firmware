@@ -421,6 +421,26 @@ back to BPM, matching every other PTRN_STEP page.
 Previews are owned by `ExtPreviewOn`/`ExtPreviewOff`/`ExtPreviewCheck` in key.ino so
 that a preview is never left sounding and never held open by `delay()`.
 
+### Output Enable (GUIDE)
+GUIDE latches sequenced external MIDI output on and off, replacing the metronome it used
+to toggle. `guideBtn.counter` is the latch and also drives `guideLed`. `ServiceExtMidiNotes()`
+still latches and clears the queue when output is off, so steps do not pile up and the
+note-off pass still runs - only the note-ons are dropped. Unlatching calls
+`InitMidiNoteOff()` because the last transmitted step would otherwise stay held on the
+external synth with no later note-off to close it, the drain that would have sent one
+now being gated off.
+
+The latch is guarded against SHIFT and INST, which qualify GUIDE as the edit-mode enter
+and exit gestures. Unguarded it toggled on those too - as the metronome handler did.
+
+Previews and auditions are deliberately not gated: they are a direct response to a button
+press rather than sequencer output, so the note map stays audible while editing with
+output muted. Output boots unlatched, so every simulator test expecting sequenced notes
+arms it first via `latch_guide()`.
+
+The metronome now has no binding. `Metronome()` is uncalled and `metronomeState`
+(read by Mux.ino) is never set, so it is permanently off until rebound to something.
+
 ### Playback
 `CountPPQN()` only records the step: a track bitmask, the shared velocity and a sticky
 note-off request (`extPendingOn`, `extPendingVel`, `extPendingOff`). `ServiceExtMidiNotes()`

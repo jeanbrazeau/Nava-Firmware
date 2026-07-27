@@ -34,16 +34,12 @@ void SetLeds()
   dirLed = dirBtn.pressed;
   scaleLeds = 1 << scaleBtn.counter;
   
-  // [SIZZLE] Make GUIDE LED flash when in EXT INST edit mode
-  if (extInstEditMode) {
-    guideLed = blinkTempo;
-  }
-  else if (curSeqMode == PTRN_STEP && curInst == EXT_INST) {
-    guideLed = blinkTempo;
-  }
-  else {
-    guideLed = guideBtn.counter;
-  }
+  // [TR-909 STYLE] GUIDE shows the external instrument MIDI output latch. In edit mode
+  // it blinks instead of sitting solid, so the LED carries both facts at once: blinking
+  // means the mode is open, and dark means output is muted whichever mode is current.
+  // curInst == EXT_INST needs no separate branch - only edit mode selects it.
+  if (extInstEditMode) guideLed = guideBtn.counter ? blinkTempo : LOW;
+  else guideLed = guideBtn.counter;
   
   bankLed = bankBtn.pressed;
 

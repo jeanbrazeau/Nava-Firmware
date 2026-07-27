@@ -49,8 +49,18 @@
  * any step works; 4 is far enough into the bar to be unambiguous. */
 #define PROG_STEP 4
 
+/* GUIDE latches sequenced ext MIDI output and boots unlatched, so every test that
+ * expects the sequencer to transmit has to arm it first.  Bare press only — SHIFT and
+ * INST qualify GUIDE as the edit-mode enter and exit gestures and do not toggle it. */
+static void latch_guide(nava_sim_t *ctx) {
+    fp_press_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_GUIDE);
+    fp_settle(ctx);
+}
+
 static void test_ext_note_on_polyphonic(nava_sim_t *ctx) {
     boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);   /* sequenced ext output is off until GUIDE is latched */
     event_log_clear(&ctx->log);
 
     /* Anchor the window BEFORE the press.  fp_press/fp_release together advance
@@ -88,6 +98,7 @@ static void test_ext_note_off_at_next_step(nava_sim_t *ctx) {
      * loop(), turning off notes from the previous step.  Note-offs for step-0 notes
      * must appear before or at the start of step 1. */
     boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);   /* sequenced ext output is off until GUIDE is latched */
     event_log_clear(&ctx->log);
 
     fp_press_button(ctx, FP_BTN_PLAY);
@@ -119,6 +130,7 @@ static void test_ext_accent_velocity(nava_sim_t *ctx) {
      * velocity = MIDI_HIGH_VELOCITY + MIDI_ACCENT_VELOCITY = 127, i.e. accent is
      * louder than an unaccented step rather than quieter. */
     boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);   /* sequenced ext output is off until GUIDE is latched */
     event_log_clear(&ctx->log);
 
     fp_press_button(ctx, FP_BTN_PLAY);
@@ -190,6 +202,7 @@ static void test_ext_notes_only_midi_traffic(nava_sim_t *ctx) {
  */
 static void test_ext_step_programming_via_panel(nava_sim_t *ctx) {
     boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);   /* sequenced ext output is off until GUIDE is latched */
 
     /* Enter EXT INST edit mode: SHIFT held, GUIDE tapped. */
     fp_press_button(ctx, FP_BTN_SHIFT);
@@ -241,6 +254,7 @@ static void test_ext_step_programming_via_panel(nava_sim_t *ctx) {
  */
 static void test_ext_encoder_sets_track_note(nava_sim_t *ctx) {
     boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);   /* sequenced ext output is off until GUIDE is latched */
 
     fp_press_button(ctx, FP_BTN_SHIFT);
     fp_press_button(ctx, FP_BTN_GUIDE);
@@ -349,6 +363,84 @@ static void test_ext_track_switch_auditions_when_paused(nava_sim_t *ctx) {
                          t1, ctx->avr->cycle);
 }
 
+/* GUIDE is the master enable for sequenced ext MIDI, and it boots unlatched.
+ *
+ * Both halves matter. The silent half alone would pass on a firmware that never
+ * transmits at all, and the sounding half alone would pass on one that ignores the
+ * latch — so the test plays the same pattern twice across a single GUIDE press.
+ */
+static void test_ext_guide_gates_output(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+
+    /* Unlatched: the fixture's extTrack[] steps must produce nothing. */
+    event_log_clear(&ctx->log);
+    uint64_t t0 = ctx->avr->cycle;
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, BAR_CYCLES);
+
+    if (nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T0, t0, ctx->avr->cycle)) {
+        test_fail("ext/guide/silent_when_unlatched",
+                  "sequencer transmitted ext notes with GUIDE unlatched");
+    }
+
+    fp_press_button(ctx, FP_BTN_STOP);
+    fp_release_button(ctx, FP_BTN_STOP);
+    fp_settle(ctx);
+
+    /* Latched: the same pattern must now sound. */
+    latch_guide(ctx);
+    event_log_clear(&ctx->log);
+    uint64_t t1 = ctx->avr->cycle;
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, BAR_CYCLES);
+
+    assert_midi_note_on("ext/guide/sounds_when_latched", &ctx->log, EXT_CH, WIRE_T0,
+                        t1, ctx->avr->cycle);
+}
+
+/* Unlatching GUIDE mid-playback must silence what is already sounding.
+ *
+ * Dropping note-ons is not enough on its own: the note held from the last transmitted
+ * step would stay held on the external synth with no later note-off to close it, since
+ * the drain that would have sent one is now gated off.
+ */
+static void test_ext_guide_unlatch_silences(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);
+
+    /* Unlatch while step 0's note is still held. Every step queues a note-off for the
+     * previous one, so waiting a whole step would find nothing sounding and the test
+     * would pass against a firmware that silences nothing. latch_guide() costs about
+     * 640k cycles and a step is 2000064, so the toggle lands inside step 0. */
+    event_log_clear(&ctx->log);
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, STEP_CYCLES / 4);
+
+    if (!nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T0, 0, ctx->avr->cycle)) {
+        test_fail("ext/guide/unlatch_precondition",
+                  "step 0 never sounded, so there is nothing to silence");
+        return;
+    }
+
+    uint64_t t0 = ctx->avr->cycle;
+    latch_guide(ctx);                 /* second press unlatches */
+    nava_sim_run_cycles(ctx, STEP_CYCLES * 2);
+
+    /* Something must have been silenced, and nothing new may start. */
+    if (!nava_midi_expect_note_off(&ctx->log, EXT_CH, WIRE_T0, t0, ctx->avr->cycle) &&
+        !nava_midi_expect_note_off(&ctx->log, EXT_CH, WIRE_T3, t0, ctx->avr->cycle)) {
+        test_fail("ext/guide/unlatch_note_off",
+                  "unlatching GUIDE sent no note-off for the sounding step");
+    }
+    if (nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T0, t0, ctx->avr->cycle)) {
+        test_fail("ext/guide/unlatch_stops_notes",
+                  "sequencer kept transmitting after GUIDE was unlatched");
+    }
+}
+
 int main(void) {
     TEST_WITH_PATTERN("ext_inst_step_programming_via_panel",
                       test_ext_step_programming_via_panel, &FX_PTRN_BASIC, 2, 1);
@@ -366,6 +458,10 @@ int main(void) {
                       test_ext_exit_restores_instrument, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_track_switch_auditions_when_paused",
                       test_ext_track_switch_auditions_when_paused, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_guide_gates_output",
+                      test_ext_guide_gates_output, &FX_PTRN_EXT, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_guide_unlatch_silences",
+                      test_ext_guide_unlatch_silences, &FX_PTRN_EXT, 2, 1);
 
     return test_run_all(NAVA_ELF_PATH);
 }

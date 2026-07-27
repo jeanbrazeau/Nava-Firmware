@@ -82,6 +82,11 @@ void ServiceExtMidiNotes() {
   // The previous step has to be silenced before the new one starts
   if (noteOffDue) SendExtTrackNoteOff();
 
+  // GUIDE is the master enable for sequenced external notes. The queue is still
+  // latched and cleared above when it is off, so steps do not pile up and the note-off
+  // pass still runs - only the note-ons are dropped.
+  if (!guideBtn.counter) return;
+
   if (!noteOnMask) return;
 
   for (byte track = 0; track < 16; track++) {

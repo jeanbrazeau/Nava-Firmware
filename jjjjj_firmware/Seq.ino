@@ -226,18 +226,18 @@ void SeqParameter() {
     }
     if (tapBtn.justPressed) ShiftLeftPattern();
     if (dirBtn.justPressed) ShiftRightPattern();
-    if (guideBtn.justPressed) {
-      guideBtn.counter++;
-      switch (guideBtn.counter) {
-        case 1:
-          metronomeState = TRUE;  //[oort]
-          break;
-        case 2:
-          metronomeState = FALSE;  //[oort]
-          guideBtn.counter = 0;
-          break;
-      }
-      Metronome(metronomeState);
+    // [TR-909 STYLE] GUIDE latches external instrument MIDI output on and off. This
+    // replaces the metronome, which had no other binding and is now unreachable.
+    //
+    // Guarded against SHIFT and INST: those combinations are the edit-mode enter and
+    // exit gestures, and an unguarded latch here toggled on them as well - the same
+    // way it used to toggle the metronome whenever the mode was entered.
+    if (guideBtn.justPressed && !shiftBtn && !instBtn) {
+      guideBtn.counter = !guideBtn.counter;   // drives guideLed in Led.ino
+      // Unlatching has to silence what is already sounding and drop the queued step,
+      // or the last notes transmitted stay held on the external synth forever.
+      if (!guideBtn.counter) InitMidiNoteOff();
+      needLcdUpdate = TRUE;
     }
 
     if (muteBtn.justPressed && curSeqMode != TRACK_WRITE) {
