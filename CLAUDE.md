@@ -375,8 +375,12 @@ A signature byte precedes the record because neither erased state can be assumed
 erased EEPROM reads 0xFF but `InitEEprom()` zeroes the device, and 0x00 is a legal MIDI
 note, so a range check alone would silently tune every track to note 0.
 
-Comments and the LCD cite the transmitted number rather than a note name, because the
-name for a given MIDI number depends on the octave convention.
+The LCD renders the note as a name via `LcdPrintNoteName()`, under the MIDI 60 = C4
+convention that nearly every DAW and modern synth displays, so the track defaults of
+48..63 read C3..D#4. The octave therefore runs -1..9 and `C#-1` is the widest result at
+four characters, exactly the width of the value field. Sharps only: picking the flat
+spelling of the same pitch would need a key signature the sequencer does not have.
+Code comments still cite MIDI numbers, since those are unambiguous.
 
 ### Edit Mode Activation
 - SHIFT + GUIDE toggles the mode; INST + GUIDE also exits it

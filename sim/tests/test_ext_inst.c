@@ -4,8 +4,11 @@
  * Firmware facts (verified in Clock.ino and Midi.ino):
  *   - MIDI_DRUMNOTES_OUT is #if 0 (features.h:3), so the ONLY MIDI note traffic
  *     is from EXT_INST.  All note assertions can be made unambiguously.
- *   - MidiSendNoteOn/Off add +12 to the note (Midi.ino:36,43).
- *     EXT_TRACK_NOTES[track] = 36+track, so wire note = 48+track (0x30+track).
+ *   - The ext path sends through MidiSendExtNoteOn/Off, which do NOT apply the +12
+ *     that MidiSendNoteOn/Off add for drum notes.  extTrackNote[track] holds the
+ *     literal wire note and defaults to EXT_TRACK_NOTES[track] = 48+track (0x30+track),
+ *     so unedited tracks transmit the same pitches the old fixed table did.
+ *   - The LCD renders those notes as names under MIDI 60 = C4, so 48 reads C3.
  *   - extTrack[] is polyphonic: multiple tracks can fire on the same step.
  *   - CountPPQN() only queues each step's ext notes; ServiceExtMidiNotes(), called
  *     from loop(), sends the previous step's note-offs and then the new step's
@@ -19,8 +22,8 @@
  *   - EXTchannel = 2
  *
  * Expected wire notes:
- *   track 0 → EXT_TRACK_NOTES[0]+12 = 36+12 = 48 (0x30)
- *   track 3 → EXT_TRACK_NOTES[3]+12 = 39+12 = 51 (0x33)
+ *   track 0 → EXT_TRACK_NOTES[0] = 48 (0x30), displayed C3
+ *   track 3 → EXT_TRACK_NOTES[3] = 51 (0x33), displayed D#3
  */
 #include "test_runner.h"
 #include "frontpanel.h"
@@ -37,10 +40,10 @@
 #define STEP_CYCLES   (NAVA_PPQN_PERIOD_CYCLES * 24ULL)   /* 2000064 */
 #define BAR_CYCLES    (16ULL * STEP_CYCLES)
 
-/* EXT channel is 2; wire notes for track 0 and 3 */
+/* EXT channel is 2; default wire notes for track 0 and 3 */
 #define EXT_CH      2u
-#define WIRE_T0   0x30u   /* track 0: 36+12 = 48 */
-#define WIRE_T3   0x33u   /* track 3: 39+12 = 51 */
+#define WIRE_T0   0x30u   /* track 0: 48, shown as C3  */
+#define WIRE_T3   0x33u   /* track 3: 51, shown as D#3 */
 
 /* Step programmed by the front-panel test.  FX_PTRN_BASIC has extTrack[] empty, so
  * any step works; 4 is far enough into the bar to be unambiguous. */
@@ -204,7 +207,7 @@ static void test_ext_step_programming_via_panel(nava_sim_t *ctx) {
      * would match with the mode not entered. */
     assert_lcd_contains("ext/panel/edit_mode_entered", ctx, 0, "ptr len scl T1 ");
     /* Track 1 defaults to wire note 48 — the same pitch the fixed table transmitted. */
-    assert_lcd_contains("ext/panel/note_shown", ctx, 1, "48");
+    assert_lcd_contains("ext/panel/note_shown", ctx, 1, "C3");
 
     /* Program step PROG_STEP on the selected track (track 0). Paused, the step buttons
      * are track switches, so a programming press is qualified with INST. */
@@ -250,7 +253,7 @@ static void test_ext_encoder_sets_track_note(nava_sim_t *ctx) {
      * 8 detents is +4 semitones: 48 -> 52. */
     nava_gpio_inject_encoder(ctx->gpio, +1, 8);
     fp_settle(ctx);
-    assert_lcd_contains("ext/encoder/note_raised", ctx, 1, "52");
+    assert_lcd_contains("ext/encoder/note_raised", ctx, 1, "E3");
 
     fp_press_button(ctx, FP_BTN_INST);   /* paused: INST qualifies a programming press */
     fp_press_step(ctx, PROG_STEP);

@@ -6,6 +6,33 @@
 #include "nava_strings.h"
 
 /////////////////////Function//////////////////////
+// Print a MIDI note number as a name, returning the characters written so the caller
+// can pad a fixed-width field.
+//
+// MIDI 60 is C4 here - the convention nearly every DAW and modern synth displays - so
+// the ext track defaults of 48..63 read C3..D#4. The octave therefore runs -1..9, and
+// "C#-1" is the widest result at four characters, which is exactly the width of the
+// value field. Sharps only: choosing the flat spelling of the same pitch would need a
+// key signature the sequencer does not have.
+byte LcdPrintNoteName(byte note)
+{
+  byte idx = (note % 12) * 2;
+  char letter = pgm_read_byte(&noteNames[idx]);
+  char accidental = pgm_read_byte(&noteNames[idx + 1]);
+
+  lcd.print(letter);
+  byte width = 1;
+  if (accidental != ' ') {
+    lcd.print(accidental);
+    width++;
+  }
+
+  int octave = (int)(note / 12) - 1;
+  lcd.print(octave);
+  width += (octave < 0) ? 2 : 1;   // "-1" is two characters, 0..9 one
+  return width;
+}
+
 //Initialise IO PORT and libraries
 void LcdUpdate()
 {
@@ -34,7 +61,7 @@ void LcdUpdate()
           lcd.print("TRK:");
           lcd.print(currentExtTrack + 1);
           lcd.print(" NOTE:");
-          lcd.print(extTrackNote[currentExtTrack]);
+          LcdPrintNoteName(extTrackNote[currentExtTrack]);
         }
         else {
           lcd.print("EXT TRCK EDIT");
@@ -262,12 +289,11 @@ ptrn_step:
           lcd.setCursor(8,1);
           LcdPrintScale();
           lcd.setCursor(12,1);
-          // [TR-909 STYLE] Value field shows the transmitted MIDI note of the selected
-          // track. A number, not a note name: the name depends on octave convention.
+          // [TR-909 STYLE] Value field shows the selected track's note as a name,
+          // under the MIDI 60 = C4 convention documented on LcdPrintNoteName()
           if (curInst == EXT_INST && extInstEditMode) {
-            lcd.print(extTrackNote[currentExtTrack]);
-            if (extTrackNote[currentExtTrack] < 100) lcd.print(" ");
-            if (extTrackNote[currentExtTrack] < 10) lcd.print(" ");
+            byte w = LcdPrintNoteName(extTrackNote[currentExtTrack]);
+            while (w++ < 4) lcd.print(" ");   // clear the rest of the field
           } else {
             char instName[3];
             strcpy_P(instName, (char*)pgm_read_word(&(selectInstString[curInst])));

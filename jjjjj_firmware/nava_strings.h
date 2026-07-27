@@ -77,6 +77,12 @@ PROGMEM const char * const selectInstString[]={
   txt_INST8,txt_INST9,txt_INST10,txt_INST11,
   txt_INST12,txt_INST13,txt_INST14,txt_INST15};
 
+//Note names-------------------------------------------------------
+// Fixed two-char cells rather than a pointer table: 24 bytes of PROGMEM against the
+// ~60 that 12 strings plus 12 pointers would take, and the index is arithmetic.
+// A trailing space marks a one-character name.
+const char noteNames[] PROGMEM = "C C#D D#E F F#G G#A A#B ";
+
 //Special character-----------------------------------------------
 byte font0[8] = {
   0x10, 0x10, 0x11, 0x12, 0x04, 0x08, 0x10, 0x00};// 1/  font
