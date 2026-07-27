@@ -58,35 +58,21 @@ void ButtonGet()
 
   // [TR-909 STYLE] Check for SHIFT + GUIDE to toggle EXT INST edit mode
   if (shiftBtn && guideBtn.justPressed) {
-    // Toggle EXT INST edit mode
-    extInstEditMode = !extInstEditMode;
-    extInstButtonHandled = FALSE; // Reset the handler flag on mode toggle
-
-    if (extInstEditMode) {
+    if (!extInstEditMode) {
+      extInstEditMode = TRUE;
+      extInstButtonHandled = FALSE; // Reset the handler flag on mode toggle
       curInst = EXT_INST; // Set current instrument to EXT_INST when entering edit mode
       currentExtTrack = 0; // Start with track 1
       currentExtNote = pgm_read_byte(&EXT_TRACK_NOTES[0]); // C2 (MIDI 36)
-
-      // Display debug message
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.print("EXT TRCK EDIT ON");
-      lcd.setCursor(0,1);
-      lcd.print("TRK:1 NOTE:C2");
-      delay(1000);
-
-      needLcdUpdate = TRUE;
     } else {
-      // Display debug message when exiting
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.print("EXT TRCK EDIT");
-      lcd.setCursor(0,1);
-      lcd.print("MODE OFF");
-      delay(1000);
-
-      needLcdUpdate = TRUE;
+      ExitExtInstEditMode();
     }
+
+    // ButtonGet() runs from the main loop, so the old delay() splash stopped
+    // MIDI.read() for a full second and stalled SLAVE/EXPANDER sync. LcdUpdate()
+    // paints the message and clears it once this deadline passes.
+    extInstSplashUntil = millis() + 800;
+    needLcdUpdate = TRUE;
   }
 
   //init step button------------------------------------------------

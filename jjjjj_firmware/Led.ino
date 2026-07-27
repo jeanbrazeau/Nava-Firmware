@@ -120,7 +120,7 @@ void SetLeds()
   unsigned int temp = 0;// temp data of stepLeds
   
   // [TR-909 STYLE] Special handling for EXT INST edit mode
-  if (extInstEditMode && curInst == EXT_INST) {
+  if (extInstEditMode && curInst == EXT_INST && curSeqMode == PTRN_STEP) {
     // Show steps for currently selected track
     stepLeds = pattern[ptrnBuffer].extTrack[currentExtTrack];
 
@@ -249,7 +249,7 @@ void SetLeds()
           stepLeds = 1 << curBank;
         }
         // [TR-909 STYLE] Special handling for EXT INST edit mode when stopped
-        else if (extInstEditMode) {
+        else if (extInstEditMode && curSeqMode == PTRN_STEP) {
           // Show steps for currently selected track
           stepLeds = pattern[ptrnBuffer].extTrack[currentExtTrack];
         }

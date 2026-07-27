@@ -6,19 +6,67 @@
 /////////////////////Function//////////////////////
 // [SIZZLE] currentExtNote is defined in define.h now
 
+// Leaving edit mode has to put curInst back on a real voice: EXT_INST triggers no
+// drum circuit, so a stranded selection looks like dead step buttons.
+void ExitExtInstEditMode()
+{
+  if (!extInstEditMode) return;
+  extInstEditMode = FALSE;
+  extInstButtonHandled = FALSE;
+  ExtPreviewOff();
+  curInst = BD;
+  needLcdUpdate = TRUE;
+}
+
+// Preview notes are started from the main loop, so they can never be closed with a
+// delay(): ExtPreviewCheck() retires them instead. Only one preview may sound at a
+// time, otherwise a second track select strands the first note on the synth.
+void ExtPreviewOn(byte note, unsigned long holdMs)
+{
+  if (previewActive) ExtPreviewOff();
+#if MIDI_EXT_CHANNEL
+  MidiSendNoteOn(seq.EXTchannel, note, HIGH_VEL);
+#else
+  MidiSendNoteOn(seq.TXchannel, note, HIGH_VEL);
+#endif
+  previewNote = note;
+  previewActive = TRUE;
+  previewOffAt = holdMs ? (millis() + holdMs) : 0;  // 0 = sustain until the button is released
+}
+
+void ExtPreviewOff()
+{
+  if (!previewActive) return;
+#if MIDI_EXT_CHANNEL
+  MidiSendNoteOff(seq.EXTchannel, previewNote);
+#else
+  MidiSendNoteOff(seq.TXchannel, previewNote);
+#endif
+  previewActive = FALSE;
+  previewOffAt = 0;
+}
+
+void ExtPreviewCheck()
+{
+  if (previewActive && previewOffAt && millis() >= previewOffAt) ExtPreviewOff();
+}
+
 void KeyboardUpdate()
 {
+  // Unconditional: a timed preview started just before leaving edit mode still has
+  // to be retired, and the edit block below no longer runs to do it.
+  ExtPreviewCheck();
+
   // [SIZZLE] Exit EXT INST edit mode only when INSTRUMENT SELECT + GUIDE is pressed again
   if (extInstEditMode && instBtn && guideBtn.justPressed) {
-    extInstEditMode = FALSE;
-    needLcdUpdate = TRUE;
+    ExitExtInstEditMode();
 
     // When exiting EXT INST mode, make sure changes are marked as edited
     patternWasEdited = TRUE;
   }
 
   // While in EXT INST edit mode, ensure we stay on EXT_INST
-  if (extInstEditMode && curInst != EXT_INST) {
+  if (extInstEditMode && curSeqMode == PTRN_STEP && curInst != EXT_INST) {
     curInst = EXT_INST;
   }
 
@@ -37,12 +85,8 @@ void KeyboardUpdate()
           currentExtTrack = i;
           currentExtNote = pgm_read_byte(&EXT_TRACK_NOTES[i]);
 
-          // Preview note
-#if MIDI_EXT_CHANNEL
-          MidiSendNoteOn(seq.EXTchannel, currentExtNote, HIGH_VEL);
-#else
-          MidiSendNoteOn(seq.TXchannel, currentExtNote, HIGH_VEL);
-#endif
+          // Preview note, sustained until the step button is released
+          ExtPreviewOn(currentExtNote, 0);
           needLcdUpdate = TRUE;
           stepBtn[i].justPressed = FALSE;
         }
@@ -50,14 +94,9 @@ void KeyboardUpdate()
       }
     }
 
-    // Release preview note when instrument button is released
-    if (!instBtn && stepsBtn.justRelease) {
-#if MIDI_EXT_CHANNEL
-      MidiSendNoteOff(seq.EXTchannel, currentExtNote);
-#else
-      MidiSendNoteOff(seq.TXchannel, currentExtNote);
-#endif
-    }
+    // Release the preview on step release whatever INST does: releasing the step
+    // button first used to leave the note hanging on the external synth.
+    if (stepsBtn.justRelease) ExtPreviewOff();
 
     if (!instBtn) extInstButtonHandled = FALSE;
 
@@ -71,16 +110,8 @@ void KeyboardUpdate()
           } else {
             bitSet(pattern[ptrnBuffer].extTrack[currentExtTrack], step);
 
-            // Preview note
-#if MIDI_EXT_CHANNEL
-            MidiSendNoteOn(seq.EXTchannel, currentExtNote, HIGH_VEL);
-            delay(50);
-            MidiSendNoteOff(seq.EXTchannel, currentExtNote);
-#else
-            MidiSendNoteOn(seq.TXchannel, currentExtNote, HIGH_VEL);
-            delay(50);
-            MidiSendNoteOff(seq.TXchannel, currentExtNote);
-#endif
+            // Short audition, retired by ExtPreviewCheck() rather than a delay()
+            ExtPreviewOn(currentExtNote, 50);
           }
           patternWasEdited = TRUE;
           needLcdUpdate = TRUE;

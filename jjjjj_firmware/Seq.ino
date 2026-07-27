@@ -128,6 +128,7 @@ void SeqParameter() {
       needLcdUpdate = TRUE;
       curSeqMode = TRACK_WRITE;
       trk.pos = 0;
+      ExitExtInstEditMode();
       seq.configMode = FALSE;
       nextPattern = track[trkBuffer].patternNbr[trk.pos];  // Get the correct pattern
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;
@@ -146,6 +147,7 @@ void SeqParameter() {
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;  //
       curSeqMode = PTRN_TAP;
       needLcdUpdate = TRUE;
+      ExitExtInstEditMode();
       seq.configMode = FALSE;
       trackNeedSaved = FALSE;
     }
@@ -162,6 +164,7 @@ void SeqParameter() {
       if (!seq.configMode) {
         // First press - enter config mode
         seq.configMode = TRUE;
+        ExitExtInstEditMode();
         seq.configPage = 1; // Start at page 1
       } else {
         // Already in config mode, cycle to next page
@@ -201,6 +204,7 @@ void SeqParameter() {
     if (trkBtn.justPressed) {
       curSeqMode = TRACK_PLAY;
       needLcdUpdate = TRUE;
+      ExitExtInstEditMode();
       seq.configMode = FALSE;
       nextPattern = track[trkBuffer].patternNbr[trk.pos];
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;
@@ -217,6 +221,7 @@ void SeqParameter() {
       if (curSeqMode == PTRN_PLAY) curSeqMode = PTRN_STEP;
       else curSeqMode = PTRN_PLAY;
       needLcdUpdate = TRUE;
+      ExitExtInstEditMode();
       seq.configMode = FALSE;
       trackNeedSaved = FALSE;
     }
@@ -281,7 +286,7 @@ void SeqParameter() {
     static boolean curInstChanged;  //flag that curInstchanged to not update LCD more than one time
 
     // Force instrument to EXT_INST if we're in EXT INST edit mode but somehow lost the selection
-    if (extInstEditMode && curInst != EXT_INST) {
+    if (extInstEditMode && curSeqMode == PTRN_STEP && curInst != EXT_INST) {
       curInst = EXT_INST;
       needLcdUpdate = TRUE;
     }
@@ -519,7 +524,7 @@ void SeqParameter() {
     /////////////////////////////STEP EDIT + PATTERN SELECTION FOR STEP & TAP ///////////////////////////////////////////////////////////////////
 
     if (stepsBtn.justRelease) doublePush = FALSE;
-    if (!lastStepBtn.pressed && !instBtn && !shufBtn.pressed) {  // [zabox] test
+    if (!lastStepBtn.pressed && !instBtn && !shufBtn.pressed && !extInstEditMode) {  // [zabox] test, [TR-909 STYLE] ext track editing owns the step buttons
       if (curSeqMode == PTRN_STEP && isRunning)                                   //step programming
       {
         pattern[ptrnBuffer].inst[curInst] = InstValueGet(pattern[ptrnBuffer].inst[curInst]);  //cf InstValueGet()

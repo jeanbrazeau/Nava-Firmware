@@ -10,6 +10,33 @@
 void LcdUpdate()
 {
   static byte previousMode;
+
+  // [TR-909 STYLE] Non-blocking EXT INST splash, painted once on entry. The falling
+  // edge has to request a redraw or the display stays stuck on the message.
+  static boolean splashWasActive = FALSE;
+  if (millis() < extInstSplashUntil) {
+    if (!splashWasActive) {
+      splashWasActive = TRUE;
+      lcd.clear();
+      lcd.setCursor(0,0);
+      if (extInstEditMode) {
+        lcd.print("EXT TRCK EDIT ON");
+        lcd.setCursor(0,1);
+        lcd.print("TRK:1 NOTE:C2");
+      }
+      else {
+        lcd.print("EXT TRCK EDIT");
+        lcd.setCursor(0,1);
+        lcd.print("MODE OFF");
+      }
+    }
+    return;
+  }
+  if (splashWasActive) {
+    splashWasActive = FALSE;
+    needLcdUpdate = TRUE;
+  }
+
   //display tempo
   if (tempoBtn.pressed) {                                                         // [1.028] 
     if(curSeqMode != PTRN_PLAY && !shiftBtn && !seq.configMode) {                 // + !seq.configMode
