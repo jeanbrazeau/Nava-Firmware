@@ -63,7 +63,7 @@ void ButtonGet()
       extInstButtonHandled = FALSE; // Reset the handler flag on mode toggle
       curInst = EXT_INST; // Set current instrument to EXT_INST when entering edit mode
       currentExtTrack = 0; // Start with track 1
-      currentExtNote = pgm_read_byte(&EXT_TRACK_NOTES[0]); // C2 (MIDI 36)
+      currentExtNote = pgm_read_byte(&EXT_TRACK_NOTES[0]); // table value 36, transmitted as MIDI 48
     } else {
       ExitExtInstEditMode();
     }

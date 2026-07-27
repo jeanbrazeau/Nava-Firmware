@@ -177,7 +177,7 @@ void loop() {
 
   SeqConfiguration();
   SeqParameter();
-  KeyboardUpdate();
+  ExtInstUpdate();
   LcdUpdate();
 
 

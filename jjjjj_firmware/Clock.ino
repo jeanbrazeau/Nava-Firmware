@@ -186,7 +186,6 @@ void CountPPQN() {
         //[oort] addition
         if (nextPatternReady) {  //&& curSeqMode == PTRN_PLAY
           nextPatternReady = FALSE;
-          noteIndexCpt = 0; //[oort] also needed, the whole Externa Instr index count must be revised, it's a mess TO DO
           ptrnBuffer = !ptrnBuffer;  //[oort] comment: switch between twin buffers
           prevPattern = curPattern;  //[oort] needed in tap mode
           curPattern = nextPattern;

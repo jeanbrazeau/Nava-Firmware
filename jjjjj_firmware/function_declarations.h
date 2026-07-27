@@ -16,7 +16,7 @@ void SetMuxTrigMidi(byte instrument, byte velocity);
 void InitMidiRealTime();
 void SeqConfiguration();
 void SeqParameter();
-void KeyboardUpdate();
+void ExtInstUpdate();
 void ExitExtInstEditMode();
 void ExtPreviewOn(byte note, unsigned long holdMs);
 void ExtPreviewOff();

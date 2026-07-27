@@ -83,9 +83,14 @@ Patterns are stored in RAM (patternBank[16]) for quick access, and only saved to
 
 The firmware follows a real-time polling architecture where each loop cycle:
 1. Checks MIDI input and expander mode status
-2. Polls buttons and encoders for user input
-3. Updates LEDs, LCD, and sequencer parameters
-4. Manages sequencer configuration and keyboard updates
+2. Drains any external-instrument MIDI the clock queued (`ServiceExtMidiNotes()`, immediately after `MIDI.read()`)
+3. Polls buttons and encoders for user input
+4. Updates LEDs, LCD, and sequencer parameters
+5. Manages sequencer configuration and the external instrument track editor (`ExtInstUpdate()`)
+
+Transmission of external-instrument notes deliberately lives in the loop rather than
+in the clock ISR: a dense step is up to 96 MIDI bytes against a 64-byte UART buffer,
+and `HardwareSerial` busy-waits on UDRE with interrupts disabled inside the ISR.
 
 ### Key Improvements in this Firmware
 
@@ -146,7 +151,7 @@ The firmware follows a real-time polling architecture where each loop cycle:
   - `CountPPQN()`: Processes each PPQN tick (96 per quarter note)
     - Handles shuffle, direction modes, step triggering
     - Sets velocity via DAC, triggers via shift registers
-    - Manages MIDI note on/off for external instruments
+    - Queues external instrument MIDI for the loop to transmit; sends none itself
     - DIN sync clock output
     - End-of-measure pattern/track progression
 
@@ -162,7 +167,9 @@ The firmware follows a real-time polling architecture where each loop cycle:
   - EXT_INST edit mode toggle detection
 
 - **Enc.ino** - Rotary encoder handling
-- **key.ino** - Keyboard mode for external instrument note entry
+- **key.ino** - External instrument track editor (`ExtInstUpdate()`) and MIDI note preview.
+  The filename is historical: .ino files are concatenated in name order, so renaming it
+  would reorder definitions.
 
 #### Output Handling
 - **Led.ino** - LED control via shift registers
@@ -172,7 +179,9 @@ The firmware follows a real-time polling architecture where each loop cycle:
 
 #### Hardware Interface
 - **EEprom.ino** - Pattern/track storage and retrieval
-- **Midi.ino** - MIDI in/out, note handling, clock sync
+- **Midi.ino** - MIDI in/out, note handling, clock sync. Owns the external instrument
+  note queue: `ServiceExtMidiNotes()` drains it from the loop, `SendExtTrackNoteOff()`
+  silences what is sounding, `InitMidiNoteOff()` also discards anything still queued.
 - **Expander.ino** - Expander mode (trigger-to-MIDI conversion)
 
 ### Configuration Files
@@ -184,7 +193,7 @@ The firmware follows a real-time polling architecture where each loop cycle:
 
 ## Data Structures Deep Dive
 
-### Pattern Structure (457 bytes each)
+### Pattern Structure (360 bytes each)
 ```cpp
 struct Pattern {
   byte length;              // 0-15 (actual step count - 1)
@@ -196,8 +205,7 @@ struct Pattern {
   unsigned int step[16];    // 16-bit word per step (each bit = instrument on/off)
   byte velocity[16][16];    // Velocity per instrument per step
                            // Bit 7 = flam flag, bits 0-6 = velocity value
-  byte extNote[128];        // MIDI note numbers for external instrument sequencer
-  byte extLength;           // Number of notes in external instrument sequence
+  unsigned int extTrack[16];// 16-bit word per external track (each bit = step on/off)
   byte groupPos;            // Position in pattern group/chain
   byte groupLength;         // Length of pattern group/chain
   byte totalAcc;            // Total accent track
@@ -206,7 +214,7 @@ struct Pattern {
 
 ### Memory Management Strategy
 - **pattern[2]**: Twin buffers - edit one (`!ptrnBuffer`) while playing other (`ptrnBuffer`)
-- **patternBank[16]**: Current bank cached in RAM (16 patterns × 457 bytes = 7.3KB)
+- **patternBank[16]**: Current bank cached in RAM (16 patterns × 360 bytes = 5.6KB)
 - **editedPatterns[16]**: Boolean flags to track which patterns need EEPROM save
 - **bufferedPattern**: Copy/paste buffer for pattern operations
 - **tempPattern**: Temporary buffer for EEPROM read/write operations
@@ -343,32 +351,44 @@ byte muxInst[10] = {LT, SD, BD, MT, HT, HC, RM, CH, CRASH, RIDE};
 - Bits 0-15 map to instruments/functions
 - Special handling for CH/OH (bits 1-2) to prevent hi-hat circuit noise
 
-## External Instrument (EXT_INST) - SIZZLE Firmware Extension
+## External Instrument (EXT_INST) - TR-909 style track editor
 
 ### Feature Overview
-- Full MIDI note sequencer on dedicated track
-- Each of 16 steps can have different MIDI note
-- Velocity control per step
-- Separate MIDI channel (`seq.EXTchannel`)
+- 16 fixed-pitch MIDI tracks, one chromatic note each, all sharing the 16-step grid
+- Polyphonic: any number of tracks may fire on the same step
+- One velocity shared by all tracks on a step, taken from the EXT_INST velocity table
+- Separate MIDI channel (`seq.EXTchannel`) when `MIDI_EXT_CHANNEL` is enabled, else `seq.TXchannel`
+
+### Note Mapping
+`EXT_TRACK_NOTES[16]` (define.h) holds 36..51, one per track. `MidiSendNoteOn` and
+`MidiSendNoteOff` add 12 before transmitting, so the notes on the wire are MIDI 48..63.
+Comments and the LCD cite the transmitted number rather than a note name, because the
+name for a given MIDI number depends on the octave convention.
 
 ### Edit Mode Activation
-- SHIFT + GUIDE toggles EXT_INST edit mode
-- Forces `curInst = EXT_INST`
-- Display shows: "EXT INST EDIT ON / NOTE: C3"
+- SHIFT + GUIDE toggles the mode; INST + GUIDE also exits it
+- Entering forces `curInst = EXT_INST` and selects track 1; leaving restores `curInst = BD`
+  so the user never lands on a voice that drives no drum circuit
+- Only active in PTRN_STEP. Any mode change clears the flag via `ExitExtInstEditMode()`
+- Entry and exit paint a splash for 800ms; the deadline is `extInstSplashUntil` and
+  `LcdUpdate()` renders it without blocking the loop
 
 ### Note Entry
-- Uses `extNote[128]` array in Pattern structure
-- Each step stores MIDI note number (0-127)
-- Keyboard mode for note entry (octave selection)
+- INST + step button selects the track, sustaining a preview note until release
+- Step button alone toggles that step in `pattern[ptrnBuffer].extTrack[currentExtTrack]`
+  and auditions the note for 50ms
+- Previews are owned by `ExtPreviewOn`/`ExtPreviewOff`/`ExtPreviewCheck` in key.ino so
+  that a preview is never left sounding and never held open by `delay()`
 
 ### Playback
-Located in Clock.ino:196-152:
-```cpp
-if (bitRead(pattern[ptrnBuffer].inst[EXT_INST], curStep)) {
-  MidiSendNoteOn(seq.EXTchannel, pattern[ptrnBuffer].extNote[curStep], velocity);
-  midiNoteOnActive = TRUE;
-}
-```
+`CountPPQN()` only records the step: a track bitmask, the shared velocity and a sticky
+note-off request (`extPendingOn`, `extPendingVel`, `extPendingOff`). `ServiceExtMidiNotes()`
+latches and clears that queue inside one `ATOMIC_BLOCK` and transmits outside it, sending
+the previous step's note-offs before the new note-ons. If a step is overtaken before the
+loop drains it the newer step wins, which is what the four consecutive `CountPPQN()` calls
+per incoming MIDI clock can produce. `InitMidiNoteOff()` discards a queued but untransmitted
+step before silencing what is sounding, so stop and pattern change cannot let notes arrive
+late or twice.
 
 ## Code Heritage & Contributors
 
@@ -383,10 +403,12 @@ The codebase shows contributions from multiple developers:
 
 From code comments:
 - Start/Continue mode not fully implemented (Seq.ino:33)
-- External instrument note index handling needs revision (Clock.ino:172)
 - Pattern groups not saved to EEPROM (Seq.ino:548)
 - 9ms DIN start delay not implemented (Seq.ino:122)
-- Memory optimization needed (uses ~7KB for pattern bank)
+- Memory optimization needed (uses ~5.6KB for pattern bank)
+
+Resolved: the external instrument note index (`noteIndexCpt`) is gone along with the
+single-note sequencer it belonged to; the 16-track editor addresses steps directly.
 
 ## Performance Characteristics
 
@@ -400,11 +422,11 @@ From code comments:
 
 ```
 RAM (16KB total):
-- Pattern buffers:        ~5KB (pattern[2] + buffers)
-- Pattern bank cache:     ~7KB (patternBank[16])
+- Pattern buffers:        ~1.4KB (pattern[2] + bufferedPattern + tempPattern, 360 bytes each)
+- Pattern bank cache:     ~5.6KB (patternBank[16])
 - Track buffers:          ~2KB (track[2])
-- Global variables:       ~2KB
-Total:                    ~16KB (very tight!)
+- Global variables:       ~3KB
+Total:                    ~12.7KB of 16KB (still tight)
 
 EEPROM (4KB total):
 - Patterns (128):         ~57KB needed (doesn't fit!)

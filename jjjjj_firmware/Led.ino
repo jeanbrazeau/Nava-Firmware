@@ -248,11 +248,6 @@ void SetLeds()
         if (bankBtn.pressed){
           stepLeds = 1 << curBank;
         }
-        // [TR-909 STYLE] Special handling for EXT INST edit mode when stopped
-        else if (extInstEditMode && curSeqMode == PTRN_STEP) {
-          // Show steps for currently selected track
-          stepLeds = pattern[ptrnBuffer].extTrack[currentExtTrack];
-        }
         //display selected pattern
         else {
           //[oort] section taken from 1.028[oort], groups disregarded in Neuro

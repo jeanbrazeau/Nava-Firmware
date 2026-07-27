@@ -134,15 +134,11 @@ byte lcdVal = 0; //[oort] for traces
 #define END_OF_TRACK 128
 
 //Ext inst
-#define MAX_OCT 8
-#define DEFAULT_OCT 3  //corresponding to +0
-#define MAX_EXT_INST_NOTE 99
-#define EXT_INST_EDIT_MODE 1  // [SIZZLE] Flag to indicate we're in EXT INST edit mode
-
-// [TR-909 STYLE] 16 chromatic notes from C2 (MIDI 36) to D#3 (MIDI 51)
+// [TR-909 STYLE] One chromatic note per track. MidiSendNoteOn/Off add 12 before
+// transmitting, so these values map to MIDI notes 48 to 63 on the wire.
 const byte EXT_TRACK_NOTES[16] PROGMEM = {
-  36, 37, 38, 39, 40, 41, 42, 43,  // C2-G#2
-  44, 45, 46, 47, 48, 49, 50, 51   // A2-D#3
+  36, 37, 38, 39, 40, 41, 42, 43,  // transmitted as MIDI 48-55
+  44, 45, 46, 47, 48, 49, 50, 51   // transmitted as MIDI 56-63
 };
 
 
@@ -362,7 +358,6 @@ volatile byte curStep = 0;
 volatile byte stepCount = 0;  //[oort] volatile preferably byte
 volatile byte tapStepCount;  //this counter is used to get a better tap response
 volatile boolean stepChanged = FALSE;
-volatile byte noteIndexCpt = 0; //[oort] to use accross pattern groups we need to save count of these in an array between patterns TO DO?
 int stepCountContinue = 0;      //[oort] for stop/continue modes
 byte tapStepCountContinue = 0;  //[oort] for stop/continue modes
 unsigned int trackPosContinue = 0;
@@ -495,11 +490,9 @@ volatile boolean incrementRequired = FALSE;
 unsigned long timeSinceSaved;
 
 //Ext inst-------------------------------------------
-byte keybOct = DEFAULT_OCT;
-byte noteIndex = 0;  //external inst note index
 boolean extInstEditMode = FALSE;              // [TR-909 STYLE] Flag to indicate when we're in EXT INST edit mode
 byte currentExtTrack = 0;                     // [TR-909 STYLE] Selected track (0-15)
-byte currentExtNote = 36;                     // [TR-909 STYLE] Display value (C2 = MIDI 36)
+byte currentExtNote = 36;                     // [TR-909 STYLE] Table value for the selected track, transmitted as MIDI 48
 boolean extInstButtonHandled = FALSE;         // [TR-909 STYLE] Flag to indicate when an EXT INST button press has been handled
 boolean extTrackNoteOn[16] = {FALSE};         // [TR-909 STYLE] Track note-on states for polyphonic note-off, owned by the main loop only
 unsigned int volatile extPendingOn = 0;       // [TR-909 STYLE] Tracks the clock wants sounding, drained by ServiceExtMidiNotes
@@ -539,9 +532,6 @@ byte cursorPos[MAX_CUR_POS] = {
 };
 const char *letterUpTrackWrite[MAX_CUR_POS] = {
   "P", "P", "L", "N"
-};
-const char *letterUpExtInst[MAX_CUR_POS] = {
-  "I", "N", "L", "O"
 };
 const char *letterUpConfPage1[MAX_CUR_POS] = {
   "S", "B", "X", "M"

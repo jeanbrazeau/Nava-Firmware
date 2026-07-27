@@ -22,7 +22,9 @@ void LcdUpdate()
       if (extInstEditMode) {
         lcd.print("EXT TRCK EDIT ON");
         lcd.setCursor(0,1);
-        lcd.print("TRK:1 NOTE:C2");
+        // MIDI note number rather than a note name: the pitch depends on the
+        // reader's octave convention, the number does not
+        lcd.print("TRK:1 NOTE:48");
       }
       else {
         lcd.print("EXT TRCK EDIT");

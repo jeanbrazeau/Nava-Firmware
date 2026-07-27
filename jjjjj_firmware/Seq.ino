@@ -40,7 +40,6 @@ void SeqParameter() {
       stopBtn.counter = 0;
       changeDir = 1;     //restart Forward
       shufPolarity = 0;  //Init shuffle polarity
-      noteIndexCpt = 0;  //init ext instrument note index counter [oort] comment: start offset problem, this index is handled strangely TO DO
       blinkTempo = 0;    // [zabox] looks more consistent
 
       //[oort] differences to keep in mind in previous firmwares
@@ -446,7 +445,6 @@ void SeqParameter() {
       pattern[ptrnBuffer].flam = DEFAULT_FLAM;  // [1.028] flam
       pattern[ptrnBuffer].length = NBR_STEP - 1;
       pattern[ptrnBuffer].scale = SCALE_16;
-      keybOct = DEFAULT_OCT;
       patternWasEdited = TRUE;
       needLcdUpdate = TRUE;
     }
@@ -1143,9 +1141,6 @@ void SeqParameter() {
     //prepare twin pattern buffer before swapping
     playingPattern = curPattern;  //used by LCD
     //curPattern = nextPattern; //[oort] moved this into clock.ino
-    keybOct = DEFAULT_OCT;
-    //noteIndex = 0;        //[oort] Should we not reset noteIndexCpt instead?
-    noteIndexCpt = 1;       //[oort] possibility to fetch remembered position here? TO DO?
     InitMidiNoteOff();                   //[oort] can all these be moved to read from EE-prom? Probably not needed in RAM-buffers
     InitPattern(&pattern[!ptrnBuffer]);  //SHOULD BE REMOVED WHEN EEPROM WILL BE INITIALIZED ([oort] don't understand this old comment)
     SetHHPattern(&pattern[!ptrnBuffer]);

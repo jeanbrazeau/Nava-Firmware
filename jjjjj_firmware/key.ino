@@ -1,6 +1,6 @@
 //-------------------------------------------------
 //                  NAVA v1.x
-//                 keyboard mode
+//          external instrument track editor
 //-------------------------------------------------
 
 /////////////////////Function//////////////////////
@@ -51,7 +51,7 @@ void ExtPreviewCheck()
   if (previewActive && previewOffAt && millis() >= previewOffAt) ExtPreviewOff();
 }
 
-void KeyboardUpdate()
+void ExtInstUpdate()
 {
   // Unconditional: a timed preview started just before leaving edit mode still has
   // to be retired, and the edit block below no longer runs to do it.
