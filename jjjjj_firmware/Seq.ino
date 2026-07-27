@@ -913,7 +913,7 @@ void SeqParameter() {
     //decrease track position
     if (backBtn.justPressed) {
       trk.pos--;
-      if (trk.pos < 0 || trk.pos > MAX_PTRN_TRACK) trk.pos = 0;
+      if (trk.pos > MAX_PTRN_TRACK) trk.pos = 0;
       nextPattern = track[trkBuffer].patternNbr[trk.pos];
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;
       needLcdUpdate = TRUE;
@@ -962,7 +962,7 @@ void SeqParameter() {
       //delete current pattern in the current position
       if (backBtn.justPressed && track[trkBuffer].length) {  // [zabox] fixes crashs when deleting the last track pos
         if (trk.pos < (track[trkBuffer].length - 1)) {       // [zabox] delete only valid track pos
-          for (int a = trk.pos + 1; a < track[trkBuffer].length; a++) {
+          for (unsigned int a = trk.pos + 1; a < track[trkBuffer].length; a++) {
             track[trkBuffer].patternNbr[a] = track[trkBuffer].patternNbr[a + 1];
           }
           track[trkBuffer].patternNbr[track[trkBuffer].length - 1] = 0;  // [Neuromancer] Delete pattern info at tail
@@ -979,7 +979,7 @@ void SeqParameter() {
       //insert a pattern
       if (fwdBtn.justPressed) {
         if (trk.pos < (track[trkBuffer].length + 1)) {  // [zabox] insert only inside track
-          for (int a = track[trkBuffer].length + 1; a >= trk.pos; a--) {
+          for (unsigned int a = track[trkBuffer].length + 1; a > trk.pos; a--) {
             track[trkBuffer].patternNbr[a] = track[trkBuffer].patternNbr[a - 1];
           }
           trk.pos -= 1;  //to stay in the same position

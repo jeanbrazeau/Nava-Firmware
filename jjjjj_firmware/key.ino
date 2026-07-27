@@ -61,14 +61,14 @@ void KeyboardUpdate()
     }
     if (lastStepBtn.justPressed){
       keybOct--;
-      if (keybOct < 0 || keybOct > MAX_OCT - 1) keybOct = 0;
+      if (keybOct > MAX_OCT - 1) keybOct = 0;
       needLcdUpdate = TRUE;
     }
 
     // Navigate step positions using back/fwd buttons [SIZZLE FW]
     if (backBtn.justPressed){
       noteIndex--;
-      if( noteIndex < 0 || noteIndex > NBR_STEP - 1) noteIndex = 0;
+      if (noteIndex > NBR_STEP - 1) noteIndex = 0;
       MidiSendNoteOn(seq.TXchannel, keyboardNotes[noteIndex], HIGH_VEL);
       needLcdUpdate = TRUE;
     }
