@@ -159,6 +159,44 @@ const fx_pattern_t FX_PTRN_EXT = {
     },
 };
 
+/* Trigger-vs-MIDI alignment fixture: BD fires the analog trigger inline in
+ * CountPPQN() while ext tracks 0 and 3 are queued for the loop to transmit, so
+ * every step yields a matched (TRIG_WORD, NOTE_ON) pair to difference. */
+const fx_pattern_t FX_PTRN_EXT_SYNC = {
+    .length  = 15,
+    .scale   = FX_SCALE_16,
+    .shuffle = 1,
+    .flam    = 0,
+    .inst    = { [FX_BD] = 0xFFFFu },
+    .extTrack = {
+        [0] = 0xFFFFu,
+        [3] = 0xFFFFu,
+    },
+    .velocity = {
+        [FX_BD]       = {50,50,50,50, 50,50,50,50, 50,50,50,50, 50,50,50,50},
+        [FX_EXT_INST] = {50,50,50,50, 50,50,50,50, 50,50,50,50, 50,50,50,50},
+    },
+};
+
+/* All 16 ext tracks on every step: 16 note-offs + 16 note-ons is more than the 64 byte
+ * UART TX ring can absorb, so this is the case the clock-side transmit must decline and
+ * leave for the loop.  Exercises that fallback rather than assuming it. */
+const fx_pattern_t FX_PTRN_EXT_DENSE = {
+    .length  = 15,
+    .scale   = FX_SCALE_16,
+    .shuffle = 1,
+    .flam    = 0,
+    .inst    = { [FX_BD] = 0xFFFFu },
+    .extTrack = {
+        0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu,
+        0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu,
+    },
+    .velocity = {
+        [FX_BD]       = {50,50,50,50, 50,50,50,50, 50,50,50,50, 50,50,50,50},
+        [FX_EXT_INST] = {50,50,50,50, 50,50,50,50, 50,50,50,50, 50,50,50,50},
+    },
+};
+
 /* Pattern swap group: Group A triggers BD on all steps (trig word bit BD=8 set) */
 const fx_pattern_t FX_PTRN_GROUP_A = {
     .length  = 15,

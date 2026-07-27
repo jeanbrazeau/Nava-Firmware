@@ -5,6 +5,13 @@
 
 /////////////////////Function//////////////////////
 
+// Set while an external-instrument transmission is in progress. CountPPQN() can reach
+// the transmitter at interrupt priority and land in the middle of one; the MIDI
+// library's running-status state, HardwareSerial's TX ring and extTrackNoteOn[] are
+// all non-reentrant. The clock-side path stands down when this is set and leaves the
+// step queued for the loop, which is what the loop-only design did anyway.
+static volatile boolean extMidiBusy = FALSE;
+
 //initialize midi real time variable
 void InitMidiRealTime() {
   midiStart = LOW;
@@ -25,11 +32,18 @@ void MidiSendExtNoteOn(byte note, byte velocity) {
 #endif
 }
 
+// Sent as note-on with velocity 0, not as an 0x8n note-off. The two are equivalent
+// on every receiver (the running-status convention is built on this, and the
+// firmware's own MySettings enables HandleNullVelocityNoteOnAsNoteOff on input),
+// but an 0x8n message forces a status-byte change between the note-offs and the
+// note-ons of a step. Keeping one 0x9n status for the whole step lets running
+// status carry it, which removes a byte per message from the critical path
+// between the analog trigger and the first ext note reaching the wire.
 void MidiSendExtNoteOff(byte note) {
 #if MIDI_EXT_CHANNEL
-  MIDI.sendNoteOff(note, 0, seq.EXTchannel);
+  MIDI.sendNoteOn(note, 0, seq.EXTchannel);
 #else
-  MIDI.sendNoteOff(note, 0, seq.TXchannel);
+  MIDI.sendNoteOn(note, 0, seq.TXchannel);
 #endif
 }
 
@@ -53,19 +67,27 @@ void SendExtTrackNoteOff() {
 void InitMidiNoteOff() {
   // Stopping or changing pattern also cancels a step CountPPQN queued but the loop
   // has not transmitted yet, otherwise those notes would sound after the stop
+  // Claiming the transmitter with the same flag the clock path respects keeps a step
+  // that arrives mid-silencing from interleaving its note-ons into these note-offs and
+  // leaving the external synth holding a note the stop was supposed to end.
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
     extPendingOn = 0;
     extPendingOff = FALSE;
+    extMidiBusy = TRUE;
   }
   SendExtTrackNoteOff();
+  extMidiBusy = FALSE;
 }
 
 //drain the external instrument notes queued by CountPPQN [TR-909 STYLE]
-// Runs from loop(), so transmission cost lands where it can be absorbed rather than
-// inside the clock. The queue is latched and cleared under one short critical section;
-// MIDI transmission happens outside it. A step queued between the latch and the sends
-// simply waits for the next drain, which is why the note-off pass uses the latched
-// flag instead of InitMidiNoteOff() - that would discard the newer step.
+// The fallback path. ServiceExtMidiNotesFromClock() transmits most steps the moment the
+// clock produces them; this catches the ones it declined - a step too dense for the UART
+// TX ring, or one that arrived while the transmitter was claimed - where the cost of
+// blocking on the wire lands in the loop and can be absorbed. The queue is latched and
+// cleared under one short critical section; transmission happens outside it. A step
+// queued between the latch and the sends simply waits for the next drain, which is why
+// the note-off pass uses the latched flag instead of InitMidiNoteOff() - that would
+// discard the newer step.
 void ServiceExtMidiNotes() {
   unsigned int noteOnMask;
   byte velocity;
@@ -77,27 +99,122 @@ void ServiceExtMidiNotes() {
     noteOffDue = extPendingOff;
     extPendingOn = 0;
     extPendingOff = FALSE;
+    // Claimed inside the same critical section as the latch, not after it: a step the
+    // clock queues in between would otherwise find the transmitter free, send itself
+    // immediately, and land ahead of the older step latched here.
+    // Claimed only when there is something to send, so an empty poll - the common case
+    // once the clock path is doing the work - never blocks the clock out.
+    if (noteOnMask || noteOffDue) extMidiBusy = TRUE;
   }
+  if (!noteOnMask && !noteOffDue) return;
 
-  // The previous step has to be silenced before the new one starts
-  if (noteOffDue) SendExtTrackNoteOff();
+  ExtTransmitStep(noteOnMask, velocity, noteOffDue);
+  extMidiBusy = FALSE;
+}
 
-  // GUIDE is the master enable for sequenced external notes. The queue is still
-  // latched and cleared above when it is off, so steps do not pile up and the note-off
-  // pass still runs - only the note-ons are dropped.
-  if (!guideBtn.counter) return;
+// Transmit the step CountPPQN() has just queued, from the clock itself, when doing so
+// cannot block.
+//
+// Waiting for the loop does not cost a steady offset - it costs jitter. A loop pass
+// that repaints the LCD blocks for ~14ms while a pass that does not costs ~0.2ms, and
+// the repaints are triggered at end of measure, so the worst delay lands on the bar's
+// downbeat: the most audible step in the pattern.
+//
+// The reason the original design deferred to the loop still holds and is respected
+// here rather than discarded: HardwareSerial::write() busy-waits on UDRE with
+// interrupts disabled once its 64 byte TX ring fills, and a maximally dense step is
+// 32 messages. So the step is sent here only when the ring is measured to have room
+// for the whole worst-case burst; anything larger stays queued and the loop drains it,
+// where the cost is absorbable. Nothing on this path can ever wait on the wire.
+void ServiceExtMidiNotesFromClock() {
+  unsigned int noteOnMask = 0;
+  byte velocity = 0;
+  boolean noteOffDue = FALSE;
 
-  if (!noteOnMask) return;
-
-  for (byte track = 0; track < 16; track++) {
-    if (bitRead(noteOnMask, track)) {
-      byte noteToSend = extTrackNote[track];
-      MidiSendExtNoteOn(noteToSend, velocity);
-      extSoundingNote[track] = noteToSend;  // Note-off must reuse this exact note
-      extTrackNoteOn[track] = TRUE;         // Track for note-off
+  // Test, cost and claim in one critical section. CountPPQN() reaches here from the
+  // Timer1 ISR when clocking internally - already uninterruptible - but from loop()
+  // via HandleClock() when slaved to incoming MIDI clock, where it is not.
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    if (!extMidiBusy && (extPendingOn || extPendingOff)) {
+      byte messages = 0;
+      for (byte track = 0; track < 16; track++) {
+        if (bitRead(extPendingOn, track)) messages++;
+        if (extPendingOff && extTrackNoteOn[track]) messages++;
+      }
+      // Budget 3 bytes per message: running status usually does better and never
+      // worse, so a fit predicted here is a fit in fact.
+      if ((int)messages * 3 <= Serial1.availableForWrite()) {
+        noteOnMask = extPendingOn;
+        velocity = extPendingVel;
+        noteOffDue = extPendingOff;
+        extPendingOn = 0;
+        extPendingOff = FALSE;
+        extMidiBusy = TRUE;
+      }
     }
   }
-  midiNoteOnActive = TRUE;
+  if (!noteOnMask && !noteOffDue) return;
+
+  ExtTransmitStep(noteOnMask, velocity, noteOffDue);
+  extMidiBusy = FALSE;
+}
+
+// Emit one step's worth of external MIDI, ordered so the first new note reaches the
+// wire as early as possible.
+//
+// The obvious order - every sounding note off, then every new note on - makes the
+// delay between the analog trigger and the first ext note scale with how many tracks
+// the PREVIOUS step left sounding: with N tracks held over, track 0's note-on is the
+// (2N+3)rd byte, and at 320us per byte on a 31250 baud wire that is milliseconds of
+// drift against the drum voices, growing with pattern density.
+//
+// Instead each track's note-off is interleaved with its own note-on, and tracks that
+// are only being released (sounding, not in the new mask) are deferred to the end:
+//
+//   1. per track, in order: its note-off if it is sounding and retriggering,
+//      immediately followed by its note-on
+//   2. after all note-ons: note-offs for tracks that stop on this step
+//
+// Track k's note-on then lands at a fixed offset regardless of density, and the
+// releases - which are not time-critical, the notes are already sounding - absorb the
+// remaining wire time. A retriggering track still gets off-before-on, so no receiver
+// sees a doubled note-on or a note-off that arrives after its replacement.
+//
+// GUIDE is the master enable for sequenced note-ons. Note-offs are unconditional:
+// dropping them would strand notes on the external synth.
+void ExtTransmitStep(unsigned int noteOnMask, byte velocity, boolean noteOffDue) {
+  if (!guideBtn.counter) noteOnMask = 0;
+
+  for (byte track = 0; track < 16; track++) {
+    boolean starting = bitRead(noteOnMask, track);
+    if (!starting) continue;
+
+    if (noteOffDue && extTrackNoteOn[track]) {
+      // The recorded note, not the current map entry: retuning a sounding track
+      // would otherwise note-off a pitch that was never started.
+      MidiSendExtNoteOff(extSoundingNote[track]);
+      extTrackNoteOn[track] = FALSE;
+    }
+    byte noteToSend = extTrackNote[track];
+    MidiSendExtNoteOn(noteToSend, velocity);
+    extSoundingNote[track] = noteToSend;  // Note-off must reuse this exact note
+    extTrackNoteOn[track] = TRUE;
+    midiNoteOnActive = TRUE;
+  }
+
+  if (!noteOffDue) return;
+
+  boolean stillSounding = FALSE;
+  for (byte track = 0; track < 16; track++) {
+    if (!extTrackNoteOn[track]) continue;
+    if (bitRead(noteOnMask, track)) {
+      stillSounding = TRUE;  // just restarted above
+      continue;
+    }
+    MidiSendExtNoteOff(extSoundingNote[track]);
+    extTrackNoteOn[track] = FALSE;
+  }
+  midiNoteOnActive = stillSounding;
 }
 
 //Send note OFF

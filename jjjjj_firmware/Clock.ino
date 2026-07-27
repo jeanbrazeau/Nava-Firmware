@@ -167,6 +167,10 @@ void CountPPQN() {
       extPendingVel = extVelocity;
       extPendingOn = extOnMask;
       extPendingOff = TRUE;
+      // Send it here when the UART has room, so the note is not held back by whatever
+      // the loop is doing - an end-of-measure LCD repaint blocks it for ~14ms. Declines
+      // and leaves the step queued if transmitting could block; the loop still drains.
+      ServiceExtMidiNotesFromClock();
 
       //TRIG_HIGH;
       //ResetDoutTrig();

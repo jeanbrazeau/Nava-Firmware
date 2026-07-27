@@ -79,6 +79,15 @@ extern const fx_pattern_t FX_PTRN_FLAM;
  * EXT_INST velocity set to HIGH_VEL; accent on step 8 (pinned bug test). */
 extern const fx_pattern_t FX_PTRN_EXT;
 
+/* BD and ext tracks 0/3 on every step: lets a test measure, per step, the delay
+ * between the analog trigger CountPPQN() writes inline and the ext note-on the
+ * loop transmits. */
+extern const fx_pattern_t FX_PTRN_EXT_SYNC;
+
+/* All 16 ext tracks on every step: exceeds the UART TX ring, so the clock-side
+ * transmit must decline and the loop must still deliver every step. */
+extern const fx_pattern_t FX_PTRN_EXT_DENSE;
+
 /* Two-pattern group (used in pattern-swap test):
  * FX_PTRN_GROUP_A: BD on all steps (produces non-zero trig word)
  * FX_PTRN_GROUP_B: SD on all steps (different trig word, distinct from A) */

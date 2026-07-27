@@ -88,9 +88,8 @@ The firmware follows a real-time polling architecture where each loop cycle:
 4. Updates LEDs, LCD, and sequencer parameters
 5. Manages sequencer configuration and the external instrument track editor (`ExtInstUpdate()`)
 
-Transmission of external-instrument notes deliberately lives in the loop rather than
-in the clock ISR: a dense step is up to 96 MIDI bytes against a 64-byte UART buffer,
-and `HardwareSerial` busy-waits on UDRE with interrupts disabled inside the ISR.
+External-instrument notes are transmitted by the clock when that cannot block, and by
+the loop otherwise - see "Transmission timing" under the EXT_INST section.
 
 ### Key Improvements in this Firmware
 
@@ -442,16 +441,49 @@ The metronome now has no binding. `Metronome()` is uncalled and `metronomeState`
 (read by Mux.ino) is never set, so it is permanently off until rebound to something.
 
 ### Playback
-`CountPPQN()` only records the step: a track bitmask, the shared velocity and a sticky
-note-off request (`extPendingOn`, `extPendingVel`, `extPendingOff`). `ServiceExtMidiNotes()`
-latches and clears that queue inside one `ATOMIC_BLOCK` and transmits outside it, sending
-the previous step's note-offs before the new note-ons. If a step is overtaken before the
-loop drains it the newer step wins, which is what the four consecutive `CountPPQN()` calls
-per incoming MIDI clock can produce. `InitMidiNoteOff()` discards a queued but untransmitted
-step before silencing what is sounding, so stop and pattern change cannot let notes arrive
-late or twice. `extSoundingNote[]` records the note each track actually transmitted, and
-`SendExtTrackNoteOff()` replays that rather than the current map entry - retuning a track
-while it sounds would otherwise note-off a pitch that was never started.
+`CountPPQN()` records the step into a queue: a track bitmask, the shared velocity and a
+sticky note-off request (`extPendingOn`, `extPendingVel`, `extPendingOff`). If a step is
+overtaken before the queue is drained the newer step wins, which is what the four
+consecutive `CountPPQN()` calls per incoming MIDI clock can produce. `InitMidiNoteOff()`
+discards a queued but untransmitted step before silencing what is sounding, so stop and
+pattern change cannot let notes arrive late or twice. `extSoundingNote[]` records the note
+each track actually transmitted, and `SendExtTrackNoteOff()` replays that rather than the
+current map entry - retuning a track while it sounds would otherwise note-off a pitch that
+was never started.
+
+### Transmission timing
+The drum voices are triggered inline in `CountPPQN()`, so anything that delays the ext
+notes shows up as the MIDI track playing behind the analog kit. Two separate costs were
+measured with `sim/tests/test_ext_latency.c`, which differences the trigger-word write
+against the note-on on the wire (baseline: mean 3.99 ms, worst 16.54 ms; now mean 1.27 ms,
+worst 1.31 ms at 120 BPM with two ext tracks):
+
+- **Wire order.** Sending every sounding note-off and then every new note-on put track 0's
+  note-on behind `2N+3` bytes at 320 us each, growing with how many tracks the previous
+  step left sounding. `ExtTransmitStep()` instead interleaves each track's note-off with
+  its own note-on and defers the note-offs of tracks that stop on this step until after
+  all the note-ons - releases are not time-critical, the notes are already sounding.
+  Note-offs are sent as note-on velocity 0 so running status carries the whole step under
+  a single status byte.
+- **Scheduling.** Draining only from the loop cost jitter rather than a steady offset: a
+  pass that repaints the LCD blocks for ~14 ms, and `needLcdUpdate` is set at end of
+  measure, so the worst delay landed on the bar's downbeat. `ServiceExtMidiNotesFromClock()`
+  transmits from `CountPPQN()` itself, but only after measuring that `Serial1`'s TX ring
+  has room for the step's worst-case burst - the original concern, that `HardwareSerial`
+  busy-waits on UDRE with interrupts disabled once the 64-byte ring fills, is respected
+  rather than discarded. A denser step than that stays queued and the loop drains it.
+
+`extMidiBusy` serialises the two paths: the MIDI library's running-status state,
+`HardwareSerial`'s ring and `extTrackNoteOn[]` are all non-reentrant. It is claimed inside
+the same `ATOMIC_BLOCK` as the queue latch, because a step queued between latching and
+claiming would otherwise be transmitted by the clock path and land ahead of the older step.
+The loop claims it only when it actually has something to send, so an empty poll - the
+common case once the clock path is doing the work - never locks the clock out.
+
+`test_ext_latency.c` also bounds MASTER MIDI clock jitter (the clock byte is written
+straight to UDR1 behind a UDRE busy-wait in the same ISR, so a fuller ring could stall it;
+measured 0.027 ms) and asserts that a 16-track step still delivers every track through the
+loop fallback without stalling the sequencer.
 
 ## Code Heritage & Contributors
 

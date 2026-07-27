@@ -32,6 +32,8 @@ void SetMux();
 void InitMidiNoteOff();
 void SendExtTrackNoteOff();
 void ServiceExtMidiNotes();
+void ServiceExtMidiNotesFromClock();
+void ExtTransmitStep(unsigned int noteOnMask, byte velocity, boolean noteOffDue);
 void MidiSendNoteOn(byte channel, byte note, byte velocity);
 void MidiSendNoteOff(byte channel, byte note);
 void SendAllNoteOff();
