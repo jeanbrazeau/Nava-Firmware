@@ -132,40 +132,41 @@ void CountPPQN() {
       }
 
       //Trig external instrument (TR-909 STYLE - polyphonic)---------
-      InitMidiNoteOff(); // Turn off any previously playing notes
-      boolean anyExtTriggered = FALSE;
+      // Only record what should sound; ServiceExtMidiNotes() transmits it from the
+      // main loop. Sending here costs up to 16 note-offs plus 16 note-ons = 96 bytes
+      // against Serial1's 64 byte TX buffer, and HardwareSerial busy-waits on UDRE
+      // with interrupts disabled, so a dense step blocks this function for ~30ms
+      // while a PPQN tick at 120 BPM is ~5.2ms - the MIDI clock and DIN sync
+      // generated a few lines above would collapse.
+      // A queued step that is overtaken before the loop drains it is coalesced away
+      // (SLAVE runs CountPPQN four times in a row from HandleClock): the older step's
+      // notes were about to be cut by this one anyway, and extPendingOff is sticky
+      // so the sounding notes still get their note-off.
+      byte extVelocity = HIGH_VEL;
+      unsigned int extOnMask = 0;
       for (byte track = 0; track < 16; track++) {
-        if (bitRead(pattern[ptrnBuffer].extTrack[track], curStep)) {
-          anyExtTriggered = TRUE;
-
-          // Get velocity (shared across all tracks)
-          byte velocity = HIGH_VEL;
+        if (bitRead(pattern[ptrnBuffer].extTrack[track], curStep)) bitSet(extOnMask, track);
+      }
 #if MIDI_EXT_CHANNEL
-          if (pattern[ptrnBuffer].velocity[EXT_INST][curStep] > 0) {
-            velocity = pattern[ptrnBuffer].velocity[EXT_INST][curStep];
-            velocity = map(velocity, instVelLow[EXT_INST], instVelHigh[EXT_INST],
-                          MIDI_LOW_VELOCITY, MIDI_HIGH_VELOCITY);
-          }
-          if (bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) {
-            velocity = MIDI_ACCENT_VELOCITY;
-          }
-#endif
-
-          // Send note-on for this track
-          byte noteToSend = pgm_read_byte(&EXT_TRACK_NOTES[track]);
-#if MIDI_EXT_CHANNEL
-          MidiSendNoteOn(seq.EXTchannel, noteToSend, velocity);
-#else
-          MidiSendNoteOn(seq.TXchannel, noteToSend, velocity);
-#endif
-
-          extTrackNoteOn[track] = TRUE;  // Track for note-off
+      if (extOnMask) {
+        // Velocity is shared across all tracks of the step
+        if (pattern[ptrnBuffer].velocity[EXT_INST][curStep] > 0) {
+          long scaled = map(pattern[ptrnBuffer].velocity[EXT_INST][curStep],
+                            instVelLow[EXT_INST], instVelHigh[EXT_INST],
+                            MIDI_LOW_VELOCITY, MIDI_HIGH_VELOCITY);
+          // A stored velocity outside the instVel table range maps past 127 and would
+          // wrap when the MIDI library masks to 7 bits, landing near the bottom instead
+          extVelocity = constrain(scaled, 1L, 127L);
+        }
+        if (bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) {
+          // Accent sits on top of the nominal high velocity, as the drum path does
+          extVelocity = MIDI_HIGH_VELOCITY + MIDI_ACCENT_VELOCITY;
         }
       }
-
-      if (anyExtTriggered) {
-        midiNoteOnActive = TRUE;
-      }
+#endif
+      extPendingVel = extVelocity;
+      extPendingOn = extOnMask;
+      extPendingOff = TRUE;
 
       //TRIG_HIGH;
       //ResetDoutTrig();

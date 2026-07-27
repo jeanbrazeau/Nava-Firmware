@@ -97,7 +97,7 @@ void InitPattern(Pattern* bufferToSet) {
     bufferToSet->velocity[RIDE][stp] = instVelHigh[RIDE];                                              //RIDE
     bufferToSet->velocity[TOTAL_ACC][stp] = HIGH_VEL;                                                  //TOTAL_ACC
     bufferToSet->velocity[TRIG_OUT][stp] = HIGH_VEL;                                                   //TRIG_OUT
-    bufferToSet->velocity[EXT_INST][stp] = HIGH_VEL;                                                   //EXT_INST
+    bufferToSet->velocity[EXT_INST][stp] = instVelHigh[EXT_INST];                                      //EXT_INST, must sit inside the instVel range the MIDI map expects
   }
   if (group.length) {
     prevShuf = bufferToSet->shuffle;

@@ -501,7 +501,10 @@ boolean extInstEditMode = FALSE;              // [TR-909 STYLE] Flag to indicate
 byte currentExtTrack = 0;                     // [TR-909 STYLE] Selected track (0-15)
 byte currentExtNote = 36;                     // [TR-909 STYLE] Display value (C2 = MIDI 36)
 boolean extInstButtonHandled = FALSE;         // [TR-909 STYLE] Flag to indicate when an EXT INST button press has been handled
-boolean extTrackNoteOn[16] = {FALSE};         // [TR-909 STYLE] Track note-on states for polyphonic note-off
+boolean extTrackNoteOn[16] = {FALSE};         // [TR-909 STYLE] Track note-on states for polyphonic note-off, owned by the main loop only
+unsigned int volatile extPendingOn = 0;       // [TR-909 STYLE] Tracks the clock wants sounding, drained by ServiceExtMidiNotes
+byte volatile extPendingVel = 0;              // [TR-909 STYLE] Velocity that goes with extPendingOn
+boolean volatile extPendingOff = FALSE;       // [TR-909 STYLE] Sticky request to silence the previous step before the queued one starts
 unsigned long extInstSplashUntil = 0;         // [TR-909 STYLE] Deadline of the non-blocking EXT INST splash (millis)
 byte previewNote = 0;                         // [TR-909 STYLE] Note currently held open by the preview
 boolean previewActive = FALSE;                // [TR-909 STYLE] TRUE while a preview note is sounding

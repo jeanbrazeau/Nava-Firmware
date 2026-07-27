@@ -7,15 +7,15 @@
  *   - MidiSendNoteOn/Off add +12 to the note (Midi.ino:36,43).
  *     EXT_TRACK_NOTES[track] = 36+track, so wire note = 48+track (0x30+track).
  *   - extTrack[] is polyphonic: multiple tracks can fire on the same step.
- *   - InitMidiNoteOff() turns off all active notes at the START of each step
- *     (before the new step's notes are sent), so note-offs arrive before note-ons
- *     of the next step.
- *   - MIDI_ACCENT_VELOCITY = 16 (known bug — pinned, not fixed, DL-015).
- *     Steps with TOTAL_ACC set get velocity 16 instead of the higher expected value.
+ *   - CountPPQN() only queues each step's ext notes; ServiceExtMidiNotes(), called
+ *     from loop(), sends the previous step's note-offs and then the new step's
+ *     note-ons, so note-offs still arrive before the next step's note-ons but both
+ *     are deferred by up to one main-loop period (~4.5ms).
+ *   - An accented step sends MIDI_HIGH_VELOCITY + MIDI_ACCENT_VELOCITY = 127.
  *
  * Test fixture (FX_PTRN_EXT):
  *   - extTrack[0] and extTrack[3] active on steps 0 and 8
- *   - TOTAL_ACC (bit 12) set on step 8 → velocity = 16 (pinned bug)
+ *   - TOTAL_ACC (bit 12) set on step 8 → velocity = 127
  *   - EXTchannel = 2
  *
  * Expected wire notes:
@@ -76,9 +76,9 @@ static void test_ext_note_on_polyphonic(nava_sim_t *ctx) {
 }
 
 static void test_ext_note_off_at_next_step(nava_sim_t *ctx) {
-    /* InitMidiNoteOff() fires at the start of every step, turning off notes
-     * from the previous step.  Note-offs for step-0 notes must appear before
-     * or at the start of step 1. */
+    /* Every step queues a note-off request that ServiceExtMidiNotes() drains from
+     * loop(), turning off notes from the previous step.  Note-offs for step-0 notes
+     * must appear before or at the start of step 1. */
     boot_wait_ready(ctx, BOOT_CYCLES);
     event_log_clear(&ctx->log);
 
@@ -106,10 +106,10 @@ static void test_ext_note_off_at_next_step(nava_sim_t *ctx) {
     (void)step1_start;
 }
 
-static void test_ext_accent_velocity_pinned_bug(nava_sim_t *ctx) {
-    /* Step 8 has TOTAL_ACC set → Clock.ino assigns velocity=MIDI_ACCENT_VELOCITY=16.
-     * This is a PINNED BUG (DL-015): the velocity should be higher but is 16.
-     * Test asserts the CURRENT behavior (16), not the desired behavior. */
+static void test_ext_accent_velocity(nava_sim_t *ctx) {
+    /* Step 8 has TOTAL_ACC set → Clock.ino assigns
+     * velocity = MIDI_HIGH_VELOCITY + MIDI_ACCENT_VELOCITY = 127, i.e. accent is
+     * louder than an unaccented step rather than quieter. */
     boot_wait_ready(ctx, BOOT_CYCLES);
     event_log_clear(&ctx->log);
 
@@ -128,20 +128,15 @@ static void test_ext_accent_velocity_pinned_bug(nava_sim_t *ctx) {
                                                              EXT_CH, WIRE_T0,
                                                              step8_lo, step8_hi);
     if (!accent_on) {
-        test_fail("ext/accent_bug",
+        test_fail("ext/accent",
                   "no note-on for track0 at step 8 (accent step)");
         return;
     }
 
-    /* PINNED BUG: velocity must be exactly FX_MIDI_ACCENT_VEL = 16 */
     if (accent_on->midi_note.velocity != FX_MIDI_ACCENT_VEL) {
-        test_fail("ext/accent_bug",
-                  "PINNED BUG changed: expected velocity=%u got %u "
-                  "(update pin if bug is fixed)",
+        test_fail("ext/accent",
+                  "accented step: expected velocity=%u got %u",
                   FX_MIDI_ACCENT_VEL, accent_on->midi_note.velocity);
-    } else {
-        printf("# PINNED BUG confirmed: MIDI_ACCENT_VELOCITY=%u "
-               "(expected 16 — quieter than normal)\n", FX_MIDI_ACCENT_VEL);
     }
 }
 
@@ -177,8 +172,8 @@ int main(void) {
                       test_ext_note_on_polyphonic, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_note_off_at_next_step",
                       test_ext_note_off_at_next_step, &FX_PTRN_EXT, 2, 1);
-    TEST_WITH_PATTERN("ext_inst_accent_velocity_pinned_bug",
-                      test_ext_accent_velocity_pinned_bug, &FX_PTRN_EXT, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_accent_velocity",
+                      test_ext_accent_velocity, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_no_drum_notes_in_midi",
                       test_ext_notes_only_midi_traffic, &FX_PTRN_EXT, 2, 1);
 

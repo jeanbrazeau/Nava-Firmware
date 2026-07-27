@@ -24,6 +24,8 @@ void ExtPreviewCheck();
 void SetMuxFlam();
 void SetMux();
 void InitMidiNoteOff();
+void SendExtTrackNoteOff();
+void ServiceExtMidiNotes();
 void MidiSendNoteOn(byte channel, byte note, byte velocity);
 void MidiSendNoteOff(byte channel, byte note);
 void SendAllNoteOff();

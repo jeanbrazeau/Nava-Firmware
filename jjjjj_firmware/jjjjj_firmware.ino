@@ -15,6 +15,7 @@
 //                  somehow requires the wire.h library to be present, so i modded mine with the 130 byte buffer length. old lib sill works without modification
 //                  lcd update down from 19ms to 5ms (1,3ms to 0,3ms in shuffle/flam update). reduces flickering
 //#include <Wire.h>                // [zabox] [1.028] (wire.h/twi.h 130 byte buffer length)
+#include <util/atomic.h>
 #include "features.h"
 #include "define.h"
 #include "nava_strings.h"
@@ -163,6 +164,7 @@ void loop() {
   SetTrigPeriod(TRIG_LENGTH);
   InitMidiRealTime();
   MIDI.read();
+  ServiceExtMidiNotes();  // right after MIDI.read: under SLAVE sync CountPPQN runs inside it, so the queued step goes out with no added delay
   //SetMux();//!!!! if SetMUX() loop there is noise on HT out and a less noise on HH noise too !!!!
   ButtonGet();
   EncGet();

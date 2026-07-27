@@ -33,10 +33,10 @@
 
 /* MIDI note constants for EXT_INST.
  * EXT_TRACK_NOTES[track] = 36+track (wire = note+12 = 48..63 = 0x30..0x3F).
- * MIDI_ACCENT_VELOCITY = 16 (pinned bug, DL-015). */
+ * An accented step sends MIDI_HIGH_VELOCITY + MIDI_ACCENT_VELOCITY = 111 + 16. */
 #define FX_EXT_WIRE_BASE    48u   /* 36 + 12 transpose */
 #define FX_EXT_WIRE(track)  ((uint8_t)(FX_EXT_WIRE_BASE + (track)))
-#define FX_MIDI_ACCENT_VEL  16u   /* pinned bug: quieter than expected */
+#define FX_MIDI_ACCENT_VEL  127u  /* accent adds on top of the nominal high velocity */
 
 /* Pattern fixture data structure (mirrors firmware's Pattern struct fields
  * needed to build EEPROM images and inject via I2C EEPROM seed). */

@@ -12,8 +12,8 @@ void InitMidiRealTime() {
   midiContinue = LOW;
 }
 
-//intialize note off when stop or patternChanged [TR-909 STYLE]
-void InitMidiNoteOff() {
+//send note off for every external track currently sounding [TR-909 STYLE]
+void SendExtTrackNoteOff() {
   if (midiNoteOnActive) {
     // Turn off all active external track notes
     for (byte track = 0; track < 16; track++) {
@@ -29,6 +29,55 @@ void InitMidiNoteOff() {
     }
     midiNoteOnActive = FALSE;
   }
+}
+
+//intialize note off when stop or patternChanged [TR-909 STYLE]
+void InitMidiNoteOff() {
+  // Stopping or changing pattern also cancels a step CountPPQN queued but the loop
+  // has not transmitted yet, otherwise those notes would sound after the stop
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    extPendingOn = 0;
+    extPendingOff = FALSE;
+  }
+  SendExtTrackNoteOff();
+}
+
+//drain the external instrument notes queued by CountPPQN [TR-909 STYLE]
+// Runs from loop(), so transmission cost lands where it can be absorbed rather than
+// inside the clock. The queue is latched and cleared under one short critical section;
+// MIDI transmission happens outside it. A step queued between the latch and the sends
+// simply waits for the next drain, which is why the note-off pass uses the latched
+// flag instead of InitMidiNoteOff() - that would discard the newer step.
+void ServiceExtMidiNotes() {
+  unsigned int noteOnMask;
+  byte velocity;
+  boolean noteOffDue;
+
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    noteOnMask = extPendingOn;
+    velocity = extPendingVel;
+    noteOffDue = extPendingOff;
+    extPendingOn = 0;
+    extPendingOff = FALSE;
+  }
+
+  // The previous step has to be silenced before the new one starts
+  if (noteOffDue) SendExtTrackNoteOff();
+
+  if (!noteOnMask) return;
+
+  for (byte track = 0; track < 16; track++) {
+    if (bitRead(noteOnMask, track)) {
+      byte noteToSend = pgm_read_byte(&EXT_TRACK_NOTES[track]);
+#if MIDI_EXT_CHANNEL
+      MidiSendNoteOn(seq.EXTchannel, noteToSend, velocity);
+#else
+      MidiSendNoteOn(seq.TXchannel, noteToSend, velocity);
+#endif
+      extTrackNoteOn[track] = TRUE;  // Track for note-off
+    }
+  }
+  midiNoteOnActive = TRUE;
 }
 
 //Send note OFF
