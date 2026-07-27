@@ -198,7 +198,9 @@ static void test_ext_step_programming_via_panel(nava_sim_t *ctx) {
      * and so nothing about the splash overlaps the programming press. */
     nava_sim_run_cycles(ctx, 16000000ULL);   /* 1s at 16MHz */
     assert_lcd_contains("ext/panel/edit_mode_entered", ctx, 0, "ptr len scl ins");
-    assert_lcd_contains("ext/panel/track_shown", ctx, 1, "T");
+    /* "T 1", not "T": LCD.ino pads a single digit, and a bare T would also match the
+     * LT/MT/HT/EXT instrument labels, so it would pass with the mode not entered. */
+    assert_lcd_contains("ext/panel/track_shown", ctx, 1, "T 1");
 
     /* Program step PROG_STEP on the selected track (track 0) with a bare step press. */
     fp_press_step(ctx, PROG_STEP);

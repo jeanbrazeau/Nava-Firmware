@@ -27,8 +27,13 @@ void ExtPreviewOn(byte note, unsigned long holdMs)
   // seq.EXTchannel from EXT_TRACK_NOTES, so if the running pattern uses this track
   // its per-step SendExtTrackNoteOff() would cut the preview and the preview's
   // note-off would truncate a sequenced note. Decline the preview instead - the
-  // sequencer is already sounding the pitch the user wanted to hear.
-  if (isRunning && pattern[ptrnBuffer].extTrack[currentExtTrack]) return;
+  // sequencer is already sounding the pitch the user wanted to hear. Declining still
+  // has to close any preview already open, or the previous track's note would keep
+  // sounding under the newly selected track's label.
+  if (isRunning && pattern[ptrnBuffer].extTrack[currentExtTrack]) {
+    ExtPreviewOff();
+    return;
+  }
 
   if (previewActive) ExtPreviewOff();
 #if MIDI_EXT_CHANNEL
@@ -111,7 +116,7 @@ void ExtInstUpdate()
       extInstButtonHandled = TRUE;
 
       for (byte i = 0; i < NBR_STEP_BTN; i++) {
-        if (bitRead(currentButtonState, i) && !stepBtn[i].prevState) {
+        if (bitRead(currentButtonState, i) && !bitRead(prevExtStepState, i)) {
           currentExtTrack = i;
           currentExtNote = pgm_read_byte(&EXT_TRACK_NOTES[i]);
 
@@ -120,6 +125,8 @@ void ExtInstUpdate()
           needLcdUpdate = TRUE;
           stepBtn[i].justPressed = FALSE;
         }
+        // Kept accurate for InstValueGet, which owns this array again once the mode
+        // exits; the edge test above no longer reads it.
         stepBtn[i].prevState = bitRead(currentButtonState, i);
       }
     }
@@ -138,10 +145,11 @@ void ExtInstUpdate()
           if (bitRead(pattern[ptrnBuffer].extTrack[currentExtTrack], step)) {
             bitClear(pattern[ptrnBuffer].extTrack[currentExtTrack], step);
           } else {
-            bitSet(pattern[ptrnBuffer].extTrack[currentExtTrack], step);
-
-            // Short audition, retired by ExtPreviewCheck() rather than a delay()
+            // Audition before the bitSet, not after: ExtPreviewOn() declines when the
+            // running pattern already uses this track, and setting the bit first would
+            // make that true of every step the user adds.
             ExtPreviewOn(currentExtNote, 50);
+            bitSet(pattern[ptrnBuffer].extTrack[currentExtTrack], step);
           }
           patternWasEdited = TRUE;
           needLcdUpdate = TRUE;

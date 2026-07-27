@@ -16,11 +16,14 @@ void LcdUpdate()
   // The deadline is tested by signed elapsed time and disarmed once it passes: an
   // absolute millis() < deadline test reads a stale deadline as still in the future
   // across the 49.7 day wrap and would freeze the display for up to 800 seconds.
-  static boolean splashPainted = FALSE;
+  // Keyed on the deadline rather than a painted flag: toggling the mode twice inside
+  // the splash window re-arms with a new deadline, and a flag would suppress the
+  // repaint and leave the panel showing the previous toggle's text.
+  static unsigned long paintedDeadline = 0;
   if (extInstSplashArmed) {
     if ((long)(millis() - extInstSplashUntil) < 0) {
-      if (!splashPainted) {
-        splashPainted = TRUE;
+      if (paintedDeadline != extInstSplashUntil) {
+        paintedDeadline = extInstSplashUntil;
         lcd.clear();
         lcd.setCursor(0,0);
         if (extInstEditMode) {
@@ -39,7 +42,6 @@ void LcdUpdate()
       return;
     }
     extInstSplashArmed = FALSE;
-    splashPainted = FALSE;
     needLcdUpdate = TRUE;
   }
 

@@ -85,11 +85,11 @@ reading the code, not exercised; **HW** — requires hardware.
 
 | # | Feature | File:Line | Status | Notes |
 |---|---------|-----------|--------|-------|
-| 1 | Mode entry/exit | Button.ino:59-76, key.ino:61-66 | READ | SHIFT+GUIDE toggles, INST+GUIDE exits; both route through `ExitExtInstEditMode()` |
+| 1 | Mode entry/exit | Button.ino:59-77, key.ino:98-104 | READ | SHIFT+GUIDE toggles, INST+GUIDE exits; both route through `ExitExtInstEditMode()` |
 | 2 | Mode-state teardown | key.ino:9-19, Seq.ino:130,149,166,206,223 | READ | TRK, PTRN, TAP and config entry clear the flag and restore `curInst = BD`. MUTE does neither by design — see below |
-| 3 | Track selection (1-16) | key.ino:79-95 | READ | INST + step selects track, preview sustains until step release |
-| 4 | Step programming | key.ino:133-150 | TESTED | `ext_inst_step_programming_via_panel` drives the panel and asserts the resulting note. Toggles bits in `extTrack[currentExtTrack]`, 50ms audition on add only |
-| 5 | Preview note ownership | key.ino:22-52, 99 | READ | One note at a time; note-off on release, on timeout, and on leaving the mode |
+| 3 | Track selection (1-16) | key.ino:114-132 | READ | INST + step selects track, preview sustains until step release. Edge-detected on `prevExtStepState`, so re-tapping the same track with INST still held selects it again |
+| 4 | Step programming | key.ino:140-158 | TESTED | `ext_inst_step_programming_via_panel` drives the panel and asserts the resulting note. Toggles bits in `extTrack[currentExtTrack]`; adding a step auditions for 50ms unless the running pattern already uses the track |
+| 5 | Preview note ownership | key.ino:21-73, 95-96, 136 | READ | One note at a time. Four release paths: step release (136), the timeout in `ExtPreviewCheck()` (69-73), the context guard for modes that leave PTRN_STEP without clearing the flag (95-96), and `ExitExtInstEditMode()` (16) |
 | 6 | Polyphonic note-on | Clock.ino:134-169, Midi.ino:51-81 | TESTED | `ext_inst_polyphonic_note_on` |
 | 7 | Note-off at next step | Midi.ino:16-32 | TESTED | `ext_inst_note_off_at_next_step` |
 | 8 | Accent velocity | Clock.ino:159-163 | TESTED | `ext_inst_accent_velocity` asserts accent is louder, not quieter |
@@ -98,7 +98,7 @@ reading the code, not exercised; **HW** — requires hardware.
 | 11 | Step buttons not shared with pattern select | Seq.ino:525 | READ | Handler stands down while ext edit mode owns the step buttons |
 | 12 | LED feedback | Led.ino:38-46, 123-135 | READ | GUIDE LED blinks in mode; step LEDs show the selected track, scoped to PTRN_STEP |
 | 13 | LCD track display | LCD.ino:247-250 | READ | Shows "T 1".."T16" in place of the instrument name |
-| 14 | Non-blocking splash | Button.ino:71-76, LCD.ino:14-38 | READ | 800ms deadline, painted once, one forced redraw on expiry |
+| 14 | Non-blocking splash | Button.ino:71-77, LCD.ino:14-46 | READ | 800ms deadline, painted once per deadline so a re-arm inside the window repaints, one forced redraw on expiry |
 | 15 | EEPROM save | EEprom.ino:87-98 | READ | 16 extTrack words (32 bytes) plus page padding |
 | 16 | EEPROM load | EEprom.ino:156-163, 220-227 | READ | Matching read for pattern and pattern-bank paths |
 | 17 | Pattern copy | SeqFunc.ino:220-223 | READ | |
@@ -150,7 +150,7 @@ the rows still marked READ.
 5. **Queue depth:** one step. A step overtaken before the loop drains it is coalesced away; this is intentional, since its notes were about to be cut by the newer step anyway and the note-off request is sticky
 6. **External notes inherit main-loop stalls that drum triggers do not.** Triggers fire from the clock ISR; external MIDI is queued there and transmitted from `loop()`. Anything that blocks the loop therefore drops queued external steps while the drums stay in time — a pattern bank load (Seq.ino:531) or a bank save (Seq.ino:1108, tens of `delay(DELAY_WR)` page writes) are the realistic cases. Accepted: the alternative is transmitting from the ISR, which is the defect this design replaced
 7. **A pattern change drops one in-flight external step.** `InitMidiNoteOff()` discards the queue on every `selectedPatternChanged`, including SYNC mode, so selecting a pattern mid-bar loses at most one step of external notes. Accepted: the discard is what stops notes arriving after a stop or sounding twice
-8. **No preview while the sequencer owns the track.** `ExtPreviewOn()` declines when the running pattern has any step programmed on the selected track, because preview and sequencer share the note and channel with no ownership arbitration and would cut each other off. The pitch is audible from the sequencer anyway
+8. **No preview while the sequencer owns the track.** `ExtPreviewOn()` declines when the running pattern has any step programmed on the selected track, because preview and sequencer share the note and channel with no ownership arbitration and would cut each other off. The pitch is audible from the sequencer anyway. This applies to track selection and to the on-add audition alike; the audition is issued before the bit is set, so adding the first step to an empty track while running still sounds, and only later additions to that track are silent
 
 ---
 

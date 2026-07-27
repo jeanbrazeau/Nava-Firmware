@@ -380,7 +380,9 @@ name for a given MIDI number depends on the octave convention.
 ### Note Entry
 - INST + step button selects the track, sustaining a preview note until release
 - Step button alone toggles that step in `pattern[ptrnBuffer].extTrack[currentExtTrack]`
-  and auditions the note for 50ms
+  and auditions the note for 50ms when adding. The audition is issued before the bit is
+  set, because `ExtPreviewOn()` declines a preview the running sequencer would collide
+  with and setting the bit first would make every addition look like a collision
 - Previews are owned by `ExtPreviewOn`/`ExtPreviewOff`/`ExtPreviewCheck` in key.ino so
   that a preview is never left sounding and never held open by `delay()`
 
