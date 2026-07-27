@@ -1,0 +1,1149 @@
+{
+  "summary": "Interactive planning skill — architect/developer/QR/TW phase sequence",
+  "agentCount": 16,
+  "logs": [
+    "PLANNER: Starting intake-gather (orient + plan scouts)",
+    "DURABLE_EVENT: phase_started intake-gather",
+    "PLANNER: dispatching 3 scout(s)",
+    "DURABLE_EVENT: subagent_spawned scout intake-gather",
+    "DURABLE_EVENT: subagent_completed scout intake-gather",
+    "DURABLE_EVENT: phase_completed intake-gather",
+    "PLANNER: Starting intake-deepen (default-ask dialogue loop)",
+    "DURABLE_EVENT: phase_started intake-deepen",
+    "DURABLE_EVENT: phase_completed intake-deepen",
+    "PLANNER: Starting intake-summarize (freeze brief)",
+    "DURABLE_EVENT: phase_started intake-summarize",
+    "DURABLE_EVENT: phase_completed intake-summarize",
+    "PLANNER: Starting plan-design-work (architect role)",
+    "DURABLE_EVENT: phase_started plan-design-work",
+    "DURABLE_EVENT: subagent_spawned architect plan-design-work",
+    "DURABLE_EVENT: subagent_completed architect plan-design-work",
+    "DURABLE_EVENT: phase_completed plan-design-work",
+    "PLANNER: Starting plan-design-qr (quality-reviewer role)",
+    "DURABLE_EVENT: phase_started plan-design-qr",
+    "DURABLE_EVENT: subagent_spawned quality-reviewer plan-design-qr",
+    "PLANNER: plan-design-qr FAIL (in-place fix) — re-dispatching architect",
+    "DURABLE_EVENT: subagent_spawned architect plan-design-qr-fix",
+    "DURABLE_EVENT: subagent_completed architect plan-design-qr-fix",
+    "PLANNER: plan-design-qr-retry verdict — PASS",
+    "DURABLE_EVENT: subagent_completed quality-reviewer plan-design-qr",
+    "DURABLE_EVENT: phase_completed plan-design-qr",
+    "PLANNER: Starting plan-code-work (developer role)",
+    "DURABLE_EVENT: phase_started plan-code-work",
+    "DURABLE_EVENT: subagent_spawned developer plan-code-work",
+    "DURABLE_EVENT: subagent_completed developer plan-code-work",
+    "DURABLE_EVENT: phase_completed plan-code-work",
+    "PLANNER: Starting plan-code-qr (quality-reviewer role)",
+    "DURABLE_EVENT: phase_started plan-code-qr",
+    "DURABLE_EVENT: subagent_spawned quality-reviewer plan-code-qr",
+    "DURABLE_EVENT: subagent_completed quality-reviewer plan-code-qr",
+    "DURABLE_EVENT: phase_completed plan-code-qr",
+    "PLANNER: Starting plan-docs-work (technical-writer role)",
+    "DURABLE_EVENT: phase_started plan-docs-work",
+    "DURABLE_EVENT: subagent_spawned technical-writer plan-docs-work",
+    "DURABLE_EVENT: subagent_completed technical-writer plan-docs-work",
+    "DURABLE_EVENT: phase_completed plan-docs-work",
+    "PLANNER: Starting plan-docs-qr (quality-reviewer role)",
+    "DURABLE_EVENT: phase_started plan-docs-qr",
+    "DURABLE_EVENT: subagent_spawned quality-reviewer plan-docs-qr",
+    "PLANNER: plan-docs-qr FAIL (in-place fix) — re-dispatching technical-writer",
+    "DURABLE_EVENT: subagent_spawned technical-writer plan-docs-qr-fix",
+    "DURABLE_EVENT: subagent_completed technical-writer plan-docs-qr-fix",
+    "PLANNER: plan-docs-qr-retry verdict — PASS",
+    "DURABLE_EVENT: subagent_completed quality-reviewer plan-docs-qr",
+    "DURABLE_EVENT: phase_completed plan-docs-qr",
+    "PLANNER: All phases complete — PLAN APPROVED",
+    "PLANNER: plan artifact built — 6 milestones, 5 waves"
+  ],
+  "result": {
+    "plan": {
+      "overview": {
+        "problem": "A ~2,900 LOC simavr-based emulation/test harness already exists under /Users/admin/offline/Nava-Firmware/sim/ (untracked, authored in one session, never built or executed). It is blocked from building by two concrete defects plus one unverified alignment concern: (1) simavr.version pins a fabricated commit hash (a16e8d31c4dc2b0d7a66c27f8f7f5e1a2b3c4d5e, sequential-hex fake) which hard-fails setup_simavr.sh under `set -e`; (2) the keg-only Homebrew libelf dependency that both simavr's sim_elf.c and the harness `-lelf` link require is absent and, even once installed, not on default search paths; (3) the harness core calls avr_make_mcu_by_name(\"atmega1284\") with an inline comment asserting that is simavr's registry name for the ATmega1284P core, while the built ELF reports mmcu atmega1284p — these two identifiers (simavr's internal core-registry name vs the ELF's embedded mmcu string) are independent and need not match, so the correct argument must be determined empirically at build time, not assumed. The 13-case regression suite (Timer1 PPQN clock, 2ms Timer2 trigger-off, Timer3 flam, shuffle offsets, bar-end pattern swap, EXT_INST MIDI note on/off, SLAVE MIDI sync) has therefore never run and its green/red state is unknown.",
+        "approach": "Do NOT redesign — the scaffold is verified faithful to the firmware registers and matches the request spec point-for-point. Instead: unblock, build, execute, triage, and harden it. First repin simavr.version to a real build-verified commit (upstream HEAD 6a2c268c2e50a4ef0967f8a7bb281df9eed6c2bb, fall back to tag v1.7), plumb keg-only libelf paths into both setup_simavr.sh and sim/Makefile, and empirically confirm the avr_make_mcu_by_name argument against the linked simavr core registry (keeping the existing \"atmega1284\" + comment unless a probe proves it returns NULL). Rebuild libsimavr.a + hd44780.o via the vendored submodule, verify a clean `pio run -e nava_sysex` through the src symlink, then build the harness and drive `make -C sim test`. Because the suite has never executed, carry an explicit per-test triage loop that classifies every failure (harness-model bug / fixture bug / timing-window bug / genuine firmware finding) before touching code. Finally repair README drift. All system-mutating steps (brew install, submodule fetch, git commit) are consent-gated.",
+        "goal": "Green (or fully-triaged and explained) 13-case regression suite runnable via `make -C sim test`, a reproducible one-command build path, and documentation that matches the on-disk reality."
+      },
+      "planning_context": {
+        "decisions": [
+          {
+            "id": "DL-001",
+            "decision": "Task shape is finish/validate/harden the existing sim/ scaffold, not greenfield redesign nor documentation-only.",
+            "reasoning": "The on-disk scaffold (harness/ 7 models + tests/ 4 suites + fixtures/ + scripts/) implements every element of the request spec (74HC165 chain, 74HC595 LED/trig word, MCP4822 DAC, PORTA mux, HD44780, 31250-baud MIDI, timing regression tests) and its register-level constants are already reconciled against define.h/Clock.ino/Mux.ino. Rewriting discards ~2,900 verified LOC; doc-only leaves it unbuilt. Evidence is near-conclusive that completion is the correct shape.",
+            "refs": [
+              "Open Q1"
+            ]
+          },
+          {
+            "id": "DL-002",
+            "decision": "Replace the fabricated simavr.version pin with a real, build-verified commit: try upstream HEAD 6a2c268c2e50a4ef0967f8a7bb281df9eed6c2bb, build-verify on macOS/arm64, and write whatever hash actually builds; fall back to release tag v1.7 if HEAD fails.",
+            "reasoning": "The current pin a16e8d31...a2b3c4d5e is sequential-hex fake; setup_simavr.sh does `git checkout \"$PINNED_HASH\"` under `set -euo pipefail` (line 33) and hard-fails. Any buildable pin satisfies the intent of deterministic vendoring; empirical build verification resolves HEAD-vs-tag.",
+            "refs": [
+              "Open Q4"
+            ]
+          },
+          {
+            "id": "DL-003",
+            "decision": "Keep the vendored simavr git submodule (sim/simavr, currently empty) rather than `brew install simavr`.",
+            "reasoning": "The harness compiles simavr's examples/parts/hd44780.c directly (setup_simavr.sh lines 59-63); the brew bottle does not reliably ship those example part sources and loses commit-pin control. The request's 'installable via brew' was a suggestion superseded by the scaffold design.",
+            "refs": []
+          },
+          {
+            "id": "DL-004",
+            "decision": "Plumb keg-only libelf into BOTH build scripts: `brew install libelf`, then add its include path (-I/opt/homebrew/opt/libelf/include and .../include/libelf) and lib path (-L/opt/homebrew/opt/libelf/lib) to setup_simavr.sh (simavr make + hd44780 compile) and to sim/Makefile CFLAGS/LDFLAGS.",
+            "reasoning": "Verified absent: `brew list libelf` empty, /opt/homebrew/opt/libelf missing. libelf is keg-only so it is not on default clang search paths even after install. Both simavr's sim_elf.c compile and the harness `-lelf` link (Makefile line 25) fail without explicit paths.",
+            "refs": []
+          },
+          {
+            "id": "DL-005",
+            "decision": "Do NOT pre-commit to changing avr_make_mcu_by_name(\"atmega1284\"). Treat the argument as an empirically-gated value: at build time probe the linked simavr core registry with both \"atmega1284\" and \"atmega1284p\", and keep whichever returns a non-NULL avr for this ELF. Change the string ONLY if the probe proves the current \"atmega1284\" fails.",
+            "reasoning": "nava_sim.c line 158 carries an existing comment — `/* simavr names the ATmega1284P core \"atmega1284\" */` — asserting the current string is correct. simavr's internal core-registry name and the ELF's embedded mmcu string are independent identifiers that do not need to match each other. Assuming they must match (and blindly switching to \"atmega1284p\") could make avr_make_mcu_by_name return NULL, aborting nava_sim_create and breaking all 13 test binaries — the opposite of the goal. An empirical probe is the only safe way to resolve which name the linked simavr build actually registers.",
+            "refs": []
+          },
+          {
+            "id": "DL-006",
+            "decision": "Use/rebuild the existing firmware.elf via `pio run -e nava_sysex` through the src->jjjjj_firmware symlink; do NOT run migrate_to_platformio.sh.",
+            "reasoning": "ELF present and valid (64,192 bytes, built today). The src symlink resolves the custom SPI/WireN/MemoryFree libs without lib_deps. Migration is unnecessary and risks breaking a working build. A rebuild is still required because the working tree has dirty jjjjj_firmware/ edits that may diverge from the cached ELF.",
+            "refs": []
+          },
+          {
+            "id": "DL-007",
+            "decision": "Treat scripts/gen_eeprom.py (Python 2) as legacy-optional; the live fixture path is the C fixtures (fixtures/patterns.c + the harness EEPROM seed).",
+            "reasoning": "The test framework seeds EEPROM in-process via nava_sim_seed_eeprom and the test_entry_t fixture fields; it does not depend on a pre-generated eeprom_default.bin. Reviving Python 2 tooling adds cost with no benefit. README currently over-states this path and references a nonexistent eeprom_default.bin — corrected in M-005.",
+            "refs": []
+          },
+          {
+            "id": "DL-008",
+            "decision": "Include an explicit triage/debug phase; do NOT assume 13/13 green on first run. Each failure is classified before any fix: harness-model bug vs fixture bug vs timing-window bug vs genuine firmware finding.",
+            "reasoning": "The suite has never executed. Boot-cycle budgets (BOOT_CYCLES=8,000,000), debounce windows, event-log capacity, and simavr mega1284 TWI/USART1 modelling quirks may surface real mismatches distinct from firmware behavior. 'Complete-looking code' is not 'passing code'.",
+            "refs": [
+              "Open Q3"
+            ]
+          },
+          {
+            "id": "DL-009",
+            "decision": "Preserve the two deliberately pinned firmware bugs (EXT accent velocity=16; shuffle[-1] OOB, all fixtures shuffle>=1) and the MUX_ATTR non-assertion convention; harness edits must not break the verified register anchors.",
+            "reasoning": "These are documented scaffold conventions encoding known firmware behavior. Changing them silently would turn regression tests into false alarms. The register anchors (CS pins PB3/PB4/PD4/PD5, DAC 0x1000|(vel>>5), muxAddr {0x00,0x80,0x40,0xC0,0x20}, 31250 baud, +12 note offset, 0xF8 UDR1 bypass) are fixed and verified.",
+            "refs": []
+          },
+          {
+            "id": "DL-010",
+            "decision": "Gate all system-mutating actions on execution-time user consent: `brew install libelf`, `git submodule update --init`, and any `git commit` of sim/, .gitmodules, or simavr.version. Submodule init is a consent-gated pre-step performed outside setup_simavr.sh, not embedded in it.",
+            "reasoning": "The repo has unrelated dirty jjjjj_firmware/ edits; committing must not entangle them. Network fetch and package install mutate the host. setup_simavr.sh must not silently trigger an unauthorized `git submodule update --init` on invocation; it should assume the submodule is already populated. Consent policy per environment rules and Open Q2.",
+            "refs": [
+              "Open Q2"
+            ]
+          }
+        ],
+        "rejected_alternatives": [
+          {
+            "alternative": "Greenfield redesign of the harness.",
+            "reason": "Discards ~2,900 LOC already verified faithful to the firmware registers and matching the request spec exactly; no evidence the existing models are wrong.",
+            "decision_refs": [
+              "DL-001"
+            ]
+          },
+          {
+            "alternative": "Documentation-only deliverable.",
+            "reason": "Leaves the harness unbuilt and the regression suite unexecuted — fails the request's core goal of scripted regression tests.",
+            "decision_refs": [
+              "DL-001"
+            ]
+          },
+          {
+            "alternative": "brew install simavr instead of the vendored submodule.",
+            "reason": "The bottle does not reliably ship examples/parts/hd44780.c which the harness compiles; loses commit-pin determinism.",
+            "decision_refs": [
+              "DL-003"
+            ]
+          },
+          {
+            "alternative": "brew install libelf without explicit -I/-L plumbing.",
+            "reason": "libelf is keg-only; not on default search paths, so both the simavr build and harness link still fail.",
+            "decision_refs": [
+              "DL-004"
+            ]
+          },
+          {
+            "alternative": "Run migrate_to_platformio.sh / apply the lib/ layout migration.",
+            "reason": "Firmware already builds as-is via the src symlink; migration is unnecessary and risks breaking a working build.",
+            "decision_refs": [
+              "DL-006"
+            ]
+          },
+          {
+            "alternative": "Pre-commit to changing avr_make_mcu_by_name to \"atmega1284p\" (assume it must match the ELF mmcu).",
+            "reason": "The existing code comment asserts \"atmega1284\" is simavr's registry name; the registry name and the ELF mmcu string are independent. Blindly switching risks a NULL return that aborts nava_sim_create and breaks all 13 tests. Superseded by empirical gating.",
+            "decision_refs": [
+              "DL-005"
+            ]
+          },
+          {
+            "alternative": "Revive gen_eeprom.py (Python 2) for fixtures.",
+            "reason": "Superseded by the in-process C EEPROM seed; adds a stale toolchain dependency.",
+            "decision_refs": [
+              "DL-007"
+            ]
+          },
+          {
+            "alternative": "Assume the suite passes and skip triage.",
+            "reason": "The suite has never run; first-execution mismatches in boot budgets, debounce, and TWI/USART modelling are likely.",
+            "decision_refs": [
+              "DL-008"
+            ]
+          }
+        ],
+        "constraints": [
+          {
+            "id": "C-001",
+            "type": "MUST",
+            "text": "simavr.version MUST hold a real commit that build-verifies libsimavr.a on macOS arm64 with Apple clang before setup_simavr.sh is declared working."
+          },
+          {
+            "id": "C-002",
+            "type": "MUST",
+            "text": "libelf include and lib paths MUST be added to both setup_simavr.sh and sim/Makefile; the keg-only default-path failure MUST be resolved."
+          },
+          {
+            "id": "C-003",
+            "type": "MUST",
+            "text": "The avr_make_mcu_by_name argument MUST be the string that returns a non-NULL avr for the linked simavr core; verify empirically at build time (probe both \"atmega1284\" and \"atmega1284p\"). Do NOT assume it must equal the ELF's mmcu string — simavr's core-registry name and the ELF mmcu are independent identifiers. Keep the current \"atmega1284\" and its comment unless the probe proves it returns NULL."
+          },
+          {
+            "id": "C-004",
+            "type": "MUST",
+            "text": "Every one of the 13 regression cases MUST end in one of {PASS, triaged-and-explained}; no silently-skipped or unclassified failures."
+          },
+          {
+            "id": "C-005",
+            "type": "MUST",
+            "text": "Timer-math windows MUST remain cycle-exact against define.h/timer.ino (OCR1A=10416 -> PPQN 83336; step 2,000,064; Timer2 32,000; flam[0] 320,000). Widening a tolerance MUST be justified as ISR-entry jitter, not fudged over a real mismatch."
+          },
+          {
+            "id": "C-006",
+            "type": "MUST-NOT",
+            "text": "Harness edits MUST NOT break the verified register anchors (CS pins, MSB-first byte orders, DAC channel/velocity encoding, muxAddr table, INH pins, DIN clk PA1, TRIG_OUT PA2, 31250 baud, +12 note offset, running status, 0xF8 UDR1 bypass)."
+          },
+          {
+            "id": "C-007",
+            "type": "MUST-NOT",
+            "text": "MUST NOT commit sim/, .gitmodules, or simavr.version, run brew install, or init the submodule without explicit user consent; MUST NOT entangle the unrelated dirty jjjjj_firmware/ edits into any sim commit; setup_simavr.sh MUST NOT embed an unconditional `git submodule update --init`."
+          },
+          {
+            "id": "C-008",
+            "type": "SHOULD",
+            "text": "The two pinned firmware bugs (accent velocity=16, shuffle[-1] OOB with all fixtures shuffle>=1) SHOULD remain pinned as expected behavior unless the user directs firmware fixes."
+          },
+          {
+            "id": "C-009",
+            "type": "SHOULD",
+            "text": "The firmware ELF SHOULD be rebuilt via `pio run -e nava_sysex` (not reused blindly) because the working tree has dirty jjjjj_firmware/ edits that may diverge from the cached 64KB ELF."
+          }
+        ],
+        "risks": [
+          {
+            "id": "R-001",
+            "risk": "simavr HEAD fails to build on macOS arm64 with Apple clang.",
+            "mitigation": "DL-002 fallback to tag v1.7; capture build log."
+          },
+          {
+            "id": "R-002",
+            "risk": "simavr's mega1284 core inadequately models Timer1/2/3 CTC.",
+            "mitigation": "Triage loop classifies as simavr-model limitation; quarantine with rationale."
+          },
+          {
+            "id": "R-003",
+            "risk": "BOOT_CYCLES=8,000,000 too short for firmware to reach idle.",
+            "mitigation": "boot_wait_ready predicate on LCD content; extend with evidence."
+          },
+          {
+            "id": "R-004",
+            "risk": "TWI EEPROM state machine mis-handshakes simavr TWI IRQ.",
+            "mitigation": "Isolate with standalone EEPROM read smoke check; NAVA_TWI_DEBUG trace."
+          },
+          {
+            "id": "R-005",
+            "risk": "Rebuilt ELF differs from cached 64KB ELF.",
+            "mitigation": "Rebuild first, tests key off observable events not addresses."
+          },
+          {
+            "id": "R-006",
+            "risk": "Homebrew or simavr remote unreachable.",
+            "mitigation": "ls-remote succeeded this pass; escalate BLOCKED if unreachable."
+          },
+          {
+            "id": "R-007",
+            "risk": "MCU-name probe is ambiguous.",
+            "mitigation": "Prefer name yielding non-NULL + no core-mismatch warning; keep \"atmega1284\" on tie."
+          }
+        ]
+      },
+      "invisible_knowledge": {
+        "system": "This is a native (arm64, Apple clang) simavr test harness that loads the AVR firmware ELF and drives it deterministically by cycle count. Tests boot the firmware for a fixed cycle budget, inject front-panel button presses and MIDI/EEPROM stimulus via simavr IRQs, run a bounded number of cycles, then assert against a cycle-stamped event log. The firmware uses an EXTERNAL I2C EEPROM (24LC1024 at bus addresses 0x50 lower / 0x54 upper), not the AVR's internal EEPROM — so the harness models a TWI device that must be seeded BEFORE the first boot-time LoadSeqSetup read. Observable outputs are captured via the 74HC595 LED/16-bit trigger word, the MCP4822 DAC velocity CV, PORTA[7:5] mux attribution, the HD44780 text mirror, and USART1 MIDI TX.",
+        "invariants": [
+          "The avr_make_mcu_by_name argument must be the name the LINKED simavr build registers for the ATmega1284P core (determined empirically) — independent of the ELF mmcu string.",
+          "EEPROM must be seeded before nava_sim_run_cycles so the boot-time LoadSeqSetup read returns bpm=120/MASTER.",
+          "Timer math is derived with truncating integer division: OCR1A=(16000000/8)/FREQUENCY=10416; every period inherits that truncation.",
+          "Register-level device encodings are fixed: CS pins PB3/PB4/PD4/PD5, MSB-first shift order, DAC word 0x1000|(velocity>>5), muxAddr {0x00,0x80,0x40,0xC0,0x20}, 31250 baud, +12 MIDI note offset, running-status handling, 0xF8 realtime written straight to UDR1.",
+          "Peripheral models attach in dependency order: eeprom -> spi -> gpio -> lcd -> midi.",
+          "panel_latch[5] is the single source of truth for what the firmware reads through the 74HC165 chain."
+        ],
+        "tradeoffs": [
+          "Cycle-exact assertions with small tolerance (CYCLE_TOLERANCE=32) buy precise regression detection at cost of fragility to ISR-entry latency.",
+          "Vendoring simavr as pinned submodule trades a one-time build for reproducibility and hd44780 example part sources.",
+          "In-process C EEPROM seeding trades a self-documenting .bin fixture for zero external-tooling dependency.",
+          "Pinning known firmware bugs as expected behavior trades correctness tests for regression-detecting tests."
+        ]
+      },
+      "milestones": [
+        {
+          "id": "M-001",
+          "number": 1,
+          "name": "Unblock and build simavr (repin + libelf + vendor)",
+          "files": [
+            "/Users/admin/offline/Nava-Firmware/sim/simavr.version",
+            "/Users/admin/offline/Nava-Firmware/sim/scripts/setup_simavr.sh",
+            "/Users/admin/offline/Nava-Firmware/sim/simavr/ (submodule, populated)",
+            "/Users/admin/offline/Nava-Firmware/sim/build/hd44780.o (produced)",
+            "/Users/admin/offline/Nava-Firmware/sim/simavr/lib/libsimavr.a (produced)"
+          ],
+          "requirements": "Replace the fabricated simavr pin with a build-verified commit, install and path-plumb keg-only libelf, initialize the vendored submodule, and produce libsimavr.a and hd44780.o for native arm64.",
+          "acceptance_criteria": [
+            "simavr.version contains a commit hash that `git rev-parse` resolves inside the submodule and that build-verifies (not the a16e8d31...a2b3c4d5e fake).",
+            "`brew list libelf` succeeds and /opt/homebrew/opt/libelf exists (consent-gated install).",
+            "setup_simavr.sh runs end-to-end under `set -euo pipefail` with exit 0 and does NOT itself run `git submodule update --init`.",
+            "sim/simavr/lib/libsimavr.a and sim/build/hd44780.o both exist and are non-empty arm64 objects (verified via `file`)."
+          ],
+          "code_intents": [
+            {
+              "id": "CI-001",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/simavr.version",
+              "behavior": "Contain exactly one real, build-verified simavr commit hash (attempt upstream HEAD 6a2c268c2e50a4ef0967f8a7bb281df9eed6c2bb; if it fails to build on arm64, write the tag-v1.7 commit instead). No trailing garbage; the sequential-hex fake must be gone.",
+              "decision_refs": [
+                "DL-002"
+              ]
+            },
+            {
+              "id": "CI-002",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/scripts/setup_simavr.sh",
+              "behavior": "Add libelf discovery: derive LIBELF_PREFIX from `brew --prefix libelf`, export the include (-I$PREFIX/include and -I$PREFIX/include/libelf) and lib (-L$PREFIX/lib) flags into the simavr `make` invocation AND the standalone hd44780 compile. Keep the pinned-hash verify; add --tags to git fetch to tolerate tag-based fallback. REMOVE the existing unconditional `git submodule update --init sim/simavr`: the updated script MUST assume the submodule is already populated — add an early guard that exits with a clear error if the submodule is empty. Do not install packages.",
+              "decision_refs": [
+                "DL-004",
+                "DL-002",
+                "DL-010"
+              ]
+            },
+            {
+              "id": "CI-003",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/scripts/setup_simavr.sh",
+              "behavior": "Document in the script header that the sim/simavr submodule must be populated before invocation via a consent-gated pre-step. This is written against the POST-CI-002 state of the file.",
+              "decision_refs": [
+                "DL-003",
+                "DL-010"
+              ]
+            }
+          ],
+          "code_changes": [
+            {
+              "id": "CC-M-001-001",
+              "version": 1,
+              "intent_ref": "CI-001",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/simavr.version",
+              "diff": "--- a/sim/simavr.version\n+++ b/sim/simavr.version\n@@ -1 +1 @@\n-a16e8d31c4dc2b0d7a66c27f8f7f5e1a2b3c4d5e\n+6a2c268c2e50a4ef0967f8a7bb281df9eed6c2bb\n",
+              "doc_diff": "",
+              "comments": "The existing hash is sequential-hex fabricated (a16e8d31...a2b3c4d5e). Replacing with the verified upstream HEAD that ls-remote confirmed exists on github.com/buserror/simavr. If this specific commit fails arm64 build, the operator substitutes the v1.7 tag commit; the file format is the same either way."
+            },
+            {
+              "id": "CC-M-001-002",
+              "version": 1,
+              "intent_ref": "CI-002",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/scripts/setup_simavr.sh",
+              "diff": "--- a/sim/scripts/setup_simavr.sh\n+++ b/sim/scripts/setup_simavr.sh\n@@ -22,20 +22,36 @@ if [[ -z \"$PINNED_HASH\" ]]; then\n fi\n echo \"==> Pinned simavr commit: $PINNED_HASH\"\n \n-# ---- 2. Initialize submodule ----\n-cd \"$REPO_ROOT\"\n-git submodule update --init sim/simavr\n-\n+# ---- 2. Verify submodule is populated ----\n+# Submodule init is a consent-gated pre-step run outside this script; see README.\n+if [[ ! -f \"$SIMAVR_DIR/sim/sim_avr.h\" ]]; then\n+    echo \"ERROR: sim/simavr submodule is empty.\" >&2\n+    echo \"       Run first: git submodule update --init sim/simavr\" >&2\n+    exit 1\n+fi\n+\n cd \"$SIMAVR_DIR\"\n-git fetch --quiet origin\n+git fetch --quiet --tags origin\n \n # Checkout exactly the pinned commit\n git checkout \"$PINNED_HASH\" --quiet\n \n ACTUAL_HASH=$(git rev-parse HEAD)\n if [[ \"$ACTUAL_HASH\" != \"$PINNED_HASH\" ]]; then\n     echo \"ERROR: HEAD is $ACTUAL_HASH, expected $PINNED_HASH\" >&2\n-    echo \"       Update sim/simavr.version with the correct hash.\" >&2\n+    echo \"       Update sim/simavr.version with a build-verified hash.\" >&2\n+    echo \"       Fallback: checkout the v1.7 release tag and record its SHA.\" >&2\n     exit 1\n fi\n echo \"==> Verified commit: $ACTUAL_HASH\"\n \n-# ---- 3. Build libsimavr.a for arm64 ----\n+# ---- 2.5 Locate keg-only libelf ----\n+# libelf is not on default clang search paths even after brew install; -I/-L required.\n+LIBELF_PREFIX=$(brew --prefix libelf 2>/dev/null || true)\n+if [[ -z \"$LIBELF_PREFIX\" || ! -d \"$LIBELF_PREFIX\" ]]; then\n+    echo \"ERROR: libelf not found. Install with: brew install libelf\" >&2\n+    exit 1\n+fi\n+LIBELF_INC=\"-I$LIBELF_PREFIX/include -I$LIBELF_PREFIX/include/libelf\"\n+LIBELF_LIB=\"-L$LIBELF_PREFIX/lib\"\n+echo \"==> libelf prefix: $LIBELF_PREFIX\"\n+\n+# ---- 3. Build libsimavr.a for arm64 ----\n echo \"==> Building simavr (arm64)\"\n make -C \"$SIMAVR_DIR\" RELEASE=1 \\\n     CC=clang \\\n-    CFLAGS=\"-arch arm64 -O2\" \\\n-    LDFLAGS=\"-arch arm64\" \\\n+    CFLAGS=\"-arch arm64 -O2 $LIBELF_INC\" \\\n+    LDFLAGS=\"-arch arm64 $LIBELF_LIB\" \\\n     obj/sim/libsimavr.a\n \n # simavr puts the lib in obj/sim/; symlink to a stable path\n mkdir -p \"$SIMAVR_DIR/lib\"\n cp -f \"$SIMAVR_DIR/obj/sim/libsimavr.a\" \"$SIMAVR_DIR/lib/libsimavr.a\"\n echo \"==> libsimavr.a ready\"\n \n # ---- 4. Build HD44780 example part ----\n echo \"==> Building HD44780 part\"\n mkdir -p \"$BUILD_DIR\"\n clang -arch arm64 -O2 \\\n+    $LIBELF_INC \\\n     -I\"$SIMAVR_DIR/sim\" \\\n     -I\"$SIMAVR_DIR/simavr/sim\" \\\n     -c \"$SIMAVR_DIR/examples/parts/hd44780.c\" \\\n     -o \"$BUILD_DIR/hd44780.o\"\n echo \"==> hd44780.o ready\"\n",
+              "doc_diff": "",
+              "comments": "Three coordinated changes: (1) Remove the unconditional `git submodule update --init` — it silently mutates the host and violates the consent gate; replace with a population guard that fails loudly and instructs the operator. (2) Add --tags to git fetch so the v1.7 fallback tag resolves if HEAD fails. (3) Derive LIBELF_PREFIX at runtime from `brew --prefix libelf` and inject the resulting -I/-L flags into both the simavr make invocation and the hd44780 standalone compile; libelf is keg-only and invisible to clang's default include/lib search paths."
+            },
+            {
+              "id": "CC-M-001-003",
+              "version": 1,
+              "intent_ref": "CI-003",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/scripts/setup_simavr.sh",
+              "diff": "--- a/sim/scripts/setup_simavr.sh\n+++ b/sim/scripts/setup_simavr.sh\n@@ -1,4 +1,6 @@\n #!/usr/bin/env bash\n # CI-001: Vendor simavr at the pinned commit, build libsimavr.a and hd44780.o\n # for native arm64 on macOS.\n+# Pre-step (consent-gated, run ONCE per clone before invoking this script):\n+#   git submodule update --init sim/simavr\n set -euo pipefail\n",
+              "doc_diff": "",
+              "comments": "Written against the POST-CC-M-001-002 state of setup_simavr.sh. The consent-gated submodule init is a manual pre-step — not embedded in the script — so the script header documents it explicitly for operators reading the file without the README. The runtime guard (CC-M-001-002) already enforces this; this comment is the second line of defense for discoverability."
+            }
+          ]
+        },
+        {
+          "id": "M-002",
+          "number": 2,
+          "name": "Firmware ELF rebuild + MCU-name empirical alignment",
+          "files": [
+            "/Users/admin/offline/Nava-Firmware/.pio/build/nava_sysex/firmware.elf (rebuilt)",
+            "/Users/admin/offline/Nava-Firmware/sim/scripts/build_firmware.sh",
+            "/Users/admin/offline/Nava-Firmware/sim/harness/nava_sim.c"
+          ],
+          "requirements": "Produce a fresh ELF from current (dirty) firmware sources via the src symlink and ensure the harness instantiates the correct simavr core for that ELF by empirically confirming the avr_make_mcu_by_name argument.",
+          "acceptance_criteria": [
+            "`pio run -e nava_sysex` (via build_firmware.sh) exits 0 and firmware.elf is non-empty.",
+            "`strings firmware.elf | grep 1284` confirms mmcu atmega1284p.",
+            "A probe records which of {\"atmega1284\", \"atmega1284p\"} returns a non-NULL avr from the linked simavr core registry, and nava_sim_create returns a non-NULL avr for that ELF using the confirmed name."
+          ],
+          "code_intents": [
+            {
+              "id": "CI-010",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/scripts/build_firmware.sh",
+              "behavior": "Confirm the script rebuilds via `pio run -e nava_sysex` through the src->jjjjj_firmware symlink and fails loudly if the ELF is missing/empty. Add a `strings` probe to print the ELF mmcu hint, satisfying the acceptance criterion without enforcing a specific string (since registry name and mmcu are independent).",
+              "decision_refs": [
+                "DL-006",
+                "C-009"
+              ]
+            },
+            {
+              "id": "CI-011",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/harness/nava_sim.c",
+              "function": "nava_sim_create",
+              "behavior": "Empirically confirm the avr_make_mcu_by_name argument against the LINKED simavr core registry: probe both \"atmega1284\" and \"atmega1284p\" and keep whichever returns a non-NULL avr. Default is to KEEP the existing \"atmega1284\" as the first probe; change the string ONLY if the probe proves \"atmega1284\" returns NULL. Update the comment to state that the registry name is independent of the ELF mmcu. Do not change frequency (16 MHz) or peripheral attach order.",
+              "decision_refs": [
+                "DL-005",
+                "C-003"
+              ]
+            }
+          ],
+          "code_changes": [
+            {
+              "id": "CC-M-002-001",
+              "version": 1,
+              "intent_ref": "CI-010",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/scripts/build_firmware.sh",
+              "diff": "--- a/sim/scripts/build_firmware.sh\n+++ b/sim/scripts/build_firmware.sh\n@@ -18,6 +18,12 @@ if [[ \"$SIZE\" -eq 0 ]]; then\n fi\n \n echo \"==> Firmware ELF ready: $ELF (${SIZE} bytes)\"\n+\n+# Print the embedded mmcu string so the operator can verify it.\n+# Note: the ELF mmcu string and simavr's core-registry name are independent\n+# identifiers and need not match textually (see nava_sim.c nava_sim_create).\n+MMCU=$(strings \"$ELF\" 2>/dev/null | grep -iE 'atmega|1284' | head -5 || true)\n+echo \"==> ELF mmcu hint: ${MMCU:-not found in strings output}\"\n",
+              "doc_diff": "",
+              "comments": "The build logic was already correct (pio run, ELF existence + size check). Adding a `strings` probe satisfies the AC (`strings firmware.elf | grep 1284 confirms mmcu atmega1284p`) without adding a hard assertion — the mmcu string in the ELF is distinct from simavr's registry name, so we print it for the operator rather than failing on a specific value."
+            },
+            {
+              "id": "CC-M-002-002",
+              "version": 1,
+              "intent_ref": "CI-011",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/harness/nava_sim.c",
+              "diff": "--- a/sim/harness/nava_sim.c\n+++ b/sim/harness/nava_sim.c\n@@ -155,12 +155,18 @@ nava_sim_t *nava_sim_create(const char *elf_path) {\n         return NULL;\n     }\n \n-    /* simavr names the ATmega1284P core \"atmega1284\" */\n-    struct avr_t *avr = avr_make_mcu_by_name(\"atmega1284\");\n+    /* simavr's core-registry name is independent of the ELF's embedded mmcu\n+     * string; the two identifiers do not need to match textually.  Probe both\n+     * known spellings and use whichever the LINKED simavr build actually\n+     * registers, preferring \"atmega1284\" (the name the original comment\n+     * asserted).  Update this comment once a build confirms the correct name. */\n+    struct avr_t *avr = avr_make_mcu_by_name(\"atmega1284\");\n+    if (!avr) {\n+        avr = avr_make_mcu_by_name(\"atmega1284p\");\n+        if (avr)\n+            fprintf(stderr, \"nava_sim: note: registry name is \\\"atmega1284p\\\" \"\n+                    \"(update comment to record confirmed name)\\n\");\n+    }\n     if (!avr) {\n-        fprintf(stderr, \"nava_sim: avr_make_mcu_by_name(atmega1284) failed\\n\");\n+        fprintf(stderr, \"nava_sim: avr_make_mcu_by_name failed for both \"\n+                \"\\\"atmega1284\\\" and \\\"atmega1284p\\\"\\n\");\n         return NULL;\n     }\n",
+              "doc_diff": "",
+              "comments": "Implements DL-005 empirical gating: try \"atmega1284\" first (current documented name), fall back to \"atmega1284p\" if the former returns NULL. Emits a console note when the fallback wins so the operator can update the comment after confirming. The structure guarantees the correct name is used regardless of which simavr build is linked, without pre-committing to an answer that may be wrong. Frequency and peripheral attach order are untouched."
+            }
+          ]
+        },
+        {
+          "id": "M-003",
+          "number": 3,
+          "name": "Harness link plumbing (Makefile libelf)",
+          "files": [
+            "/Users/admin/offline/Nava-Firmware/sim/Makefile"
+          ],
+          "requirements": "Make the harness+tests compile and link against libsimavr.a, hd44780.o, and the keg-only libelf, producing one binary per test file.",
+          "acceptance_criteria": [
+            "`make -C sim` (all) produces build/test_timing, build/test_pattern_swap, build/test_ext_inst, build/test_midi_sync with zero unresolved-symbol link errors.",
+            "The -lelf link resolves against the Homebrew libelf lib path.",
+            "No -Wall/-Wextra errors escalate to failures beyond pre-existing -Wno-unused-parameter suppression."
+          ],
+          "code_intents": [
+            {
+              "id": "CI-020",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/Makefile",
+              "behavior": "Add libelf include path to CFLAGS (-I$(shell brew --prefix libelf)/include and .../include/libelf) and its lib path to LDFLAGS (-L$(shell brew --prefix libelf)/lib) so the existing `-lelf` resolves. Keep -arch arm64, the simavr include dirs, and the NAVA_ELF_PATH define. Do not restructure the per-test binary rules.",
+              "decision_refs": [
+                "DL-004",
+                "C-002"
+              ]
+            }
+          ],
+          "code_changes": [
+            {
+              "id": "CC-M-003-001",
+              "version": 1,
+              "intent_ref": "CI-020",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/Makefile",
+              "diff": "--- a/sim/Makefile\n+++ b/sim/Makefile\n@@ -8,16 +8,22 @@ REPO_ROOT := $(realpath ..)\n SIMAVR    := $(CURDIR)/simavr\n BUILD     := $(CURDIR)/build\n ELF       := $(REPO_ROOT)/.pio/build/nava_sysex/firmware.elf\n \n+# libelf is keg-only; resolve its prefix at make time so -I/-L are explicit.\n+LIBELF_PREFIX := $(shell brew --prefix libelf 2>/dev/null)\n+\n CC        := clang\n CFLAGS    := -arch arm64 -O2 -std=c11 -Wall -Wextra -Wno-unused-parameter \\\n              -I$(SIMAVR)/sim \\\n              -I$(SIMAVR)/simavr/sim \\\n              -I$(CURDIR)/harness \\\n              -I$(CURDIR)/fixtures \\\n+             -I$(LIBELF_PREFIX)/include \\\n+             -I$(LIBELF_PREFIX)/include/libelf \\\n              -DNAVA_ELF_PATH=\\\"$(ELF)\\\"\n LDFLAGS   := -arch arm64 \\\n+             -L$(LIBELF_PREFIX)/lib \\\n              $(SIMAVR)/lib/libsimavr.a \\\n              $(BUILD)/hd44780.o \\\n              -lelf\n",
+              "doc_diff": "",
+              "comments": "libelf is keg-only — `brew install libelf` places headers under /opt/homebrew/opt/libelf/include/{,libelf/} and the library under /opt/homebrew/opt/libelf/lib — none of which are on clang's default search paths. Using `brew --prefix libelf` at make time derives the correct prefix regardless of Homebrew's install location (Intel /usr/local vs Apple Silicon /opt/homebrew). The existing -lelf linker flag (line 25) requires the -L to resolve; the harness includes sim_elf.h which may pull in libelf headers transitively and requires the -I."
+            }
+          ]
+        },
+        {
+          "id": "M-004",
+          "number": 4,
+          "name": "First execution + per-test triage loop",
+          "files": [
+            "/Users/admin/offline/Nava-Firmware/sim/tests/test_timing.c",
+            "/Users/admin/offline/Nava-Firmware/sim/tests/test_pattern_swap.c",
+            "/Users/admin/offline/Nava-Firmware/sim/tests/test_ext_inst.c",
+            "/Users/admin/offline/Nava-Firmware/sim/tests/test_midi_sync.c",
+            "/Users/admin/offline/Nava-Firmware/sim/tests/test_runner.c",
+            "/Users/admin/offline/Nava-Firmware/sim/tests/test_runner.h",
+            "/Users/admin/offline/Nava-Firmware/sim/harness/nava_sim.c"
+          ],
+          "requirements": "Run `make -C sim test`, capture TAP output, and drive every one of the 13 cases to PASS or a documented triaged classification. Fixes touch harness/fixture/test code by default; firmware findings are pinned unless the user directs otherwise.",
+          "acceptance_criteria": [
+            "`make -C sim test` runs all 4 binaries and reports each case's TAP line.",
+            "Every non-passing case carries a written classification and, where fixed, the minimal harness/fixture/test change with rationale.",
+            "The two pre-pinned firmware bugs remain pinned; no MUX_ATTR equality assertions are (re)introduced.",
+            "Any timing-window change is justified as ISR-entry jitter and stays integer-derived.",
+            "Final `make -C sim test` exit status is 0, or a documented residual set of quarantined cases with a simavr-limitation rationale."
+          ],
+          "code_intents": [
+            {
+              "id": "CI-030",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_runner.c",
+              "behavior": "Add a `boot_wait_ready(ctx, max_cycles)` helper that uses nava_sim_run_until with an LCD-content predicate to detect firmware boot completion before asserting any events. Emit a diagnostic if the LCD stays blank for the full budget. Add a TAP diagnostic showing the ELF path at run start. The EEPROM-before-cycles invariant is already correctly implemented; confirm and comment it.",
+              "decision_refs": [
+                "DL-008",
+                "DL-007"
+              ]
+            },
+            {
+              "id": "CI-031",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/harness/nava_sim.c",
+              "function": "twi_irq_cb / i2c_eeprom_create",
+              "behavior": "Add a NAVA_TWI_DEBUG conditional trace macro to twi_irq_cb for boot-config diagnosis (START and READ paths). Add a comment to the I2C_GOT_CHIP enum entry documenting why it is a dead state — the START handler resolves R/W and transitions directly to I2C_READING or I2C_ADDR_HI, intentionally bypassing I2C_GOT_CHIP. This diff is written against the POST-CI-011 state of nava_sim.c.",
+              "decision_refs": [
+                "DL-008"
+              ]
+            },
+            {
+              "id": "CI-032",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_timing.c",
+              "behavior": "Replace `nava_sim_run_cycles(ctx, BOOT_CYCLES)` with `boot_wait_ready(ctx, BOOT_CYCLES)` in each timing test function. When no TRIG_WORD events appear after PLAY, emit the current LCD line 0 content as a diagnostic before calling test_fail, so the operator can distinguish a boot failure from a sequencer failure.",
+              "decision_refs": [
+                "DL-008",
+                "C-005"
+              ]
+            },
+            {
+              "id": "CI-033",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_ext_inst.c",
+              "behavior": "Replace `nava_sim_run_cycles(ctx, BOOT_CYCLES)` with `boot_wait_ready(ctx, BOOT_CYCLES)` in all four EXT_INST test functions. Preserve the accent-velocity=16 pin as an asserted expected value.",
+              "decision_refs": [
+                "DL-008",
+                "DL-009",
+                "C-008"
+              ]
+            },
+            {
+              "id": "CI-034",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_midi_sync.c",
+              "behavior": "Replace `nava_sim_run_cycles(ctx, 8000000ULL)` with `boot_wait_ready(ctx, 8000000ULL)` in both SLAVE test functions. Add an LCD diagnostic before test_fail when no TRIG_WORD events appear after injected clock.",
+              "decision_refs": [
+                "DL-008"
+              ]
+            },
+            {
+              "id": "CI-035",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_pattern_swap.c",
+              "behavior": "Fix the critical slot-1 fixture bug: fx_make_eeprom_image fills slots 1..127 with FX_PTRN_BASIC (all-BD), but the swap test needs slot 1 to be FX_PTRN_GROUP_B (all-SD) so trig_word bits distinguish the two patterns. Override the EEPROM image inside each test function (before boot_wait_ready) by calling fx_make_eeprom_image then fx_pattern_to_eeprom(&FX_PTRN_GROUP_B, img + FX_PTRN_SIZE) for slot 1. Update main() to use the TEST macro since EEPROM is now managed inside each fn. Replace BOOT_CYCLES with boot_wait_ready.",
+              "decision_refs": [
+                "DL-008",
+                "C-005"
+              ]
+            }
+          ],
+          "code_changes": [
+            {
+              "id": "CC-M-004-001",
+              "version": 1,
+              "intent_ref": "CI-030",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_runner.h",
+              "diff": "--- a/sim/tests/test_runner.h\n+++ b/sim/tests/test_runner.h\n@@ -100,6 +100,13 @@ void assert_lcd_contains(const char *label,\n /* Mark current test as failed with a message (non-fatal) */\n void test_fail(const char *label, const char *fmt, ...);\n \n /* Get current test's failure count */\n int test_current_failures(void);\n \n+/* Step the firmware up to max_cycles, stopping early once LCD row 0 shows\n+ * content (proves the firmware reached its run loop after EEPROM boot read).\n+ * Emits a TAP diagnostic if the LCD stays blank for the full budget.\n+ * Returns number of cycles actually consumed. */\n+uint64_t boot_wait_ready(nava_sim_t *ctx, uint64_t max_cycles);\n+\n #endif /* NAVA_TEST_RUNNER_H */\n",
+              "doc_diff": "",
+              "comments": "Declares the LCD-predicate boot helper used by all four test suites. Placed in test_runner.h so every test binary that includes test_runner.h gets it without additional headers. The function signature mirrors nava_sim_run_until's return convention (cycles consumed)."
+            },
+            {
+              "id": "CC-M-004-002",
+              "version": 1,
+              "intent_ref": "CI-030",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_runner.c",
+              "diff": "--- a/sim/tests/test_runner.c\n+++ b/sim/tests/test_runner.c\n@@ -1,6 +1,7 @@\n /* sim/tests/test_runner.c — CI-080\n  * TAP-emitting test framework with per-test fresh AVR + event log context. */\n #include \"test_runner.h\"\n #include \"nava_sim.h\"\n #include \"lcd.h\"\n #include \"midi.h\"\n+#include \"frontpanel.h\"\n #include \"patterns.h\"\n@@ -138,6 +139,30 @@ void assert_lcd_contains(const char *label,\n \n /* ---- Test execution ---- */\n \n+/* boot_wait_ready predicate: fires when LCD row 0 has any non-space content.\n+ * An LCD write proves the firmware completed its init sequence and is polling\n+ * buttons — the correct point to begin injecting front-panel events. */\n+static bool lcd_row0_ready(nava_sim_t *ctx, void *user) {\n+    (void)user;\n+    const char *line = nava_lcd_get_line(ctx->lcd, 0);\n+    return line && line[0] != '\\0' && line[0] != ' ';\n+}\n+\n+uint64_t boot_wait_ready(nava_sim_t *ctx, uint64_t max_cycles) {\n+    uint64_t consumed = nava_sim_run_until(ctx, max_cycles,\n+                                            lcd_row0_ready, NULL);\n+    if (!lcd_row0_ready(ctx, NULL)) {\n+        printf(\"# boot_wait_ready: LCD row 0 still blank after %llu cycles \"\n+               \"(firmware may not have reached run loop — check EEPROM seed \"\n+               \"or increase BOOT_CYCLES)\\n\",\n+               (unsigned long long)consumed);\n+    } else {\n+        const char *line = nava_lcd_get_line(ctx->lcd, 0);\n+        printf(\"# boot_wait_ready: ready after %llu cycles; \"\n+               \"LCD[0]=\\\"%.16s\\\"\\n\",\n+               (unsigned long long)consumed, line ? line : \"\");\n+    }\n+    return consumed;\n+}\n+\n int test_run_all(const char *elf_path) {\n     printf(\"TAP version 13\\n\");\n     printf(\"1..%d\\n\", g_n_tests);\n+    printf(\"# ELF: %s\\n\", elf_path);\n",
+              "doc_diff": "",
+              "comments": "boot_wait_ready uses nava_sim_run_until with an LCD predicate rather than a fixed cycle count. This is the R-003 mitigation: if the firmware boots in 3M cycles it wastes no time; if it doesn't boot in BOOT_CYCLES the diagnostic explains why events are missing. The predicate checks lcd[0][0] != ' ' to skip the cleared LCD state (all spaces) that precedes the first firmware write. frontpanel.h added for fp_lcd_line consistency; nava_lcd_get_line is used directly since lcd.h is already included."
+            },
+            {
+              "id": "CC-M-004-003",
+              "version": 1,
+              "intent_ref": "CI-031",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/harness/nava_sim.c",
+              "diff": "--- a/sim/harness/nava_sim.c\n+++ b/sim/harness/nava_sim.c\n@@ -29,6 +29,17 @@\n  * --------------------------------------------------------------------------- */\n \n+/* Optional TWI trace for boot-config diagnosis (R-004).\n+ * Enable with: make -C sim CFLAGS_EXTRA=-DNAVA_TWI_DEBUG\n+ * Confirms LoadSeqSetup reads bpm/sync from the seeded EEPROM image. */\n+#ifdef NAVA_TWI_DEBUG\n+#define TWI_DBG(ctx, fmt, ...) \\\n+    fprintf(stderr, \"[TWI @%llu] \" fmt \"\\n\", \\\n+            (unsigned long long)(ctx)->avr->cycle, ##__VA_ARGS__)\n+#else\n+#define TWI_DBG(ctx, fmt, ...) (void)(ctx)\n+#endif\n+\n /* TWI condition flags as used by simavr's avr_twi.c */\n enum {\n@@ -40,7 +51,11 @@ typedef enum {\n     I2C_IDLE,\n-    I2C_GOT_CHIP,   /* received start + chip address byte, R/W known */\n+    I2C_GOT_CHIP,   /* declared for structural completeness; twi_irq_cb never\n+                       transitions here — the START handler resolves R/W and\n+                       goes directly to I2C_READING or I2C_ADDR_HI (correct).\n+                       Intentional dead entry, not a missing transition. */\n     I2C_ADDR_HI,    /* waiting for memory address high byte */\n     I2C_ADDR_LO,    /* waiting for memory address low byte */\n     I2C_WRITING,    /* streaming write */\n     I2C_READING,    /* streaming read */\n } i2c_state_t;\n@@ -68,6 +83,7 @@ static void twi_irq_cb(struct avr_irq_t *irq, uint32_t value, void *param) {\n     if (flags & TWI_COND_START) {\n         /* data carries the address byte: bits[7:1] = 7-bit addr, bit[0] = R/W */\n         uint8_t dev  = (data >> 1) & 0x7F;\n         int is_read  = data & 0x01;\n+        TWI_DBG(ctx, \"START dev=0x%02X is_read=%d state=%d\", dev, is_read, ctx->state);\n         /* Match 0x50 (lower) or 0x54 (upper) */\n@@ -108,6 +124,7 @@ static void twi_irq_cb(struct avr_irq_t *irq, uint32_t value, void *param) {\n     if (flags & TWI_COND_READ) {\n         uint8_t byte = 0xFF;\n         if (ctx->cur_addr < ctx->size)\n             byte = ctx->data[ctx->cur_addr];\n+        TWI_DBG(ctx, \"READ addr=0x%05X -> 0x%02X\", ctx->cur_addr, byte);\n         ctx->cur_addr++;\n",
+              "doc_diff": "",
+              "comments": "Written against the POST-CI-011 state of nava_sim.c (CI-011 touches only nava_sim_create at line ~155; this diff touches lines 29-124). TWI_DBG is zero-cost in production builds and activates with -DNAVA_TWI_DEBUG for R-004 diagnosis (boot config reads wrong). The I2C_GOT_CHIP comment documents why the state is never assigned — the START handler collapses the two transitions (chip-addressed + R/W determined) into a single step — which is the correct behavior, not a bug. No behavior changes; only diagnostics and documentation."
+            },
+            {
+              "id": "CC-M-004-004",
+              "version": 1,
+              "intent_ref": "CI-032",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_timing.c",
+              "diff": "--- a/sim/tests/test_timing.c\n+++ b/sim/tests/test_timing.c\n@@ -33,7 +33,7 @@ static void test_ppqn_period(nava_sim_t *ctx) {\n-    /* Boot firmware */\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    /* Boot firmware; stop early once LCD shows content (firmware in run loop) */\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     event_log_clear(&ctx->log);\n \n     /* Press PLAY and advance one bar to collect trigger events */\n@@ -46,7 +46,11 @@ static void test_ppqn_period(nava_sim_t *ctx) {\n     const sim_event_t *first = event_log_find_first(&ctx->log,\n                                                      EVT_TRIG_WORD, t0, 0);\n     if (!first) {\n-        test_fail(\"ppqn_period\", \"no TRIG_WORD events after PLAY\");\n+        printf(\"# ppqn_period: LCD[0]=\\\"%.16s\\\" (expected BPM or mode text)\\n\",\n+               fp_lcd_line(ctx, 0) ? fp_lcd_line(ctx, 0) : \"<empty>\");\n+        test_fail(\"ppqn_period\",\n+                  \"no TRIG_WORD events after PLAY \"\n+                  \"(if LCD blank: boot incomplete — increase BOOT_CYCLES)\");\n         return;\n     }\n@@ -66,7 +72,7 @@ static void test_ppqn_period(nava_sim_t *ctx) {\n }\n \n static void test_trigger_off_timer(nava_sim_t *ctx) {\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     event_log_clear(&ctx->log);\n \n     fp_press_button(ctx, FP_BTN_PLAY);\n@@ -75,6 +81,10 @@ static void test_trigger_off_timer(nava_sim_t *ctx) {\n     }\n     if (!hit) {\n-        test_fail(\"trig_off\", \"no non-zero TRIG_WORD event\");\n+        printf(\"# trig_off: LCD[0]=\\\"%.16s\\\"\\n\",\n+               fp_lcd_line(ctx, 0) ? fp_lcd_line(ctx, 0) : \"<empty>\");\n+        test_fail(\"trig_off\",\n+                  \"no non-zero TRIG_WORD event \"\n+                  \"(if LCD blank: boot incomplete)\");\n         return;\n     }\n@@ -109,7 +119,7 @@ static void test_trigger_off_timer(nava_sim_t *ctx) {\n }\n \n static void test_flam_timer(nava_sim_t *ctx) {\n-    /* Uses FX_PTRN_FLAM: BD on steps 0,4 with flam type 0 (OCR3A=4999) */\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    /* Uses FX_PTRN_FLAM: BD on steps 0,4 with flam type 0 (OCR3A=4999) */\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     event_log_clear(&ctx->log);\n \n@@ -121,7 +131,10 @@ static void test_flam_timer(nava_sim_t *ctx) {\n     }\n     if (!main_hit) {\n-        test_fail(\"flam\", \"no BD trigger word found\");\n+        printf(\"# flam: LCD[0]=\\\"%.16s\\\"\\n\",\n+               fp_lcd_line(ctx, 0) ? fp_lcd_line(ctx, 0) : \"<empty>\");\n+        test_fail(\"flam\", \"no BD trigger word found \"\n+                  \"(if LCD blank: boot incomplete)\");\n         return;\n     }\n@@ -152,7 +165,7 @@ static void test_flam_timer(nava_sim_t *ctx) {\n }\n \n static void test_shuffle_offset(nava_sim_t *ctx) {\n-    /* FX_PTRN_SHUFFLED: shuffle=2 ... */\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    /* FX_PTRN_SHUFFLED: shuffle=2 — odd steps arrive 1 PPQN tick early */\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     event_log_clear(&ctx->log);\n \n@@ -188,7 +201,7 @@ static void test_shuffle_offset(nava_sim_t *ctx) {\n static void test_shuffle_zero_oob_quarantine(nava_sim_t *ctx) {\n     /* WARNING: shuffle==0 causes shuffle[(0)-1] = shuffle[-1] in firmware. */\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     /* If the AVR crashes, nava_sim_run_cycles returns 0; we note it but pass. */\n     uint64_t result = nava_sim_run_cycles(ctx, ONE_BAR_CYCLES);\n",
+              "doc_diff": "",
+              "comments": "Replaces all blind BOOT_CYCLES sleeps with boot_wait_ready. This is the R-003 mitigation: if the firmware reaches its run loop in 3M cycles, the remaining 5M cycles are not wasted, and if it never boots the diagnostic explains the missing TRIG_WORD events. The LCD content check (fp_lcd_line is already available from frontpanel.h) distinguishes a boot failure from a sequencer failure, which are otherwise indistinguishable from a missing-events log. Timer math constants (NAVA_PPQN_PERIOD_CYCLES, NAVA_TRIG_OFF_CYCLES, NAVA_FLAM_CYCLES) are unchanged per C-005."
+            },
+            {
+              "id": "CC-M-004-005",
+              "version": 1,
+              "intent_ref": "CI-033",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_ext_inst.c",
+              "diff": "--- a/sim/tests/test_ext_inst.c\n+++ b/sim/tests/test_ext_inst.c\n@@ -44,7 +44,7 @@ static void test_ext_note_on_polyphonic(nava_sim_t *ctx) {\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     event_log_clear(&ctx->log);\n \n     fp_press_button(ctx, FP_BTN_PLAY);\n@@ -74,7 +74,7 @@ static void test_ext_note_on_polyphonic(nava_sim_t *ctx) {\n }\n \n static void test_ext_note_off_at_next_step(nava_sim_t *ctx) {\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     event_log_clear(&ctx->log);\n \n     fp_press_button(ctx, FP_BTN_PLAY);\n@@ -105,7 +105,7 @@ static void test_ext_note_off_at_next_step(nava_sim_t *ctx) {\n }\n \n static void test_ext_accent_velocity_pinned_bug(nava_sim_t *ctx) {\n-    /* Step 8 has TOTAL_ACC set */\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    /* Step 8 has TOTAL_ACC set; MIDI_ACCENT_VELOCITY=16 pinned (DL-015) */\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     event_log_clear(&ctx->log);\n \n@@ -144,7 +144,7 @@ static void test_ext_accent_velocity_pinned_bug(nava_sim_t *ctx) {\n }\n \n static void test_ext_notes_only_midi_traffic(nava_sim_t *ctx) {\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     event_log_clear(&ctx->log);\n \n",
+              "doc_diff": "",
+              "comments": "Mechanical substitution of blind boot wait with boot_wait_ready across all four EXT_INST test functions. No logic changes to note-on/off assertions, the +12 wire-note offset (FX_EXT_WIRE_BASE=48), or the FX_MIDI_ACCENT_VEL=16 pin — those remain exactly as designed per DL-009 and C-008."
+            },
+            {
+              "id": "CC-M-004-006",
+              "version": 1,
+              "intent_ref": "CI-034",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_midi_sync.c",
+              "diff": "--- a/sim/tests/test_midi_sync.c\n+++ b/sim/tests/test_midi_sync.c\n@@ -44,7 +44,7 @@ static void test_slave_clock_advances_sequencer(nava_sim_t *ctx) {\n     nava_sim_seed_eeprom(ctx, slave_img, FX_EEPROM_SIZE);\n     free(slave_img);\n \n-    /* Boot */\n-    nava_sim_run_cycles(ctx, 8000000ULL);\n+    /* Boot with SLAVE config already in EEPROM */\n+    boot_wait_ready(ctx, 8000000ULL);\n     event_log_clear(&ctx->log);\n \n@@ -68,7 +68,11 @@ static void test_slave_clock_advances_sequencer(nava_sim_t *ctx) {\n     size_t n_trigs = event_log_count_type(&ctx->log, EVT_TRIG_WORD, t0, 0);\n     if (n_trigs == 0) {\n-        test_fail(\"slave_clock\",\n-                  \"no TRIG_WORD events — sequencer did not advance under \"\n-                  \"injected MIDI clock\");\n+        printf(\"# slave_clock: LCD[0]=\\\"%.16s\\\" (should show BPM or mode)\\n\",\n+               fp_lcd_line(ctx, 0) ? fp_lcd_line(ctx, 0) : \"<empty>\");\n+        test_fail(\"slave_clock\",\n+                  \"no TRIG_WORD events — if LCD blank: boot incomplete; \"\n+                  \"else: check USART1 RX injection or SLAVE config in EEPROM\");\n         return;\n     }\n \n@@ -88,7 +92,7 @@ static void test_slave_stop_halts_triggers(nava_sim_t *ctx) {\n     nava_sim_seed_eeprom(ctx, slave_img, FX_EEPROM_SIZE);\n     free(slave_img);\n \n-    nava_sim_run_cycles(ctx, 8000000ULL);\n+    boot_wait_ready(ctx, 8000000ULL);\n     event_log_clear(&ctx->log);\n",
+              "doc_diff": "",
+              "comments": "The SLAVE tests re-seed the EEPROM inside the fn BEFORE any cycle steps, so boot_wait_ready correctly boots against the SLAVE config. The expanded diagnostic on n_trigs==0 distinguishes three failure modes: boot failure (LCD blank), USART1 RX injection not working, or wrong sync config in EEPROM — all of which would produce the same empty TRIG_WORD log without this text."
+            },
+            {
+              "id": "CC-M-004-007",
+              "version": 1,
+              "intent_ref": "CI-035",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/tests/test_pattern_swap.c",
+              "diff": "--- a/sim/tests/test_pattern_swap.c\n+++ b/sim/tests/test_pattern_swap.c\n@@ -40,9 +40,19 @@ static void load_second_pattern(nava_sim_t *ctx) {\n }\n \n static void test_sync_swap(nava_sim_t *ctx) {\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    /* Slot 0 = GROUP_A (all-BD); slot 1 = GROUP_B (all-SD).\n+     * fx_make_eeprom_image fills slots 1..127 with FX_PTRN_BASIC (also BD),\n+     * which makes the swap undetectable by trig_word.  Override slot 1 here\n+     * before boot so the firmware loads GROUP_B when step button 1 is pressed. */\n+    uint8_t *img = fx_make_eeprom_image(&FX_PTRN_GROUP_A, 2, 1);\n+    fx_pattern_to_eeprom(&FX_PTRN_GROUP_B, img + FX_PTRN_SIZE);\n+    nava_sim_seed_eeprom(ctx, img, FX_EEPROM_SIZE);\n+    free(img);\n+\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     event_log_clear(&ctx->log);\n \n     /* Start playing pattern A (slot 0: all-BD) */\n@@ -122,8 +132,17 @@ static void test_sync_swap(nava_sim_t *ctx) {\n }\n \n static void test_free_swap(nava_sim_t *ctx) {\n-    /* ptrnChangeSync=0 = FREE mode. */\n-    nava_sim_run_cycles(ctx, BOOT_CYCLES);\n+    /* ptrnChangeSync=0 = FREE mode.  Same slot-1 fix as test_sync_swap;\n+     * build EEPROM with GROUP_A in slot 0, GROUP_B in slot 1, FREE sync. */\n+    uint8_t *img = fx_make_eeprom_image(&FX_PTRN_GROUP_A, 2, 0);\n+    fx_pattern_to_eeprom(&FX_PTRN_GROUP_B, img + FX_PTRN_SIZE);\n+    nava_sim_seed_eeprom(ctx, img, FX_EEPROM_SIZE);\n+    free(img);\n+\n+    boot_wait_ready(ctx, BOOT_CYCLES);\n     event_log_clear(&ctx->log);\n \n     fp_press_button(ctx, FP_BTN_PLAY);\n@@ -165,9 +184,11 @@ static void test_free_swap(nava_sim_t *ctx) {\n }\n \n int main(void) {\n-    /* Place pattern A in slot 0, pattern B in slot 1 ... */\n-    TEST_WITH_PATTERN(\"pattern_swap_sync_mode\",\n-                      test_sync_swap, &FX_PTRN_GROUP_A, 2, 1);\n-    TEST_WITH_PATTERN(\"pattern_swap_free_mode\",\n-                      test_free_swap, &FX_PTRN_GROUP_A, 2, 0);\n+    /* EEPROM images (slot 0=GROUP_A, slot 1=GROUP_B) are built inside each\n+     * test function before boot, so the TEST macro (default EEPROM) is used\n+     * here; the fn overrides it with the correct two-pattern image. */\n+    TEST(\"pattern_swap_sync_mode\", test_sync_swap);\n+    TEST(\"pattern_swap_free_mode\", test_free_swap);\n \n     return test_run_all(NAVA_ELF_PATH);\n }\n",
+              "doc_diff": "",
+              "comments": "Fixes the critical fixture bug: fx_make_eeprom_image fills slots 1..127 with FX_PTRN_BASIC (all-BD), making slot 1 indistinguishable from slot 0 (also BD) by trig_word bits. The test cannot detect a swap that produces no change in the trigger word. The fix writes FX_PTRN_GROUP_B (all-SD) to slot 1 explicitly via fx_pattern_to_eeprom before boot, matching the pattern-swap test's stated design (TRIG_BD vs TRIG_SD as the discriminant). The EEPROM override uses the same pre-boot seeding pattern as test_midi_sync (override inside fn before any cycle steps), so the firmware's LoadSeqSetup read sees the correct config. main() switches from TEST_WITH_PATTERN to TEST since ptrn_change_sync is now encoded in the EEPROM image built by the fn, not passed through the test_entry_t."
+            }
+          ]
+        },
+        {
+          "id": "M-005",
+          "number": 5,
+          "name": "Documentation reconciliation (README)",
+          "files": [
+            "/Users/admin/offline/Nava-Firmware/sim/README.md"
+          ],
+          "requirements": "Correct README drift so the documented build path and layout match on-disk reality after M-001..M-004.",
+          "acceptance_criteria": [
+            "README no longer references a nonexistent libharness.a nor fixtures/eeprom_default.bin.",
+            "The gen_eeprom.py step is demoted to legacy-optional; the live path is the in-process C EEPROM seed.",
+            "The build sequence matches the actual submodule-init (consent-gated pre-step) -> setup_simavr.sh -> build_firmware.sh -> make -C sim test flow, including the libelf prerequisite.",
+            "The recorded simavr commit and MCU name in prose match simavr.version and the empirically-confirmed name in nava_sim.c."
+          ],
+          "code_intents": [
+            {
+              "id": "CI-040",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/README.md",
+              "behavior": "Rewrite the Prerequisites, Full Build Sequence, and Directory Layout sections to match reality: add `brew install libelf` and the consent-gated `git submodule update --init sim/simavr` as prerequisites; remove the libharness.a claim and the eeprom_default.bin fixture entry; mark gen_eeprom.py / Python 2 as legacy-optional; keep the accurate Timer-Math and EEPROM-Layout reference tables; state the verified simavr pin and the empirically-confirmed core name (do not assert atmega1284p unless the M-002 probe confirmed it).",
+              "decision_refs": [
+                "DL-007",
+                "DL-004",
+                "DL-005"
+              ]
+            }
+          ],
+          "code_changes": [
+            {
+              "id": "CC-M-005-001",
+              "version": 1,
+              "intent_ref": "CI-040",
+              "file": "/Users/admin/offline/Nava-Firmware/sim/README.md",
+              "diff": "--- a/sim/README.md\n+++ b/sim/README.md\n@@ -8,11 +8,15 @@ firmware, built on simavr (vendored submodule, native arm64 build).\n \n - macOS arm64 (Apple Silicon)\n - Xcode Command Line Tools (provides `clang`, `make`)\n - PlatformIO with `atmelavr` platform (provides avr-gcc for firmware build)\n-- Python 2.7 (for the EEPROM fixture generator, consistent with repo tooling)\n+- `libelf` via Homebrew (keg-only; not on default clang search paths after install):\n+\n+  ```\n+  brew install libelf\n+  ```\n \n Install PlatformIO core if not present:\n ```\n pip install platformio\n pio platform install atmelavr\n ```\n@@ -20,16 +24,22 @@ Install PlatformIO core if not present:\n ## Full Build Sequence\n \n ```bash\n-# 1. Vendor and build simavr (one-time, ~2 min)\n+# 0. Populate the vendored simavr submodule (consent-gated; one-time per clone)\n+git submodule update --init sim/simavr\n+\n+# 1. Build simavr and the HD44780 part (~2 min; requires step 0 and brew libelf)\n bash sim/scripts/setup_simavr.sh\n \n-# 2. Compile the production firmware ELF\n+# 2. Compile the production firmware ELF from the current working tree\n bash sim/scripts/build_firmware.sh\n \n-# 3. Generate the deterministic EEPROM fixture (bpm=120, sync=MASTER)\n-python2 sim/scripts/gen_eeprom.py\n-\n-# 4. Build the harness and run the test suite\n+# 3. Build the harness and run all 13 regression tests (TAP output)\n make -C sim test\n ```\n+\n+No external EEPROM fixture file is required.  Test EEPROM state is seeded\n+in-process by the C fixtures (`fixtures/patterns.c`) before each test case.\n+\n+> **Legacy note** — `scripts/gen_eeprom.py` (Python 2) is superseded by the\n+> in-process C seed path and is not needed for a normal test run.\n \n ## Directory Layout\n \n ```\n sim/\n-├── harness/        — Peripheral models and sim core (compiled as libharness.a)\n+├── harness/        — Peripheral models and sim core (compiled as .o objects)\n │   ├── nava_sim.h/c    — Core: ELF load, EEPROM seed, run loop\n │   ├── event_log.h/c   — Cycle-stamped observable event log\n │   ├── spi_bus.h/c     — 74HC165 input + 74HC595 LED/trig + MCP4822 DAC models\n │   ├── gpio.h/c        — MUX attribution, encoder injection, DIN/TRIG-OUT log\n │   ├── lcd.h/c         — HD44780 4-bit write-only LCD model (screen text mirror)\n │   ├── midi.h/c        — USART1 MIDI TX capture + RX injection\n │   └── frontpanel.h/c  — Named button press/release API + observable accessors\n ├── tests/\n-│   ├── test_runner.h/c     — TAP test framework and assertion helpers\n+│   ├── test_runner.h/c     — TAP test framework + assertion helpers + boot_wait_ready\n │   ├── test_timing.c       — PPQN period, Timer2 trigger-off, Timer3 flam, shuffle\n │   ├── test_pattern_swap.c — Bar-end SYNC/FREE pattern buffer swap\n │   ├── test_ext_inst.c     — Polyphonic EXT_INST MIDI note-on/off + accent bug pin\n │   └── test_midi_sync.c    — SLAVE sync: injected clock advances sequencer\n ├── fixtures/\n-│   ├── eeprom_default.bin  — Generated EEPROM image (bpm=120, MASTER)\n-│   ├── patterns.h/c        — Reusable C pattern fixtures (all shuffle>=1)\n+│   └── patterns.h/c        — Reusable C pattern fixtures (all shuffle>=1)\n+│                               (EEPROM seeded in-process; no .bin file needed)\n ├── scripts/\n-│   ├── setup_simavr.sh     — Vendor, pin, and build simavr\n-│   ├── build_firmware.sh   — PlatformIO firmware build\n-│   └── gen_eeprom.py       — Generate eeprom_default.bin from struct layout\n-├── simavr/                 — Git submodule (not committed; populated by setup)\n-├── simavr.version          — Pinned simavr commit hash\n+│   ├── setup_simavr.sh     — Vendor, pin, and build simavr (requires step 0)\n+│   ├── build_firmware.sh   — PlatformIO firmware build + mmcu hint\n+│   └── gen_eeprom.py       — LEGACY/OPTIONAL: Python 2 EEPROM generator\n+│                               (superseded by in-process C seed; not required)\n+├── simavr/         — Git submodule (populate: git submodule update --init sim/simavr)\n+├── simavr.version  — Pinned commit: 6a2c268c2e50a4ef0967f8a7bb281df9eed6c2bb\n └── Makefile                — Harness + test build system\n \n ```\n",
+              "doc_diff": "",
+              "comments": "Three sections corrected: (1) Prerequisites: Python 2 removed, brew install libelf added with note that it is keg-only. (2) Full Build Sequence: adds consent-gated pre-step 0 (submodule init), removes the gen_eeprom.py step (replaced by in-process C seed), demotes Python 2 to a legacy note. (3) Directory Layout: removes the fabricated libharness.a claim (harness compiles to per-object files linked per-test-binary), removes the non-existent eeprom_default.bin, demotes gen_eeprom.py to LEGACY/OPTIONAL, updates simavr.version pin, updates simavr/ submodule note. Timer Math and EEPROM Layout reference tables are left unchanged — they are accurate. Per DL-005, the MCU name in prose is not pre-committed to atmega1284p; the simavr.version pin states the verified commit hash per CI-001."
+            }
+          ]
+        },
+        {
+          "id": "M-006",
+          "number": 6,
+          "name": "Consent-gated commit of sim scaffold",
+          "files": [
+            "/Users/admin/offline/Nava-Firmware/.gitmodules",
+            "/Users/admin/offline/Nava-Firmware/sim/ (staged)"
+          ],
+          "requirements": "ONLY on explicit user consent, commit the sim scaffold, .gitmodules, and the repinned simavr.version on a branch, cleanly separated from the unrelated dirty jjjjj_firmware/ edits.",
+          "acceptance_criteria": [
+            "No commit occurs without an explicit user instruction (default state: leave untracked).",
+            "If committed: a dedicated branch, staging only sim/, .gitmodules, and simavr.version — never the dirty jjjjj_firmware/*.ino edits.",
+            "Commit message ends with the required Co-Authored-By trailer."
+          ],
+          "code_intents": [
+            {
+              "id": "CI-050",
+              "file": "/Users/admin/offline/Nava-Firmware/.gitmodules",
+              "behavior": "If and only if the user consents to committing, ensure the submodule stanza (sim/simavr -> github.com/buserror/simavr.git) is staged alongside sim/ and simavr.version. Otherwise take no git action. Never stage jjjjj_firmware/ changes.",
+              "decision_refs": [
+                "DL-010",
+                "C-007"
+              ]
+            }
+          ],
+          "code_changes": [
+            {
+              "id": "CC-M-006-001",
+              "version": 1,
+              "intent_ref": "CI-050",
+              "file": "/Users/admin/offline/Nava-Firmware/.gitmodules",
+              "diff": "--- /dev/null\n+++ b/.gitmodules\n@@ -0,0 +1,3 @@\n+[submodule \"sim/simavr\"]\n+\tpath = sim/simavr\n+\turl = https://github.com/buserror/simavr.git\n",
+              "doc_diff": "",
+              "comments": "CONSENT-GATED: this diff is provided for reference only. Do NOT apply unless the user explicitly instructs a commit. The stanza registers the sim/simavr submodule against the upstream repo at the pinned hash recorded in sim/simavr.version. Staged alongside this file must be sim/ (all harness, tests, fixtures, scripts, Makefile, README) and sim/simavr.version — never the dirty jjjjj_firmware/*.ino edits. git add must be specific: `git add .gitmodules sim/ sim/simavr.version` with explicit exclusion of jjjjj_firmware/."
+            }
+          ]
+        }
+      ],
+      "waves": [
+        {
+          "id": "W-001",
+          "name": "Unblock build inputs (parallel)",
+          "milestones": [
+            "M-001",
+            "M-002"
+          ],
+          "rationale": "simavr vendoring/build and firmware ELF rebuild are independent input-producing tracks; the MCU-name probe in M-002 needs the linked simavr core registry (from M-001) to confirm the argument, but the ELF rebuild and mmcu inspection are independent — run the ELF rebuild concurrently and gate only the final probe on M-001's libsimavr.a."
+        },
+        {
+          "id": "W-002",
+          "name": "Harness link",
+          "milestones": [
+            "M-003"
+          ],
+          "rationale": "Requires libsimavr.a + hd44780.o (M-001) and the empirically-confirmed core name (M-002) to link the test binaries."
+        },
+        {
+          "id": "W-003",
+          "name": "Execute + triage",
+          "milestones": [
+            "M-004"
+          ],
+          "rationale": "Requires linkable binaries (M-003) and a valid ELF (M-002). The per-test diagnosis loop is inherently sequential/iterative."
+        },
+        {
+          "id": "W-004",
+          "name": "Docs (post-triage)",
+          "milestones": [
+            "M-005"
+          ],
+          "rationale": "README must reflect the final verified pin, confirmed core name, and build path resolved during W-001..W-003."
+        },
+        {
+          "id": "W-005",
+          "name": "Commit (consent-gated, terminal)",
+          "milestones": [
+            "M-006"
+          ],
+          "rationale": "Only after green/triaged suite and corrected docs, and only on explicit user consent."
+        }
+      ],
+      "diagrams": [
+        {
+          "id": "CON",
+          "title": "Build-to-test pipeline and runtime harness",
+          "mermaid": "flowchart LR\n  subgraph Build[\"Build inputs\"]\n    PIO[\"pio run -e nava_sysex\\n(via src symlink)\"] --> ELF[\"firmware.elf\\n(mmcu atmega1284p)\"]\n    VER[\"simavr.version\\n(verified pin)\"] --> SETUP[\"setup_simavr.sh\\n(+libelf paths)\"]\n    SETUP --> LIB[\"libsimavr.a\"]\n    SETUP --> HD[\"hd44780.o\"]\n    LIBELF[\"brew libelf\"] --> SETUP\n    LIBELF --> MK\n  end\n  ELF --> SIM[\"nava_sim.c\\n(load ELF, probe core name @16MHz)\"]\n  LIB --> MK[\"sim/Makefile\\n(link test binaries)\"]\n  HD --> MK\n  MK --> BINS[\"build/test_*\"]\n  BINS --> SIM\n  SIM --> SPI[\"spi_bus (74HC165/595, MCP4822)\"]\n  SIM --> GPIO[\"gpio (mux, DIN, TRIG)\"]\n  SIM --> LCD[\"lcd (HD44780 mirror)\"]\n  SIM --> MIDI[\"midi (USART1 31250)\"]\n  SIM --> EEP[\"I2C EEPROM model\"]\n  SPI --> LOG[\"event_log\"]\n  GPIO --> LOG\n  MIDI --> LOG\n  LOG --> RUN[\"test_runner (TAP asserts)\"]"
+        },
+        {
+          "id": "CMP",
+          "title": "Harness component structure (attach order + data flow)",
+          "mermaid": "flowchart TB\n  CORE[\"nava_sim.c\\nELF load / run_cycles / panel_latch[5]\"]\n  EEP[\"i2c_eeprom_ctx\\n0x50/0x54 TWI\"]\n  SPI[\"spi_bus.c\\n74HC165 in / 74HC595 LED+trig / MCP4822 DAC\"]\n  GPIO[\"gpio.c\\nPORTA mux attr / DIN clk PA1 / TRIG_OUT PA2\"]\n  LCD[\"lcd.c\\nHD44780 4-bit text mirror\"]\n  MIDI[\"midi.c\\nUSART1 TX capture / RX inject\"]\n  FP[\"frontpanel.c\\nnamed button -> panel_latch bit\"]\n  LOG[\"event_log.c\\ncycle-stamped events\"]\n  CORE --> EEP\n  CORE --> SPI\n  SPI --> GPIO\n  CORE --> LCD\n  CORE --> MIDI\n  FP --> CORE\n  SPI --> LOG\n  GPIO --> LOG\n  LCD --> LOG\n  MIDI --> LOG"
+        },
+        {
+          "id": "SEQ",
+          "title": "PPQN step-trigger flow under test (test_timing)",
+          "mermaid": "sequenceDiagram\n  participant T as test_timing\n  participant S as nava_sim\n  participant FW as firmware (Clock.ino)\n  participant SPI as spi_bus (74HC595)\n  participant L as event_log\n  T->>S: run_cycles(BOOT_CYCLES)\n  T->>S: fp_press/release PLAY\n  T->>S: run_cycles(ONE_BAR_CYCLES)\n  loop each PPQN tick (Timer1 CTC)\n    FW->>FW: CountPPQN() every 83336 cyc\n    FW->>SPI: write 16-bit trig word (step)\n    SPI->>L: EVT_TRIG_WORD @cycle\n    FW->>FW: Timer2 arm -> clear trig +32000 cyc\n  end\n  T->>L: find_first / find_nth EVT_TRIG_WORD\n  T->>T: assert delta == 2000064 (+/- tol)"
+        },
+        {
+          "id": "STT",
+          "title": "I2C EEPROM model state machine (nava_sim.c twi_irq_cb)",
+          "mermaid": "stateDiagram-v2\n  [*] --> I2C_IDLE\n  I2C_IDLE --> I2C_READING: START + addr 0x50/0x54, R=1\n  I2C_IDLE --> I2C_ADDR_HI: START + addr 0x50/0x54, W=0\n  I2C_IDLE --> I2C_IDLE: START + other addr\n  I2C_ADDR_HI --> I2C_ADDR_LO: WRITE addr high\n  I2C_ADDR_LO --> I2C_WRITING: WRITE addr low (+65536 if upper)\n  I2C_WRITING --> I2C_WRITING: WRITE data byte (cur_addr++)\n  I2C_READING --> I2C_READING: READ -> inject data byte (cur_addr++)\n  I2C_WRITING --> I2C_IDLE: STOP\n  I2C_READING --> I2C_IDLE: STOP\n  I2C_ADDR_HI --> I2C_IDLE: STOP\n  I2C_ADDR_LO --> I2C_IDLE: STOP"
+        }
+      ]
+    }
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "intake-gather"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "intake-gather",
+      "phaseIndex": 1,
+      "phaseTitle": "intake-gather",
+      "agentId": "a1a741268c97dd518",
+      "agentType": "architect",
+      "model": "claude-opus-4-8[1m]",
+      "state": "done",
+      "startedAt": 1785006955879,
+      "queuedAt": 1785006954253,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "cd /Users/admin/offline/Nava-Firmware/sim && echo \"===nava_…",
+      "promptPreview": "PLANNER — intake-gather\n\nTHINKING ECONOMY: Per-thought limit 10 words. Abbreviated notation only.\nDO NOT narrate phases. Execute silently; output results only.\n\nYou are the INTAKE analyst. Read the task, orient in the codebase, and plan the\ninvestigation. You gather and describe what EXISTS; you do NOT design, plan, or\ninfer unstated decisions.\n\nUSER REQUEST:\n{\"mode\": \"plan\", \"request\": \"Plan a si…",
+      "lastProgressAt": 1785007034447,
+      "tokens": 25861,
+      "toolCalls": 4,
+      "durationMs": 78567,
+      "resultPreview": "Substantial `sim/` scaffold already exists (harness, tests, scripts, Makefile, ~2800 LOC). Orientation complete. Proposing scouts to verify existing-vs-required coverage and firmware pin-mapping ground truth.\n\n{\n  \"context\": {\n    \"topic\": \"simavr-based emulation/test environment for Nava TR-909 firmware (ATmega1284P) — build integration, C harness modeling external HW, scripted regression tests. …"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "scout-sim-scaffold-audit",
+      "phaseIndex": 1,
+      "phaseTitle": "intake-gather",
+      "agentId": "acc24aae4524b229f",
+      "agentType": "scout",
+      "model": "claude-haiku-4-5-20251001",
+      "state": "done",
+      "startedAt": 1785007037058,
+      "queuedAt": 1785007035785,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "grep -o \"TEST\\|TEST_WITH_PATTERN\" /Users/admin/offline/Nava…",
+      "promptPreview": "SCOUT — existing-harness auditor\n\nInvestigate and report (file:line, dense):\nAudit the pre-existing sim/ harness for completeness and functional readiness. Read every file under /Users/admin/offline/Nava-Firmware/sim/harness/ (nava_sim.c, spi_bus.c, gpio.c, lcd.c, midi.c, frontpanel.c, event_log.c and their .h), all files under sim/tests/ (test_runner.c, test_timing.c, test_pattern_swap.c, test_ex…",
+      "lastProgressAt": 1785007156167,
+      "tokens": 73237,
+      "toolCalls": 38,
+      "durationMs": 119109,
+      "resultPreview": "## Question\nAudit pre-existing sim/ harness for completeness and functional readiness: peripherals, simavr IRQs/hooks, stubs/TODOs, public APIs, tests, fixtures, scripts, build dependencies.\n\n## Findings\n\n### Harness Modules (7 files, 100% complete)\n\n#### nava_sim.c/h — Core lifecycle (CI-010/011/012)\n- **Peripheral models**: ATmega1284P CPU at 16 MHz, I2C EEPROM 24LC1024 (128 KiB external)\n- **IR…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "scout-fw-hw-interface-map",
+      "phaseIndex": 1,
+      "phaseTitle": "intake-gather",
+      "agentId": "a35a1a9022630e7c0",
+      "agentType": "scout",
+      "model": "claude-haiku-4-5-20251001",
+      "state": "done",
+      "startedAt": 1785007037402,
+      "queuedAt": 1785007035785,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "grep -n \"MidiSendNoteOn\\|MidiSendNoteOff\\|EXT_TRACK_NOTES\\|…",
+      "promptPreview": "SCOUT — firmware pin/peripheral cartographer\n\nInvestigate and report (file:line, dense):\nExtract the ground-truth hardware interface the harness must emulate, from the real firmware. Read /Users/admin/offline/Nava-Firmware/jjjjj_firmware/define.h fully for: SPI pin/port assignments, shift-register chain order (dinSr[0..4] input, LED/trigger output word), MCP4822 DAC control (CS pin, channel/gain c…",
+      "lastProgressAt": 1785007143873,
+      "tokens": 65529,
+      "toolCalls": 20,
+      "durationMs": 106471,
+      "resultPreview": "## Question\nExtract ground-truth hardware interface constants and register-level behavior from firmware; identify any firmware-harness divergence.\n\n## Findings\n\n### SPI Bus Configuration\n- **Speed**: 2 MHz (define.h:507, SPISettings)\n- **Mode**: MSBFIRST, SPI_MODE0\n- **Input chain** (ScanDin, Dio.ino:31-70): 5 sequential transfers → dinSr[0..4]\n  - SW_CS (PORTD4): HIGH = latch 74HC165, LOW = idle\n…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 4,
+      "label": "scout-build-integration-state",
+      "phaseIndex": 1,
+      "phaseTitle": "intake-gather",
+      "agentId": "a35dbfb2293e5e05b",
+      "agentType": "scout",
+      "model": "claude-haiku-4-5-20251001",
+      "state": "done",
+      "startedAt": 1785007037168,
+      "queuedAt": 1785007035785,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "ls -la /Users/admin/offline/Nava-Firmware/.pio/build/nava_s…",
+      "promptPreview": "SCOUT — build pipeline verifier\n\nInvestigate and report (file:line, dense):\nDetermine the actual build-integration state so the plan can specify accurate steps. Read /Users/admin/offline/Nava-Firmware/platformio.ini, migrate_to_platformio.sh, convert_to_sysex.py, .gitmodules, .gitignore, and .python-version. Check the filesystem (ls) for whether the PlatformIO lib/ migration has been applied: does…",
+      "lastProgressAt": 1785007116776,
+      "tokens": 27855,
+      "toolCalls": 30,
+      "durationMs": 79608,
+      "resultPreview": "## Question\nDetermine the actual build-integration state: Can `pio run -e nava_sysex` produce firmware.elf as-is? Is simavr present or must setup run? Are there path mismatches between Makefile and reality?\n\n## Findings\n\n### PlatformIO (nava_sysex target)\n- **Status**: ALREADY BUILT; firmware artifacts exist at `.pio/build/nava_sysex/` (dated 25 Jul 10:57)\n  - `firmware.elf` (64KB, 25 Jul 10:57)\n …"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 2,
+      "title": "intake-deepen"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 5,
+      "label": "intake-deepen",
+      "phaseIndex": 2,
+      "phaseTitle": "intake-deepen",
+      "agentId": "a1885f3d142f9116d",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1785007159119,
+      "queuedAt": 1785007157418,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "git status --short sim/ | head -3; git log --oneline -3 -- …",
+      "promptPreview": "PLANNER — intake-deepen\n\nDeepen understanding through dialogue and codebase verification. Scout results are\na starting point, not the finish line. What you get wrong here silently propagates\ninto the plan and the code.\n\nUSER REQUEST:\n{\"mode\": \"plan\", \"request\": \"Plan a simavr-based emulation/test environment for the Nava (TR-909 replica, ATmega1284P) firmware located at /Users/admin/offline/Nava-F…",
+      "lastProgressAt": 1785007344001,
+      "tokens": 58046,
+      "toolCalls": 11,
+      "durationMs": 184882,
+      "resultPreview": "All verification complete. Compiling the deepened understanding.\n\n# Deepened Understanding — Nava simavr Emulation/Test Environment\n\n## Headline finding (verified, scope-defining)\n\nThe request is phrased greenfield, but a **complete, never-built, never-run** `sim/` scaffold (~2,700 LOC across 20 files, all authored today 11:20–11:34, entirely untracked in git) already exists and matches the reques…"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 3,
+      "title": "intake-summarize"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 6,
+      "label": "intake-summarize",
+      "phaseIndex": 3,
+      "phaseTitle": "intake-summarize",
+      "agentId": "a85ffe3b8c89d609c",
+      "agentType": "architect",
+      "model": "claude-opus-4-8[1m]",
+      "state": "done",
+      "startedAt": 1785007346978,
+      "queuedAt": 1785007345443,
+      "attempt": 1,
+      "promptPreview": "PLANNER — intake-summarize\n\nSynthesize the frozen initiative BRIEF from everything gathered and deepened.\n\nUSER REQUEST:\n{\"mode\": \"plan\", \"request\": \"Plan a simavr-based emulation/test environment for the Nava (TR-909 replica, ATmega1284P) firmware located at /Users/admin/offline/Nava-Firmware. Goal: a custom C harness that runs the PlatformIO-built .elf (env nava_sysex, ATmega1284P @ 16MHz) under…",
+      "lastProgressAt": 1785007395524,
+      "tokens": 17937,
+      "toolCalls": 0,
+      "durationMs": 48546,
+      "resultPreview": "STATUS: COMPLETE\n\n## Scope\nIn scope:\n- Unblock, build, execute, triage, and harden the **already-existing** `sim/` scaffold (~2,700 LOC, 20 files, untracked) that implements a simavr-based emulation/test environment for the Nava (ATmega1284P @ 16MHz) firmware.\n- Repair the fabricated simavr commit pin, plumb keg-only `libelf` paths, run `setup_simavr.sh` (submodule init + `libsimavr.a` + `hd44780.…"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 4,
+      "title": "plan-design-work"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 7,
+      "label": "plan-design-work",
+      "phaseIndex": 4,
+      "phaseTitle": "plan-design-work",
+      "agentId": "aaba528772a97696b",
+      "agentType": "architect",
+      "model": "claude-opus-4-8[1m]",
+      "state": "done",
+      "startedAt": 1785007397084,
+      "queuedAt": 1785007395527,
+      "attempt": 1,
+      "lastToolName": "Read",
+      "lastToolSummary": "/Users/admin/offline/Nava-Firmware/sim/tests/test_timing.c",
+      "promptPreview": "PLANNER — plan-design-work\n\nYou are dispatching to the ARCHITECT role to design the implementation plan.\n\nUSER REQUEST (original goal):\n{\"mode\": \"plan\", \"request\": \"Plan a simavr-based emulation/test environment for the Nava (TR-909 replica, ATmega1284P) firmware located at /Users/admin/offline/Nava-Firmware. Goal: a custom C harness that runs the PlatformIO-built .elf (env nava_sysex, ATmega1284P…",
+      "lastProgressAt": 1785007651157,
+      "tokens": 36947,
+      "toolCalls": 11,
+      "durationMs": 254073,
+      "resultPreview": "I have sufficient grounding. Key environment findings: ELF present with mmcu `atmega1284p` (harness passes `\"atmega1284\"` to `avr_make_mcu_by_name` — a likely mismatch), simavr submodule empty (0 files), libelf NOT installed (keg-only path needed), brew/pio/arm64 all confirmed, `src -> jjjjj_firmware` symlink intact, version file holds the fabricated pin. Emitting the plan.\n\n```json\n{\n  \"overview\"…"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 5,
+      "title": "plan-design-qr"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 8,
+      "label": "plan-design-qr",
+      "phaseIndex": 5,
+      "phaseTitle": "plan-design-qr",
+      "agentId": "a01f12a91a832555f",
+      "agentType": "quality-reviewer",
+      "model": "claude-sonnet-4-6",
+      "state": "done",
+      "startedAt": 1785007655670,
+      "queuedAt": 1785007654060,
+      "attempt": 1,
+      "lastToolName": "Read",
+      "lastToolSummary": "/Users/admin/offline/Nava-Firmware/sim/harness/nava_sim.c",
+      "promptPreview": "PLANNER — plan-design-qr\n\nconvention: documentation.md\n\nQUALITY REVIEW: Verify the plan design against these criteria:\n\nDESIGN OUTPUT TO REVIEW:\nI have sufficient grounding. Key environment findings: ELF present with mmcu `atmega1284p` (harness passes `\"atmega1284\"` to `avr_make_mcu_by_name` — a likely mismatch), simavr submodule empty (0 files), libelf NOT installed (keg-only path needed), brew/p…",
+      "lastProgressAt": 1785007964370,
+      "tokens": 54400,
+      "toolCalls": 14,
+      "durationMs": 308700,
+      "resultPreview": "<review_analysis>\n\nPHASE 1: CONTEXT DISCOVERY\n\n- Invocation mode: plan-review QR, convention=documentation.md\n- conventions/documentation.md: DOES NOT EXIST\n- conventions/producer-validator.md: DOES NOT EXIST\n- .claude/ contains only settings.local.json\n- CLAUDE.md at repo root: exists and loaded (from system context)\n- Fallback: apply RULE 0 + RULE 2, plus inline verification checklist from the Q…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 9,
+      "label": "plan-design-qr-fix",
+      "phaseIndex": 5,
+      "phaseTitle": "plan-design-qr",
+      "agentId": "a8f38972ccd62ea36",
+      "agentType": "architect",
+      "model": "claude-opus-4-8[1m]",
+      "state": "done",
+      "startedAt": 1785007971421,
+      "queuedAt": 1785007969860,
+      "attempt": 1,
+      "promptPreview": "PLANNER — plan-design-qr (in-place fix)\n\nQR FINDINGS:\n<review_analysis>\n\nPHASE 1: CONTEXT DISCOVERY\n\n- Invocation mode: plan-review QR, convention=documentation.md\n- conventions/documentation.md: DOES NOT EXIST\n- conventions/producer-validator.md: DOES NOT EXIST\n- .claude/ contains only settings.local.json\n- CLAUDE.md at repo root: exists and loaded (from system context)\n- Fallback: apply RULE 0 +…",
+      "lastProgressAt": 1785008151380,
+      "tokens": 33686,
+      "toolCalls": 0,
+      "durationMs": 179959,
+      "resultPreview": "STATUS: COMPLETE\n\nApplied all three in-place fixes: MUST (MCU-name empirical gating in overview/DL-005/C-003/CI-011), SHOULD (CI-002 explicit removal of line 27), COULD (decision_refs on all rejected_alternatives).\n\n```json\n{\n  \"overview\": {\n    \"problem\": \"A ~2,900 LOC simavr-based emulation/test harness already exists under /Users/admin/offline/Nava-Firmware/sim/ (untracked, authored in one sess…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 10,
+      "label": "plan-design-qr-retry",
+      "phaseIndex": 5,
+      "phaseTitle": "plan-design-qr",
+      "agentId": "a0385fadb0397edeb",
+      "agentType": "quality-reviewer",
+      "model": "claude-sonnet-4-6",
+      "state": "done",
+      "startedAt": 1785008153075,
+      "queuedAt": 1785008151381,
+      "attempt": 1,
+      "lastToolName": "Read",
+      "lastToolSummary": "/Users/admin/offline/Nava-Firmware/sim/README.md",
+      "promptPreview": "PLANNER — plan-design-qr\n\nconvention: documentation.md\n\nQUALITY REVIEW: Verify the plan design against these criteria:\n\nDESIGN OUTPUT TO REVIEW:\nSTATUS: COMPLETE\n\nApplied all three in-place fixes: MUST (MCU-name empirical gating in overview/DL-005/C-003/CI-011), SHOULD (CI-002 explicit removal of line 27), COULD (decision_refs on all rejected_alternatives).\n\n```json\n{\n  \"overview\": {\n    \"problem\"…",
+      "lastProgressAt": 1785008442878,
+      "tokens": 62106,
+      "toolCalls": 16,
+      "durationMs": 289803,
+      "resultPreview": "<review_analysis>\n\nPHASE 1: CONTEXT DISCOVERY\n- No .claude/conventions/ directory on disk; documentation.md convention file absent\n- No agent memory file yet (MEMORY.md missing)\n- Invocation mode: plan-design-qr against explicit 12-item checklist from task prompt (documentation.md criteria)\n- On-disk sim/ reality confirmed via direct file reads\n- RULE 1 applies only to the 12 verification items en…"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 6,
+      "title": "plan-code-work"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 11,
+      "label": "plan-code-work",
+      "phaseIndex": 6,
+      "phaseTitle": "plan-code-work",
+      "agentId": "a89543e965c608414",
+      "agentType": "developer",
+      "model": "claude-sonnet-4-6",
+      "state": "done",
+      "startedAt": 1785008445986,
+      "queuedAt": 1785008444205,
+      "attempt": 1,
+      "lastToolName": "Skill",
+      "lastToolSummary": "artifact-design",
+      "promptPreview": "PLANNER — plan-code-work\n\nYou are dispatching to the DEVELOPER role to fill code_changes into the plan.\n\nPLAN (approved by QR):\nSTATUS: COMPLETE\n\nApplied all three in-place fixes: MUST (MCU-name empirical gating in overview/DL-005/C-003/CI-011), SHOULD (CI-002 explicit removal of line 27), COULD (decision_refs on all rejected_alternatives).\n\n```json\n{\n  \"overview\": {\n    \"problem\": \"A ~2,900 LOC s…",
+      "lastProgressAt": 1785009634126,
+      "tokens": 120397,
+      "toolCalls": 25,
+      "durationMs": 1188139,
+      "resultPreview": "The design calibration for this task: **utilitarian technical document** — the deliverable is populated JSON plan data. No artifact needed; output is clean structured text. The craft goes into correctness of diffs, anchor stability, and clear `comments` explaining the why.\n\nSTATUS: COMPLETE\n\n<implementation>\n\n```json\n{\n  \"overview\": {\n    \"problem\": \"A ~2,900 LOC simavr-based emulation/test harnes…"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 7,
+      "title": "plan-code-qr"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 12,
+      "label": "plan-code-qr",
+      "phaseIndex": 7,
+      "phaseTitle": "plan-code-qr",
+      "agentId": "aaa899bf6b067c827",
+      "agentType": "quality-reviewer",
+      "model": "claude-sonnet-4-6",
+      "state": "done",
+      "startedAt": 1785009637863,
+      "queuedAt": 1785009636229,
+      "attempt": 1,
+      "lastToolName": "Read",
+      "lastToolSummary": "/Users/admin/offline/Nava-Firmware/sim/harness/lcd.h",
+      "promptPreview": "PLANNER — plan-code-qr\n\nconvention: diff-format.md\n\nQUALITY REVIEW: Verify the code_changes fill the code_intents correctly.\n\nPLAN WITH CODE_CHANGES:\nThe design calibration for this task: **utilitarian technical document** — the deliverable is populated JSON plan data. No artifact needed; output is clean structured text. The craft goes into correctness of diffs, anchor stability, and clear `commen…",
+      "lastProgressAt": 1785010215046,
+      "tokens": 109113,
+      "toolCalls": 25,
+      "durationMs": 577183,
+      "resultPreview": "<review_analysis>\nPHASE 1: Context — producer-validator diff review mode. No CLAUDE.md conventions dir. Applying RULE 0+2. Checked on-disk files for all 15 CCs.\n\nPHASE 2: Facts gathered by reading:\n- simavr.version (fabricated hash confirmed)\n- setup_simavr.sh (71 lines; git submodule update --init on line 27 confirmed)\n- nava_sim.c (253 lines; avr_make_mcu_by_name(\"atmega1284\") at line 159 confir…"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 8,
+      "title": "plan-docs-work"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 13,
+      "label": "plan-docs-work",
+      "phaseIndex": 8,
+      "phaseTitle": "plan-docs-work",
+      "agentId": "a6eb910f9fbf73f4a",
+      "agentType": "technical-writer",
+      "model": "claude-sonnet-4-6",
+      "state": "done",
+      "startedAt": 1785010221765,
+      "queuedAt": 1785010218695,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "python3 -c \"import json; f=open('/tmp/nava_plan_with_doc_di…",
+      "promptPreview": "PLANNER — plan-docs-work\n\nYou are dispatching to the TECHNICAL WRITER role to add documentation overlays.\n\nPLAN WITH CODE_CHANGES (approved by QR):\nThe design calibration for this task: **utilitarian technical document** — the deliverable is populated JSON plan data. No artifact needed; output is clean structured text. The craft goes into correctness of diffs, anchor stability, and clear `comments…",
+      "lastProgressAt": 1785012320462,
+      "tokens": 143906,
+      "toolCalls": 22,
+      "durationMs": 2098697,
+      "resultPreview": "JSON is valid (15 code changes; 12 with populated `doc_diff`, 3 correctly empty — CC-M-001-001 plain text, CC-M-001-003 diff-is-the-doc, CC-M-006-001 gitconfig has no comment syntax).\n\nComplete updated plan JSON written to:\n\n`/tmp/nava_plan_with_doc_diffs.json`\n\n---\n\nSummary of `doc_diff` content by CC:\n\n**CC-M-001-002** (`setup_simavr.sh`) — two hunks: `--tags` explained as required for v1.7 tag …"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 9,
+      "title": "plan-docs-qr"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 14,
+      "label": "plan-docs-qr",
+      "phaseIndex": 9,
+      "phaseTitle": "plan-docs-qr",
+      "agentId": "ad553b6dcaa42c345",
+      "agentType": "quality-reviewer",
+      "model": "claude-sonnet-4-6",
+      "state": "done",
+      "startedAt": 1785012323346,
+      "queuedAt": 1785012321931,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "ls /Users/admin/offline/Nava-Firmware/.claude/ 2>/dev/null",
+      "promptPreview": "PLANNER — plan-docs-qr\n\nQUALITY REVIEW: Verify the documentation overlays.\n\nPLAN WITH DOC_DIFFS:\nJSON is valid (15 code changes; 12 with populated `doc_diff`, 3 correctly empty — CC-M-001-001 plain text, CC-M-001-003 diff-is-the-doc, CC-M-006-001 gitconfig has no comment syntax).\n\nComplete updated plan JSON written to:\n\n`/tmp/nava_plan_with_doc_diffs.json`\n\n---\n\nSummary of `doc_diff` content by CC…",
+      "lastProgressAt": 1785012716421,
+      "tokens": 55985,
+      "toolCalls": 7,
+      "durationMs": 393074,
+      "resultPreview": "<review_analysis>\n\nPHASE 1: CONTEXT DISCOVERY\n- No .claude/conventions directory; agent-memory directory is empty\n- CLAUDE.md exists and loaded at project root\n- No producer-validator.md or structural.md found on disk\n- Review type: plan-review with doc_diffs\n- Planning context read: known risks, decisions, constraints all captured\n\nPHASE 2: FACT EXTRACTION\n- Plan: 15 code changes across 6 milesto…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 15,
+      "label": "plan-docs-qr-fix",
+      "phaseIndex": 9,
+      "phaseTitle": "plan-docs-qr",
+      "agentId": "a510608acc682faa0",
+      "agentType": "technical-writer",
+      "model": "claude-sonnet-4-6",
+      "state": "done",
+      "startedAt": 1785012719149,
+      "queuedAt": 1785012718059,
+      "attempt": 1,
+      "lastToolName": "Bash",
+      "lastToolSummary": "cat /tmp/nava_plan_with_doc_diffs.json",
+      "promptPreview": "PLANNER — plan-docs-qr (in-place fix)\n\nQR FINDINGS:\n<review_analysis>\n\nPHASE 1: CONTEXT DISCOVERY\n- No .claude/conventions directory; agent-memory directory is empty\n- CLAUDE.md exists and loaded at project root\n- No producer-validator.md or structural.md found on disk\n- Review type: plan-review with doc_diffs\n- Planning context read: known risks, decisions, constraints all captured\n\nPHASE 2: FACT…",
+      "lastProgressAt": 1785013587274,
+      "tokens": 76637,
+      "toolCalls": 18,
+      "durationMs": 868124,
+      "resultPreview": "The file is too large for inline display, but both fixes are verified:\n\n- `/tmp/nava_plan_with_doc_diffs.json` — corrected in place\n\n**Applied changes:**\n\nMUST (CC-M-004-007 doc_diff):\n- `448 = compiled sizeof(struct Pattern)` → `457 = sizeof(struct Pattern) on AVR, where unsigned int = 2 bytes; verify against FX_PTRN_SIZE in fixtures/patterns.h and the SavePattern/LoadPattern stride in EEprom.ino…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 16,
+      "label": "plan-docs-qr-retry",
+      "phaseIndex": 9,
+      "phaseTitle": "plan-docs-qr",
+      "agentId": "a1d7a883462870434",
+      "agentType": "quality-reviewer",
+      "model": "claude-sonnet-4-6",
+      "state": "done",
+      "startedAt": 1785013590725,
+      "queuedAt": 1785013588772,
+      "attempt": 1,
+      "lastToolName": "Read",
+      "lastToolSummary": "/tmp/nava_plan_with_doc_diffs.json",
+      "promptPreview": "PLANNER — plan-docs-qr\n\nQUALITY REVIEW: Verify the documentation overlays.\n\nPLAN WITH DOC_DIFFS:\nThe file is too large for inline display, but both fixes are verified:\n\n- `/tmp/nava_plan_with_doc_diffs.json` — corrected in place\n\n**Applied changes:**\n\nMUST (CC-M-004-007 doc_diff):\n- `448 = compiled sizeof(struct Pattern)` → `457 = sizeof(struct Pattern) on AVR, where unsigned int = 2 bytes; verify…",
+      "lastProgressAt": 1785013948184,
+      "tokens": 55797,
+      "toolCalls": 9,
+      "durationMs": 357458,
+      "resultPreview": "<review_analysis>\n\n### PHASE 1: CONTEXT DISCOVERY\n\nInvocation: plan-docs-qr (producer–validator gate on doc_diffs).\nCLAUDE.md present and read. No .claude/conventions files found (directory absent except settings.local.json). No producer-validator.md, temporal.md, documentation.md to load. Applying what was provided in system context.\n\nPlan file: /tmp/nava_plan_with_doc_diffs.json — read in full (…"
+    }
+  ],
+  "totalTokens": 1017439,
+  "totalToolCalls": 250
+}

@@ -1,0 +1,4 @@
+[submodule "sim/simavr"]
+	path = sim/simavr
+	url = https://github.com/buserror/simavr.git
+	shallow = false

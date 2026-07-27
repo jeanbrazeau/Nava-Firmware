@@ -1,0 +1,5 @@
+build/
+*.o
+*.a
+*.d
+fixtures/eeprom_default.bin
