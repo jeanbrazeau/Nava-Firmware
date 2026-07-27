@@ -415,7 +415,16 @@ the bit first would make every addition look like a collision.
 
 The encoder sets the selected track's note via `ExtSetTrackNote()`, which auditions the
 new pitch and moves an open sustained preview to it. Holding TEMPO yields the encoder
-back to BPM, matching every other PTRN_STEP page.
+back to BPM, and holding SHUFFLE yields it to the shuffle amount, matching every other
+PTRN_STEP page - the edit mode is a layer over the instrument selection, not a takeover
+of the panel. SHUFFLE also takes back the step buttons, which set shuffle and flam while
+it is held; `ExtInstUpdate()` stands down for it exactly as `Seq.ino`'s step handler does.
+
+The SHUFFLE branch of `EncGet()` is not scoped to the edit mode: holding SHUFFLE left the
+encoder on BPM everywhere, so the button that owns shuffle could not adjust it. It writes
+through the same global `prevShuf` the SHUFFLE+step handler tracks, or that handler's
+incremental erase of the old LCD marker would fire against a position the encoder had
+already moved past.
 
 Previews are owned by `ExtPreviewOn`/`ExtPreviewOff`/`ExtPreviewCheck` in key.ino so
 that a preview is never left sounding and never held open by `delay()`.
@@ -453,10 +462,19 @@ was never started.
 
 ### Transmission timing
 The drum voices are triggered inline in `CountPPQN()`, so anything that delays the ext
-notes shows up as the MIDI track playing behind the analog kit. Two separate costs were
+notes shows up as the MIDI track playing behind the analog kit. Three separate costs were
 measured with `sim/tests/test_ext_latency.c`, which differences the trigger-word write
-against the note-on on the wire (baseline: mean 3.99 ms, worst 16.54 ms; now mean 1.27 ms,
-worst 1.31 ms at 120 BPM with two ext tracks):
+against the note-on on the wire.
+
+The figure that matters is the LAST ext note of a step, not the first. MIDI is serial, so
+a measurement pinned to track 0 reports the best case and hides the spread that a
+multi-track pattern is actually heard as - which is why an early version of this test
+reported 1.27 ms while the hardware sounded 6 ms late. At 120 BPM:
+
+| ext tracks/step | last note, before | after |
+|---|---|---|
+| 2 | 2.71 ms | 1.32 ms |
+| 6 | 8.37 ms | 4.13 ms |
 
 - **Wire order.** Sending every sounding note-off and then every new note-on put track 0's
   note-on behind `2N+3` bytes at 320 us each, growing with how many tracks the previous
@@ -472,6 +490,23 @@ worst 1.31 ms at 120 BPM with two ext tracks):
   has room for the step's worst-case burst - the original concern, that `HardwareSerial`
   busy-waits on UDRE with interrupts disabled once the 64-byte ring fills, is respected
   rather than discarded. A denser step than that stays queued and the loop drains it.
+- **Note-offs at the step boundary.** With releases interleaved into the step, every
+  active track cost 4 bytes there - its note-off then its note-on - so each extra track
+  pushed the next track's note-on 1.28 ms further behind the trigger. `extReleaseArmed`
+  moves the release to `EXT_RELEASE_LEAD` (2) PPQN ticks *before* the next step, using the
+  same boundary expression offset by the lead, so the boundary carries note-ons only at
+  2 bytes per track and the releases ride in dead time. `extPendingOff` is still set at
+  every step: if the early release could not get out - a very short shuffled gap, or a
+  burst the UART could not absorb - the step falls back to the interleaved ordering rather
+  than stranding a note.
+
+What remains is the wire itself. Under running status a step costs one status byte plus
+two per note-on, so the last note of an N-track step cannot arrive sooner than
+`(1 + 2N) * 320 us`; the 6-track measurement of 4.13 ms is within 30 us of that floor.
+`test_ext_latency.c` therefore budgets against that formula rather than a flat ceiling,
+so the bound stays meaningful at any density. Closing the rest would need sub-tick lead
+scheduling, and one PPQN tick is 5.2 ms at 120 BPM - too coarse to compensate with, and
+tempo-dependent besides.
 
 `extMidiBusy` serialises the two paths: the MIDI library's running-status state,
 `HardwareSerial`'s ring and `extTrackNoteOn[]` are all non-reentrant. It is claimed inside

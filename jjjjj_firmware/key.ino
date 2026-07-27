@@ -129,7 +129,11 @@ void ExtInstUpdate()
   }
 
   /////////////////////////////EXT INST Edit Mode (TR-909 STYLE)//////////////////////////////
-  if (extInstEditMode && curSeqMode == PTRN_STEP)
+  // SHUFFLE held means the step buttons belong to shuffle and flam, as they do outside
+  // this mode - Seq.ino's step handler already stands down for it. Without the same
+  // guard here the presses were swallowed as track selection and shuffle could not be
+  // set at all while editing ext tracks.
+  if (extInstEditMode && curSeqMode == PTRN_STEP && !shufBtn.pressed)
   {
     // Which gesture the step buttons perform depends on the transport.
     //

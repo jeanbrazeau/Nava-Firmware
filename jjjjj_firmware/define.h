@@ -508,6 +508,11 @@ boolean extNotesNeedSaved = FALSE;            // [TR-909 STYLE] extTrackNote cha
 unsigned int volatile extPendingOn = 0;       // [TR-909 STYLE] Tracks the clock wants sounding, drained by ServiceExtMidiNotes
 byte volatile extPendingVel = 0;              // [TR-909 STYLE] Velocity that goes with extPendingOn
 boolean volatile extPendingOff = FALSE;       // [TR-909 STYLE] Sticky request to silence the previous step before the queued one starts
+boolean volatile extReleaseArmed = FALSE;     // [TR-909 STYLE] A step is sounding and its note-offs have not been queued yet
+// How many PPQN ticks before the next step the sounding notes are released. Two ticks
+// is 10.4ms at 120 BPM, which covers a full 16-track release burst (33 bytes at 320us)
+// with the wire idle again before the step's note-ons are due.
+#define EXT_RELEASE_LEAD 2
 unsigned long extInstSplashUntil = 0;         // [TR-909 STYLE] Deadline of the non-blocking EXT INST splash (millis)
 boolean extInstSplashArmed = FALSE;           // [TR-909 STYLE] TRUE while extInstSplashUntil is a live deadline
 byte previewNote = 0;                         // [TR-909 STYLE] Note currently held open by the preview

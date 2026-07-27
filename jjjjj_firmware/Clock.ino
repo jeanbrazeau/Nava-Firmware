@@ -69,6 +69,26 @@ void CountPPQN() {
 
     if (ppqn % pattern[ptrnBuffer].scale == 0) stepChanged = TRUE;  //[oort]one: only used locally here, not needed, extend this if instead?
 
+    // Release the sounding ext notes a couple of ticks BEFORE the next step instead of
+    // at it. Held here, every active track costs 4 bytes at the step boundary (its
+    // note-off then its note-on) and MIDI is serial, so the last track of a 6-track step
+    // landed 8ms behind the analog trigger it should have hit with. Releasing early
+    // leaves the boundary carrying note-ons only - 2 bytes per track - and the releases
+    // ride in dead time where nothing is time-critical.
+    // Same boundary expression as the step test below, offset by the lead; shufPolarity
+    // already holds the value the NEXT boundary will use, having been flipped at the last
+    // step. Adding PPQN keeps the sum non-negative for small ppqn against a negative
+    // shuffle offset, and cannot shift the result because every scale divides PPQN.
+    // The two conditions can never coincide: they differ by EXT_RELEASE_LEAD, which is
+    // smaller than the smallest scale.
+    if (extReleaseArmed
+        && ((ppqn + PPQN + shuffle[(pattern[ptrnBuffer].shuffle) - 1][shufPolarity] + EXT_RELEASE_LEAD)
+            % pattern[ptrnBuffer].scale) == 0) {
+      extReleaseArmed = FALSE;
+      extPendingOff = TRUE;
+      ServiceExtMidiNotesFromClock();
+    }
+
     if (((ppqn + shuffle[(pattern[ptrnBuffer].shuffle) - 1][shufPolarity]) % pattern[ptrnBuffer].scale == 0) && stepChanged) {  //Each Step
       stepChanged = FALSE;                                                                                                      //flag that we already trig this step
       shufPolarity = !shufPolarity;
@@ -166,7 +186,12 @@ void CountPPQN() {
 #endif
       extPendingVel = extVelocity;
       extPendingOn = extOnMask;
+      // Still set unconditionally: if the early release did not get out in time - a very
+      // short shuffled gap, or a burst the UART could not absorb - this is the safety net
+      // that keeps off-before-on ordering intact, degrading to the old behaviour for that
+      // step rather than stranding a note.
       extPendingOff = TRUE;
+      extReleaseArmed = (extOnMask != 0);
       // Send it here when the UART has room, so the note is not held back by whatever
       // the loop is doing - an end-of-measure LCD repaint blocks it for ~14ms. Declines
       // and leaves the step queued if transmitting could block; the loop still drains.

@@ -197,6 +197,24 @@ const fx_pattern_t FX_PTRN_EXT_DENSE = {
     },
 };
 
+/* Six ext tracks on every step.  16 note-offs+note-ons would not fit the TX ring, but
+ * six tracks do, so this stays on the clock-side transmit path and measures the burst
+ * spread rather than the loop fallback. */
+const fx_pattern_t FX_PTRN_EXT_BUSY = {
+    .length  = 15,
+    .scale   = FX_SCALE_16,
+    .shuffle = 1,
+    .flam    = 0,
+    .inst    = { [FX_BD] = 0xFFFFu },
+    .extTrack = {
+        0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu, 0xFFFFu,
+    },
+    .velocity = {
+        [FX_BD]       = {50,50,50,50, 50,50,50,50, 50,50,50,50, 50,50,50,50},
+        [FX_EXT_INST] = {50,50,50,50, 50,50,50,50, 50,50,50,50, 50,50,50,50},
+    },
+};
+
 /* Pattern swap group: Group A triggers BD on all steps (trig word bit BD=8 set) */
 const fx_pattern_t FX_PTRN_GROUP_A = {
     .length  = 15,

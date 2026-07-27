@@ -27,10 +27,19 @@
 
 #define CYCLES_PER_US 16ULL
 
-/* Ceiling for the trigger→first-note-on gap.  One 16th at 120 BPM is 125 ms, so
- * this is generous musically but tight enough to catch a return of loop-latency
- * scheduling. */
-#define MAX_LAG_US  2500ULL
+/* The bound scales with how many ext tracks the step actually sounds, because the
+ * floor is physics: 31250 baud is 320 us per byte, and under running status a step
+ * costs one status byte plus two per note-on.  A flat ceiling either passes a
+ * regression on dense patterns or fails a legitimate sparse one.
+ *
+ * Anything above this is firmware overhead - scheduling, ordering, or note-offs that
+ * were not lifted out of the step boundary - which is exactly what should fail. */
+#define WIRE_US_PER_BYTE   320ULL
+#define SCHED_BUDGET_US    900ULL   /* ISR entry, step compute, ring handoff */
+
+static uint64_t lag_budget_us(int tracks) {
+    return SCHED_BUDGET_US + (1ULL + 2ULL * (uint64_t)tracks) * WIRE_US_PER_BYTE;
+}
 
 static void latch_guide(nava_sim_t *ctx) {
     fp_press_button(ctx, FP_BTN_GUIDE);
@@ -78,6 +87,7 @@ static void test_ext_trigger_alignment(nava_sim_t *ctx) {
 
     uint64_t worst = 0, total = 0;
     int      samples = 0;
+    int      max_tracks = 0;
 
     /* Pair each step onset with the note-on that falls before the NEXT onset,
      * rather than trusting the onset index to stay in step with the note-on
@@ -103,13 +113,30 @@ static void test_ext_trigger_alignment(nava_sim_t *ctx) {
         if (!on) continue;
         if (on->cycle >= onset[n + 1]->cycle) continue;  /* step produced none */
 
-        uint64_t lag = on->cycle - trig->cycle;
+        /* The LAST ext note of the step, not the first.  MIDI is serial, so every
+         * additional track on a step pushes the next track's note-on further behind
+         * the analog trigger - measuring only track 0 reports the best case and hides
+         * exactly the spread a real multi-track pattern is heard as. */
+        const sim_event_t *last_on = on;
+        int tracks_this_step = 0;
+        for (size_t i = 0; i < ctx->log.count; i++) {
+            const sim_event_t *e = &ctx->log.buf[i];
+            if (e->cycle < trig->cycle || e->cycle >= onset[n + 1]->cycle) continue;
+            if (e->type != EVT_MIDI_NOTE_ON) continue;
+            if (e->midi_note.channel != EXT_CH) continue;
+            if (e->midi_note.velocity == 0) continue;   /* note-off in disguise */
+            tracks_this_step++;
+            if (e->cycle > last_on->cycle) last_on = e;
+        }
+        if (tracks_this_step > max_tracks) max_tracks = tracks_this_step;
+
+        uint64_t lag = last_on->cycle - trig->cycle;
         total += lag;
         samples++;
         if (lag > worst) worst = lag;
 
         const sim_event_t *first_byte = next_channel_tx_byte(&ctx->log, trig->cycle);
-        double sched = first_byte && first_byte->cycle <= on->cycle
+        double sched = first_byte && first_byte->cycle <= last_on->cycle
                        ? (double)(first_byte->cycle - trig->cycle) / 16000.0 : -1.0;
         /* Attribute a long sched gap: count the LCD traffic the loop was busy
          * with between the trigger and the ext step reaching the UART. */
@@ -142,16 +169,17 @@ static void test_ext_trigger_alignment(nava_sim_t *ctx) {
     }
     printf("# ext_lag track0 note-ons observed: %zu over 4 bars (64 steps)\n", on_count);
 
-    uint64_t mean = total / (uint64_t)samples;
-    printf("# ext_lag summary: n=%d mean=%llu cyc (%.2f ms) worst=%llu cyc (%.2f ms)\n",
-           samples, (unsigned long long)mean, (double)mean / 16000.0,
-           (unsigned long long)worst, (double)worst / 16000.0);
+    uint64_t mean   = total / (uint64_t)samples;
+    uint64_t budget = lag_budget_us(max_tracks);
+    printf("# ext_lag summary: n=%d tracks/step=%d mean=%llu cyc (%.2f ms) worst=%llu cyc (%.2f ms) budget=%.2f ms\n",
+           samples, max_tracks, (unsigned long long)mean, (double)mean / 16000.0,
+           (unsigned long long)worst, (double)worst / 16000.0,
+           (double)budget / 1000.0);
 
-    if (worst > MAX_LAG_US * CYCLES_PER_US) {
+    if (worst > budget * CYCLES_PER_US) {
         test_fail("ext_lag/worst",
-                  "ext note-on lags trigger by %llu cycles (%.2f ms), limit %.2f ms",
-                  (unsigned long long)worst, (double)worst / 16000.0,
-                  (double)(MAX_LAG_US * CYCLES_PER_US) / 16000.0);
+                  "last ext note-on of a %d-track step lags trigger by %.2f ms, budget %.2f ms",
+                  max_tracks, (double)worst / 16000.0, (double)budget / 1000.0);
     }
 }
 
@@ -246,6 +274,8 @@ static void test_dense_step_falls_back_to_loop(nava_sim_t *ctx) {
 int main(void) {
     TEST_WITH_PATTERN("ext_trigger_alignment",
                       test_ext_trigger_alignment, &FX_PTRN_EXT_SYNC, 2, 1);
+    TEST_WITH_PATTERN("ext_trigger_alignment_6track",
+                      test_ext_trigger_alignment, &FX_PTRN_EXT_BUSY, 2, 1);
     TEST_WITH_PATTERN("master_clock_jitter",
                       test_master_clock_jitter, &FX_PTRN_EXT_SYNC, 2, 1);
     TEST_WITH_PATTERN("dense_step_falls_back_to_loop",

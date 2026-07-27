@@ -73,6 +73,9 @@ void InitMidiNoteOff() {
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
     extPendingOn = 0;
     extPendingOff = FALSE;
+    // Nothing is left sounding after this, so a pending early release would only
+    // re-latch the transmitter for an empty pass.
+    extReleaseArmed = FALSE;
     extMidiBusy = TRUE;
   }
   SendExtTrackNoteOff();

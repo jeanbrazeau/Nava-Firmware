@@ -88,6 +88,11 @@ extern const fx_pattern_t FX_PTRN_EXT_SYNC;
  * transmit must decline and the loop must still deliver every step. */
 extern const fx_pattern_t FX_PTRN_EXT_DENSE;
 
+/* Six ext tracks on every step - a realistic multi-track arrangement, and the case
+ * a single-track measurement hides: the sixth note-on is serialised behind the other
+ * five, so this is what the user actually hears as "the MIDI is late". */
+extern const fx_pattern_t FX_PTRN_EXT_BUSY;
+
 /* Two-pattern group (used in pattern-swap test):
  * FX_PTRN_GROUP_A: BD on all steps (produces non-zero trig word)
  * FX_PTRN_GROUP_B: SD on all steps (different trig word, distinct from A) */

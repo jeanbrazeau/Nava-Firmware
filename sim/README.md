@@ -38,7 +38,7 @@ bash sim/scripts/setup_simavr.sh
 # 2. Compile the production firmware ELF from the current working tree
 bash sim/scripts/build_firmware.sh
 
-# 3. Build the harness and run all 26 regression tests (TAP output)
+# 3. Build the harness and run all 28 regression tests (TAP output)
 make -C sim test
 ```
 

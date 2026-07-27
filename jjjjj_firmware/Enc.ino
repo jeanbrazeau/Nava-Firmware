@@ -17,6 +17,23 @@ void EncGet() {
       needLcdUpdate = TRUE;
     }
   }
+  /////////////////////////////////////SHUFFLE//////////////////////////////////////
+  // Holding SHUFFLE gives the encoder the shuffle amount, in every pattern mode. The
+  // step buttons already set shuffle and flam while it is held; the encoder was falling
+  // through to BPM, and inside EXT INST edit mode it was worse - it kept editing the
+  // track note, so the one control the held button implies was the one it did not touch.
+  else if (shufBtn.pressed && (curSeqMode == PTRN_STEP || curSeqMode == PTRN_TAP) && !seq.configMode) {
+    // shuffle indexes shuffle[type - 1], so 0 is not a legal value
+    int shuf = EncGet(pattern[ptrnBuffer].shuffle, 1);
+    pattern[ptrnBuffer].shuffle = constrain(shuf, 1, MAX_SHUF_TYPE);
+    // The same prevShuf the SHUFFLE+step handler tracks, so its incremental erase of the
+    // old LCD marker does not fire against a position the encoder has already moved past
+    if (pattern[ptrnBuffer].shuffle != prevShuf) {
+      prevShuf = pattern[ptrnBuffer].shuffle;
+      patternWasEdited = TRUE;
+      needLcdUpdate = TRUE;
+    }
+  }
   ///////////////////////////////////EXT INST NOTE//////////////////////////////////
   // Sets the wire MIDI note of the selected track. Holding TEMPO still yields the
   // encoder to BPM, matching how every other PTRN_STEP page behaves.

@@ -10,10 +10,11 @@
  *     so unedited tracks transmit the same pitches the old fixed table did.
  *   - The LCD renders those notes as names under MIDI 60 = C4, so 48 reads C3.
  *   - extTrack[] is polyphonic: multiple tracks can fire on the same step.
- *   - CountPPQN() only queues each step's ext notes; ServiceExtMidiNotes(), called
- *     from loop(), sends the previous step's note-offs and then the new step's
- *     note-ons, so note-offs still arrive before the next step's note-ons but both
- *     are deferred by up to one main-loop period (~4.5ms).
+ *   - CountPPQN() transmits each step itself when the UART has room, falling back to
+ *     ServiceExtMidiNotes() in loop() only for bursts too dense for the TX ring.  The
+ *     previous step's note-offs go out EXT_RELEASE_LEAD ticks before the next step
+ *     rather than at it, so the step boundary carries note-ons only; note-offs still
+ *     precede the next step's note-ons, just earlier.
  *   - An accented step sends MIDI_HIGH_VELOCITY + MIDI_ACCENT_VELOCITY = 127.
  *
  * Test fixture (FX_PTRN_EXT):
@@ -291,6 +292,51 @@ static void test_ext_encoder_sets_track_note(nava_sim_t *ctx) {
     }
 }
 
+/* Holding SHUFFLE hands the encoder to the shuffle amount, even inside ext edit mode.
+ *
+ * The edit mode used to keep the encoder on the track note whatever else was held, so
+ * the one parameter the held button implies was the one it could not reach.  Asserted
+ * both ways: the note must be untouched, and the shuffle must actually have moved -
+ * checking only the first would pass on an encoder that does nothing at all. */
+static void test_ext_shuffle_button_owns_encoder(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+
+    fp_press_button(ctx, FP_BTN_SHIFT);
+    fp_press_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    fp_settle(ctx);
+    nava_sim_run_cycles(ctx, 16000000ULL);   /* outlast the 800ms splash */
+
+    /* Two detents per increment, so 8 detents is +4: FX_PTRN_BASIC boots at shuffle=1
+     * and lands on 5, whose table entry is {0,-4} - odd steps 4 PPQN ticks early. */
+    fp_press_button(ctx, FP_BTN_SHUF);
+    nava_gpio_inject_encoder(ctx->gpio, +1, 8);
+    fp_settle(ctx);
+    fp_release_button(ctx, FP_BTN_SHUF);
+    fp_settle(ctx);
+
+    /* Track 1 is selected on entry and defaults to note 48 */
+    assert_lcd_contains("ext/shuf_encoder/note_untouched", ctx, 1, "C3");
+
+    event_log_clear(&ctx->log);
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    uint64_t t0 = ctx->avr->cycle;
+    nava_sim_run_cycles(ctx, BAR_CYCLES);
+
+    const sim_event_t *step0 = event_log_find_step_onset(&ctx->log, t0, 0);
+    const sim_event_t *step1 = event_log_find_step_onset(&ctx->log, t0, 1);
+    if (!step0 || !step1) {
+        test_fail("ext/shuf_encoder/onsets", "need 2 step onsets to measure shuffle");
+        return;
+    }
+    assert_cycle_within("ext/shuf_encoder/shuffle_applied",
+                        step1->cycle - step0->cycle,
+                        20ULL * NAVA_PPQN_PERIOD_CYCLES,   /* 24 - 4 */
+                        NAVA_PPQN_PERIOD_CYCLES / 2);
+}
+
 /* Leaving edit mode returns to the instrument that was selected on the way in.
  *
  * SD is chosen over BD deliberately: BD is the old hardcoded fallback, so restoring to
@@ -454,6 +500,8 @@ int main(void) {
                       test_ext_notes_only_midi_traffic, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_encoder_sets_track_note",
                       test_ext_encoder_sets_track_note, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_shuffle_button_owns_encoder",
+                      test_ext_shuffle_button_owns_encoder, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_exit_restores_instrument",
                       test_ext_exit_restores_instrument, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_track_switch_auditions_when_paused",
