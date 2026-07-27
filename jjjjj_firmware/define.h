@@ -134,11 +134,13 @@ byte lcdVal = 0; //[oort] for traces
 #define END_OF_TRACK 128
 
 //Ext inst
-// [TR-909 STYLE] One chromatic note per track. MidiSendNoteOn/Off add 12 before
-// transmitting, so these values map to MIDI notes 48 to 63 on the wire.
+// [TR-909 STYLE] Power-on default note per track, used when the setup EEPROM holds
+// no usable map. These are literal wire notes: the ext send path does not apply the
+// +12 that MidiSendNoteOn/Off add for drum notes, so the defaults still transmit
+// MIDI 48 to 63 exactly as the fixed table did before the notes became editable.
 const byte EXT_TRACK_NOTES[16] PROGMEM = {
-  36, 37, 38, 39, 40, 41, 42, 43,  // transmitted as MIDI 48-55
-  44, 45, 46, 47, 48, 49, 50, 51   // transmitted as MIDI 56-63
+  48, 49, 50, 51, 52, 53, 54, 55,
+  56, 57, 58, 59, 60, 61, 62, 63
 };
 
 
@@ -492,9 +494,17 @@ unsigned long timeSinceSaved;
 //Ext inst-------------------------------------------
 boolean extInstEditMode = FALSE;              // [TR-909 STYLE] Flag to indicate when we're in EXT INST edit mode
 byte currentExtTrack = 0;                     // [TR-909 STYLE] Selected track (0-15)
-byte currentExtNote = 36;                     // [TR-909 STYLE] Table value for the selected track, transmitted as MIDI 48
+// Editable wire note per track, set by the encoder while in edit mode. Global rather
+// than per pattern: 16 bytes inside every Pattern would cost ~320 bytes of RAM across
+// the bank cache and buffers, and would change the stored pattern format.
+byte extTrackNote[16];                        // [TR-909 STYLE] MIDI note each track transmits, seeded from EXT_TRACK_NOTES
 boolean extInstButtonHandled = FALSE;         // [TR-909 STYLE] Flag to indicate when an EXT INST button press has been handled
 boolean extTrackNoteOn[16] = {FALSE};         // [TR-909 STYLE] Track note-on states for polyphonic note-off, owned by the main loop only
+// The note actually transmitted, kept separately from extTrackNote: retuning a track
+// while it sounds must still note-off the pitch that was sent, or the old note strands.
+byte extSoundingNote[16] = {0};               // [TR-909 STYLE] Note held open per track by the sequencer
+byte extInstPrevInst = BD;                    // [TR-909 STYLE] Instrument selected before entering edit mode, restored on exit
+boolean extNotesNeedSaved = FALSE;            // [TR-909 STYLE] extTrackNote changed; written to EEPROM once, on mode exit
 unsigned int volatile extPendingOn = 0;       // [TR-909 STYLE] Tracks the clock wants sounding, drained by ServiceExtMidiNotes
 byte volatile extPendingVel = 0;              // [TR-909 STYLE] Velocity that goes with extPendingOn
 boolean volatile extPendingOff = FALSE;       // [TR-909 STYLE] Sticky request to silence the previous step before the queued one starts

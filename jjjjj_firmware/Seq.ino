@@ -397,11 +397,10 @@ void SeqParameter() {
       curFlam = 0;
       needLcdUpdate = TRUE;
     }
-    if (shiftBtn && guideBtn.justPressed && !extInstEditMode) {
-      curInst = EXT_INST;
-      curFlam = 0;
-      needLcdUpdate = TRUE;
-    }
+    // SHIFT+GUIDE is owned by ButtonGet(), which sets curInst = EXT_INST on entry and
+    // restores the previous instrument on exit. A second handler here could only ever
+    // fire on the exit pass - ButtonGet() runs first and has already cleared the flag
+    // that guards it, so it re-selected EXT_INST immediately after the restore.
     //---------still in: if (curSeqMode == PTRN_STEP || curSeqMode == PTRN_TAP) ------
 
     //-------------------Clear Button for STEP Mode------------------------------

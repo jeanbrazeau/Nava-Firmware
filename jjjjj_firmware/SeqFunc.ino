@@ -7,6 +7,7 @@
 //Initialise the sequencer before to run
 void InitSeq() {
   LoadSeqSetup();
+  LoadExtTrackNotes();  // [TR-909 STYLE] must precede any ext preview or playback
   ppqn = 0;
   stepCount = 0;
   seq.configPage = 0;

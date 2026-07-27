@@ -7,14 +7,42 @@
 // [SIZZLE] currentExtNote is defined in define.h now
 
 // Leaving edit mode has to put curInst back on a real voice: EXT_INST triggers no
-// drum circuit, so a stranded selection looks like dead step buttons.
+// drum circuit, so a stranded selection looks like dead step buttons. The mode is
+// nested under the instrument layer, so it restores the instrument that was selected
+// on entry rather than defaulting to BD - the user comes back to where they left off.
 void ExitExtInstEditMode()
 {
   if (!extInstEditMode) return;
   extInstEditMode = FALSE;
   extInstButtonHandled = FALSE;
   ExtPreviewOff();
-  curInst = BD;
+  if (extNotesNeedSaved) {
+    SaveExtTrackNotes();
+    extNotesNeedSaved = FALSE;
+  }
+  // EXT_INST is not a restorable selection: it drives no drum circuit, so a saved
+  // value of it (double entry, or a stale global) would strand the user again.
+  curInst = (extInstPrevInst == EXT_INST) ? BD : extInstPrevInst;
+  needLcdUpdate = TRUE;
+}
+
+// Retune the selected track. Auditions the new pitch so the note can be dialled in by
+// ear; the preview is declined by ExtPreviewOn() when the sequencer already sounds
+// this track, which is exactly when the audition would be redundant anyway.
+void ExtSetTrackNote(byte note)
+{
+  if (note == extTrackNote[currentExtTrack]) return;
+  extTrackNote[currentExtTrack] = note;
+
+  // A sustained preview (step button still held from track select) has to move with
+  // the note, otherwise the user hears the old pitch while the display shows the new.
+  if (previewActive && !previewOffAt) ExtPreviewOn(note, 0);
+  else ExtPreviewOn(note, 50);
+
+  // Deferred to mode exit rather than seq.setupNeedSaved: that flag is cleared every
+  // pass while outside config mode, and writing here would burn an EEPROM cycle on
+  // every encoder detent. One write per editing session instead.
+  extNotesNeedSaved = TRUE;
   needLcdUpdate = TRUE;
 }
 
@@ -36,11 +64,7 @@ void ExtPreviewOn(byte note, unsigned long holdMs)
   }
 
   if (previewActive) ExtPreviewOff();
-#if MIDI_EXT_CHANNEL
-  MidiSendNoteOn(seq.EXTchannel, note, HIGH_VEL);
-#else
-  MidiSendNoteOn(seq.TXchannel, note, HIGH_VEL);
-#endif
+  MidiSendExtNoteOn(note, HIGH_VEL);
   previewNote = note;
   previewActive = TRUE;
   if (holdMs) {
@@ -57,11 +81,7 @@ void ExtPreviewOn(byte note, unsigned long holdMs)
 void ExtPreviewOff()
 {
   if (!previewActive) return;
-#if MIDI_EXT_CHANNEL
-  MidiSendNoteOff(seq.EXTchannel, previewNote);
-#else
-  MidiSendNoteOff(seq.TXchannel, previewNote);
-#endif
+  MidiSendExtNoteOff(previewNote);
   previewActive = FALSE;
   previewOffAt = 0;
 }
@@ -111,17 +131,27 @@ void ExtInstUpdate()
   /////////////////////////////EXT INST Edit Mode (TR-909 STYLE)//////////////////////////////
   if (extInstEditMode && curSeqMode == PTRN_STEP)
   {
-    // [TR-909 STYLE] INST + step button (1-16) = select track
-    if (instBtn && currentButtonState) {
+    // Which gesture the step buttons perform depends on the transport.
+    //
+    // Paused, the 16 step buttons are track switches: a bare press selects the track
+    // and sustains its note, so the whole map can be auditioned by ear, and INST
+    // qualifies a programming press instead.
+    //
+    // Running, the mapping is the reverse - a bare press programs - because live step
+    // entry against a moving sequencer is the point of holding the transport open, and
+    // a sustained audition would collide with the note the sequencer is already sounding.
+    boolean selectingTrack = isRunning ? instBtn : !instBtn;
+
+    // [TR-909 STYLE] Step button (1-16) = select track
+    if (selectingTrack && currentButtonState) {
       extInstButtonHandled = TRUE;
 
       for (byte i = 0; i < NBR_STEP_BTN; i++) {
         if (bitRead(currentButtonState, i) && !bitRead(prevExtStepState, i)) {
           currentExtTrack = i;
-          currentExtNote = pgm_read_byte(&EXT_TRACK_NOTES[i]);
 
           // Preview note, sustained until the step button is released
-          ExtPreviewOn(currentExtNote, 0);
+          ExtPreviewOn(extTrackNote[i], 0);
           needLcdUpdate = TRUE;
           stepBtn[i].justPressed = FALSE;
         }
@@ -135,10 +165,10 @@ void ExtInstUpdate()
     // button first used to leave the note hanging on the external synth.
     if (stepsBtn.justRelease) ExtPreviewOff();
 
-    if (!instBtn) extInstButtonHandled = FALSE;
+    if (!selectingTrack) extInstButtonHandled = FALSE;
 
-    // [TR-909 STYLE] Program steps when INST NOT held
-    if (!instBtn && !extInstButtonHandled && currentButtonState) {
+    // [TR-909 STYLE] Program steps with the gesture that is not selecting a track
+    if (!selectingTrack && !extInstButtonHandled && currentButtonState) {
       for (byte step = 0; step < NBR_STEP; step++) {
         if (bitRead(currentButtonState, step) && !bitRead(prevExtStepState, step)) {
           // Toggle step for current track
@@ -148,7 +178,7 @@ void ExtInstUpdate()
             // Audition before the bitSet, not after: ExtPreviewOn() declines when the
             // running pattern already uses this track, and setting the bit first would
             // make that true of every step the user adds.
-            ExtPreviewOn(currentExtNote, 50);
+            ExtPreviewOn(extTrackNote[currentExtTrack], 50);
             bitSet(pattern[ptrnBuffer].extTrack[currentExtTrack], step);
           }
           patternWasEdited = TRUE;

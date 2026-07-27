@@ -27,6 +27,7 @@
 #include "event_log.h"
 #include "nava_sim.h"
 #include "midi.h"
+#include "gpio.h"
 #include "patterns.h"
 
 #include <stdio.h>
@@ -197,14 +198,20 @@ static void test_ext_step_programming_via_panel(nava_sim_t *ctx) {
     /* The 800ms splash owns the LCD; let it expire so the mode line is observable
      * and so nothing about the splash overlaps the programming press. */
     nava_sim_run_cycles(ctx, 16000000ULL);   /* 1s at 16MHz */
-    assert_lcd_contains("ext/panel/edit_mode_entered", ctx, 0, "ptr len scl ins");
-    /* "T 1", not "T": LCD.ino pads a single digit, and a bare T would also match the
-     * LT/MT/HT/EXT instrument labels, so it would pass with the mode not entered. */
-    assert_lcd_contains("ext/panel/track_shown", ctx, 1, "T 1");
+    /* Edit mode retitles the last header column from the instrument label to the
+     * selected track, and puts that track's MIDI note in the value field below.
+     * "T1 " with the trailing pad, not a bare "T": LT/MT/HT/EXT all contain a T and
+     * would match with the mode not entered. */
+    assert_lcd_contains("ext/panel/edit_mode_entered", ctx, 0, "ptr len scl T1 ");
+    /* Track 1 defaults to wire note 48 — the same pitch the fixed table transmitted. */
+    assert_lcd_contains("ext/panel/note_shown", ctx, 1, "48");
 
-    /* Program step PROG_STEP on the selected track (track 0) with a bare step press. */
+    /* Program step PROG_STEP on the selected track (track 0). Paused, the step buttons
+     * are track switches, so a programming press is qualified with INST. */
+    fp_press_button(ctx, FP_BTN_INST);
     fp_press_step(ctx, PROG_STEP);
     fp_release_step(ctx, PROG_STEP);
+    fp_release_button(ctx, FP_BTN_INST);
     fp_settle(ctx);
 
     event_log_clear(&ctx->log);
@@ -221,6 +228,124 @@ static void test_ext_step_programming_via_panel(nava_sim_t *ctx) {
                         t0, t0 + BAR_CYCLES * 2);
 }
 
+/* The encoder retunes the selected track, and playback transmits the new note.
+ *
+ * Two assertions that must hold together: the LCD has to show the new value, and the
+ * sequencer has to actually send it.  Asserting only the display would pass with the
+ * note map edited but ServiceExtMidiNotes() still reading the fixed PROGMEM table.
+ * The absence check on the old pitch is what pins that — a firmware that ignores the
+ * map keeps emitting 48 and would otherwise satisfy a note-on-only assertion by luck.
+ */
+static void test_ext_encoder_sets_track_note(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+
+    fp_press_button(ctx, FP_BTN_SHIFT);
+    fp_press_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    fp_settle(ctx);
+    nava_sim_run_cycles(ctx, 16000000ULL);   /* outlast the 800ms splash */
+
+    /* EncGet needs two detents per increment (Enc.ino debounces a jumpy encoder), so
+     * 8 detents is +4 semitones: 48 -> 52. */
+    nava_gpio_inject_encoder(ctx->gpio, +1, 8);
+    fp_settle(ctx);
+    assert_lcd_contains("ext/encoder/note_raised", ctx, 1, "52");
+
+    fp_press_button(ctx, FP_BTN_INST);   /* paused: INST qualifies a programming press */
+    fp_press_step(ctx, PROG_STEP);
+    fp_release_step(ctx, PROG_STEP);
+    fp_release_button(ctx, FP_BTN_INST);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    uint64_t t0 = ctx->avr->cycle;
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, BAR_CYCLES * 2);
+
+    assert_midi_note_on("ext/encoder/retuned_note_sounds",
+                        &ctx->log, EXT_CH, 0x34u /* 52 */,
+                        t0, t0 + BAR_CYCLES * 2);
+
+    if (nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T0, t0, t0 + BAR_CYCLES * 2)) {
+        test_fail("ext/encoder/old_note_silent",
+                  "track still transmitted its default note 48 after retune to 52");
+    }
+}
+
+/* Leaving edit mode returns to the instrument that was selected on the way in.
+ *
+ * SD is chosen over BD deliberately: BD is the old hardcoded fallback, so restoring to
+ * BD would look identical to not restoring at all.
+ */
+static void test_ext_exit_restores_instrument(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+
+    /* SD_BTN is step index 2 (define.h): BD, BD_LOW, SD, SD_LOW ... */
+    fp_press_button(ctx, FP_BTN_INST);
+    fp_press_step(ctx, 2);
+    fp_release_step(ctx, 2);
+    fp_release_button(ctx, FP_BTN_INST);
+    fp_settle(ctx);
+    assert_lcd_contains("ext/exit/inst_selected", ctx, 0, "ptr len scl ins");
+    assert_lcd_contains("ext/exit/sd_selected", ctx, 1, "SD");
+
+    fp_press_button(ctx, FP_BTN_SHIFT);
+    fp_press_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    fp_settle(ctx);
+    nava_sim_run_cycles(ctx, 16000000ULL);
+    assert_lcd_contains("ext/exit/mode_entered", ctx, 0, "ptr len scl T1 ");
+
+    /* SHIFT+GUIDE again toggles back out. */
+    fp_press_button(ctx, FP_BTN_SHIFT);
+    fp_press_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    fp_settle(ctx);
+    nava_sim_run_cycles(ctx, 16000000ULL);
+
+    assert_lcd_contains("ext/exit/header_restored", ctx, 0, "ptr len scl ins");
+    assert_lcd_contains("ext/exit/instrument_restored", ctx, 1, "SD");
+}
+
+/* Paused, a bare step press is a track switch: it selects the track and sustains its
+ * note until release, so the note map can be auditioned by ear without holding INST.
+ *
+ * The note-off assertion is the load-bearing half. A preview that starts but is never
+ * retired leaves the external synth droning, and that failure is invisible to any
+ * note-on-only test — this is the same class of bug the sustained-preview guard in
+ * ExtInstUpdate() exists to prevent.
+ */
+static void test_ext_track_switch_auditions_when_paused(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+
+    fp_press_button(ctx, FP_BTN_SHIFT);
+    fp_press_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    fp_settle(ctx);
+    nava_sim_run_cycles(ctx, 16000000ULL);   /* outlast the 800ms splash */
+
+    /* Transport is stopped — nothing has pressed PLAY. */
+    event_log_clear(&ctx->log);
+    uint64_t t0 = ctx->avr->cycle;
+
+    fp_press_step(ctx, 3);                   /* track 4, default wire note 51 */
+    fp_settle(ctx);
+    assert_midi_note_on("ext/switch/auditions", &ctx->log, EXT_CH, WIRE_T3,
+                        t0, ctx->avr->cycle);
+    assert_lcd_contains("ext/switch/track_selected", ctx, 0, "ptr len scl T4 ");
+
+    uint64_t t1 = ctx->avr->cycle;
+    fp_release_step(ctx, 3);
+    fp_settle(ctx);
+    assert_midi_note_off("ext/switch/released", &ctx->log, EXT_CH, WIRE_T3,
+                         t1, ctx->avr->cycle);
+}
+
 int main(void) {
     TEST_WITH_PATTERN("ext_inst_step_programming_via_panel",
                       test_ext_step_programming_via_panel, &FX_PTRN_BASIC, 2, 1);
@@ -232,6 +357,12 @@ int main(void) {
                       test_ext_accent_velocity, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_no_drum_notes_in_midi",
                       test_ext_notes_only_midi_traffic, &FX_PTRN_EXT, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_encoder_sets_track_note",
+                      test_ext_encoder_sets_track_note, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_exit_restores_instrument",
+                      test_ext_exit_restores_instrument, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_track_switch_auditions_when_paused",
+                      test_ext_track_switch_auditions_when_paused, &FX_PTRN_BASIC, 2, 1);
 
     return test_run_all(NAVA_ELF_PATH);
 }

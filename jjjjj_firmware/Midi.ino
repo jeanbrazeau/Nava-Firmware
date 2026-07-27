@@ -12,18 +12,36 @@ void InitMidiRealTime() {
   midiContinue = LOW;
 }
 
+// External track notes are transmitted verbatim [TR-909 STYLE]
+// MidiSendNoteOn/Off add 12 for the drum path. The ext path must not, now that the
+// user sets the note directly: what the encoder shows, the LCD prints and the wire
+// carries have to be the same number. The defaults in EXT_TRACK_NOTES absorb the
+// offset so the transmitted pitches are unchanged from the fixed-table firmware.
+void MidiSendExtNoteOn(byte note, byte velocity) {
+#if MIDI_EXT_CHANNEL
+  MIDI.sendNoteOn(note, velocity, seq.EXTchannel);
+#else
+  MIDI.sendNoteOn(note, velocity, seq.TXchannel);
+#endif
+}
+
+void MidiSendExtNoteOff(byte note) {
+#if MIDI_EXT_CHANNEL
+  MIDI.sendNoteOff(note, 0, seq.EXTchannel);
+#else
+  MIDI.sendNoteOff(note, 0, seq.TXchannel);
+#endif
+}
+
 //send note off for every external track currently sounding [TR-909 STYLE]
 void SendExtTrackNoteOff() {
   if (midiNoteOnActive) {
     // Turn off all active external track notes
     for (byte track = 0; track < 16; track++) {
       if (extTrackNoteOn[track]) {
-        byte noteToSend = pgm_read_byte(&EXT_TRACK_NOTES[track]);
-#if MIDI_EXT_CHANNEL
-        MidiSendNoteOff(seq.EXTchannel, noteToSend);
-#else
-        MidiSendNoteOff(seq.TXchannel, noteToSend);
-#endif
+        // The recorded note, not the current map entry: retuning a sounding track
+        // would otherwise note-off a pitch that was never started.
+        MidiSendExtNoteOff(extSoundingNote[track]);
         extTrackNoteOn[track] = FALSE;
       }
     }
@@ -68,13 +86,10 @@ void ServiceExtMidiNotes() {
 
   for (byte track = 0; track < 16; track++) {
     if (bitRead(noteOnMask, track)) {
-      byte noteToSend = pgm_read_byte(&EXT_TRACK_NOTES[track]);
-#if MIDI_EXT_CHANNEL
-      MidiSendNoteOn(seq.EXTchannel, noteToSend, velocity);
-#else
-      MidiSendNoteOn(seq.TXchannel, noteToSend, velocity);
-#endif
-      extTrackNoteOn[track] = TRUE;  // Track for note-off
+      byte noteToSend = extTrackNote[track];
+      MidiSendExtNoteOn(noteToSend, velocity);
+      extSoundingNote[track] = noteToSend;  // Note-off must reuse this exact note
+      extTrackNoteOn[track] = TRUE;         // Track for note-off
     }
   }
   midiNoteOnActive = TRUE;

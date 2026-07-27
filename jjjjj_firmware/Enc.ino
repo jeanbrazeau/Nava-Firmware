@@ -17,6 +17,14 @@ void EncGet() {
       needLcdUpdate = TRUE;
     }
   }
+  ///////////////////////////////////EXT INST NOTE//////////////////////////////////
+  // Sets the wire MIDI note of the selected track. Holding TEMPO still yields the
+  // encoder to BPM, matching how every other PTRN_STEP page behaves.
+  else if (extInstEditMode && curSeqMode == PTRN_STEP && !seq.configMode && !tempoBtn.pressed) {
+    int note = EncGet(extTrackNote[currentExtTrack], 1);
+    note = constrain(note, 0, 127);
+    ExtSetTrackNote((byte)note);
+  }
   ///////////////////////////////////TRACK WRITE////////////////////////////////////
   else if (curSeqMode == TRACK_WRITE && !tempoBtn.pressed && !seq.configMode) {
     switch (curIndex) {

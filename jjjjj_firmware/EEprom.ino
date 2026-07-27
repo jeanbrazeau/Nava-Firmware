@@ -42,6 +42,16 @@
 #define TRACK_OFFSET       (PTRN_SIZE * MAX_PTRN)
 #define OFFSET_SETUP       (TRACK_OFFSET + (TRACK_SIZE * MAX_TRACK))
 #define SETUP_SIZE         (unsigned long)(64)
+// [TR-909 STYLE] Editable ext track notes live in the unused tail of the setup block.
+// Placed at +32 rather than immediately after the 8 setup bytes so the setup record can
+// still grow. 73728 is page aligned and MAX_PAGE_SIZE is 64, so 32..47 is one page write.
+// A signature byte precedes the notes. Neither erased state can be assumed: an erased
+// EEPROM reads 0xFF but InitEEprom() zeroes the device, and 0x00 is a legal MIDI note,
+// so a range test alone would silently tune every track to note 0. The signature makes
+// "never written" unambiguous and leaves the whole 0..127 range available to the user.
+#define EXT_NOTES_OFFSET   (OFFSET_SETUP + 32)
+#define EXT_NOTES_SIZE     (unsigned long)(16)
+#define EXT_NOTES_SIG      (byte)(0x4E)
 #define OFFSET_GROUP       (unsigned long)(37) //save only .groupPos and .groupLength
 #define GROUP_SIZE         (unsigned long)(2)
 #define MAX_PAGE_SIZE      (unsigned long)(64)
@@ -307,6 +317,33 @@ void SaveSeqSetup()
 #endif    
   Wire.endTransmission();//end page transmission
   delay(DELAY_WR);//delay between each write page
+}
+
+//Save the editable external track notes [TR-909 STYLE]
+void SaveExtTrackNotes()
+{
+  WireBeginTX(EXT_NOTES_OFFSET);
+  Wire.write(EXT_NOTES_SIG);
+  for (byte i = 0; i < EXT_NOTES_SIZE; i++) Wire.write((byte)(extTrackNote[i]));
+  Wire.endTransmission();
+  delay(DELAY_WR);
+}
+
+//Load the editable external track notes [TR-909 STYLE]
+// Falls back to the default table whenever the signature is absent, so a machine that
+// has never saved a note map plays the same pitches as the fixed-table firmware did.
+void LoadExtTrackNotes()
+{
+  WireBeginTX(EXT_NOTES_OFFSET);
+  Wire.endTransmission();
+  Wire.requestFrom(HRDW_ADDRESS_UP, (int)(EXT_NOTES_SIZE + 1));
+
+  boolean valid = Wire.available() && ((Wire.read() & 0xFF) == EXT_NOTES_SIG);
+  for (byte i = 0; i < EXT_NOTES_SIZE; i++) {
+    byte stored = Wire.available() ? (Wire.read() & 0xFF) : 0xFF;
+    // A stored byte above 127 means the record is damaged, not merely unwritten
+    extTrackNote[i] = (valid && stored <= 127) ? stored : pgm_read_byte(&EXT_TRACK_NOTES[i]);
+  }
 }
 
 //Load Setup

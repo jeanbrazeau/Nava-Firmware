@@ -360,15 +360,33 @@ byte muxInst[10] = {LT, SD, BD, MT, HT, HC, RM, CH, CRASH, RIDE};
 - Separate MIDI channel (`seq.EXTchannel`) when `MIDI_EXT_CHANNEL` is enabled, else `seq.TXchannel`
 
 ### Note Mapping
-`EXT_TRACK_NOTES[16]` (define.h) holds 36..51, one per track. `MidiSendNoteOn` and
-`MidiSendNoteOff` add 12 before transmitting, so the notes on the wire are MIDI 48..63.
+`extTrackNote[16]` (define.h) holds the note each track transmits, editable per track
+with the encoder while in edit mode. Values are literal wire notes: the ext path uses
+`MidiSendExtNoteOn`/`MidiSendExtNoteOff`, which do not apply the +12 that
+`MidiSendNoteOn`/`MidiSendNoteOff` add for drum notes, so what the encoder sets, the LCD
+prints and the wire carries are one number. `EXT_TRACK_NOTES[16]` is now the PROGMEM
+default table (48..63), which reproduces the pitches the old fixed table transmitted.
+
+The map is global rather than per pattern: 16 bytes inside `Pattern` would cost ~320
+bytes of RAM across the bank cache and buffers and would change the stored pattern
+format. It persists in the unused tail of the setup EEPROM block at `EXT_NOTES_OFFSET`,
+written once on edit-mode exit rather than per encoder detent (`extNotesNeedSaved`).
+A signature byte precedes the record because neither erased state can be assumed - an
+erased EEPROM reads 0xFF but `InitEEprom()` zeroes the device, and 0x00 is a legal MIDI
+note, so a range check alone would silently tune every track to note 0.
+
 Comments and the LCD cite the transmitted number rather than a note name, because the
 name for a given MIDI number depends on the octave convention.
 
 ### Edit Mode Activation
 - SHIFT + GUIDE toggles the mode; INST + GUIDE also exits it
-- Entering forces `curInst = EXT_INST` and selects track 1; leaving restores `curInst = BD`
-  so the user never lands on a voice that drives no drum circuit
+- Entering forces `curInst = EXT_INST` and selects track 1; leaving restores the
+  instrument selected on entry (`extInstPrevInst`), so the mode behaves as a layer
+  nested under the instrument selection. EXT_INST is never restored as a selection since
+  it drives no drum circuit, and a saved value of it falls back to BD
+- `Seq.ino` must not carry its own SHIFT+GUIDE handler. `ButtonGet()` runs first in the
+  loop and toggles the flag, so a second handler guarded on `!extInstEditMode` fires only
+  on the exit pass and re-selects EXT_INST straight after the restore
 - Only active in PTRN_STEP. The TRK, PTRN, TAP and config-entry handlers clear the flag
   via `ExitExtInstEditMode()`. MUTE is the deliberate exception: it assigns `curSeqMode`
   directly so the mode stays re-enterable, which means the flag survives it. Nothing in
@@ -378,13 +396,26 @@ name for a given MIDI number depends on the octave convention.
   `LcdUpdate()` renders it without blocking the loop
 
 ### Note Entry
-- INST + step button selects the track, sustaining a preview note until release
-- Step button alone toggles that step in `pattern[ptrnBuffer].extTrack[currentExtTrack]`
-  and auditions the note for 50ms when adding. The audition is issued before the bit is
-  set, because `ExtPreviewOn()` declines a preview the running sequencer would collide
-  with and setting the bit first would make every addition look like a collision
-- Previews are owned by `ExtPreviewOn`/`ExtPreviewOff`/`ExtPreviewCheck` in key.ino so
-  that a preview is never left sounding and never held open by `delay()`
+The step buttons swap roles with the transport (`selectingTrack` in `ExtInstUpdate()`):
+
+- Paused, they are track switches. A bare press selects the track and sustains its note
+  until release, so the whole map can be auditioned by ear; INST qualifies a programming
+  press instead
+- Running, the mapping is reversed - a bare press programs, INST selects - because live
+  step entry is the point of holding the transport open, and a sustained audition would
+  collide with the note the sequencer is already sounding
+
+Programming toggles the step in `pattern[ptrnBuffer].extTrack[currentExtTrack]` and
+auditions for 50ms when adding. The audition is issued before the bit is set, because
+`ExtPreviewOn()` declines a preview the running sequencer would collide with and setting
+the bit first would make every addition look like a collision.
+
+The encoder sets the selected track's note via `ExtSetTrackNote()`, which auditions the
+new pitch and moves an open sustained preview to it. Holding TEMPO yields the encoder
+back to BPM, matching every other PTRN_STEP page.
+
+Previews are owned by `ExtPreviewOn`/`ExtPreviewOff`/`ExtPreviewCheck` in key.ino so
+that a preview is never left sounding and never held open by `delay()`.
 
 ### Playback
 `CountPPQN()` only records the step: a track bitmask, the shared velocity and a sticky
@@ -394,7 +425,9 @@ the previous step's note-offs before the new note-ons. If a step is overtaken be
 loop drains it the newer step wins, which is what the four consecutive `CountPPQN()` calls
 per incoming MIDI clock can produce. `InitMidiNoteOff()` discards a queued but untransmitted
 step before silencing what is sounding, so stop and pattern change cannot let notes arrive
-late or twice.
+late or twice. `extSoundingNote[]` records the note each track actually transmitted, and
+`SendExtTrackNoteOff()` replays that rather than the current map entry - retuning a track
+while it sounds would otherwise note-off a pitch that was never started.
 
 ## Code Heritage & Contributors
 

@@ -31,7 +31,10 @@ void LcdUpdate()
           lcd.setCursor(0,1);
           // MIDI note number rather than a note name: the pitch depends on the
           // reader's octave convention, the number does not
-          lcd.print("TRK:1 NOTE:48");
+          lcd.print("TRK:");
+          lcd.print(currentExtTrack + 1);
+          lcd.print(" NOTE:");
+          lcd.print(extTrackNote[currentExtTrack]);
         }
         else {
           lcd.print("EXT TRCK EDIT");
@@ -238,7 +241,17 @@ ptrn_step:
         }
         else{
           lcd.setCursor(0,0);
-          lcd.print("ptr len scl ins ");
+          // In ext edit mode the last column carries the note value, so the track
+          // number takes over its header - the label names what the encoder edits.
+          if (curInst == EXT_INST && extInstEditMode) {
+            lcd.print("ptr len scl ");
+            lcd.print("T");
+            lcd.print(currentExtTrack + 1);  // 1-16
+            if (currentExtTrack + 1 < 10) lcd.print(" ");
+          }
+          else {
+            lcd.print("ptr len scl ins ");
+          }
           lcd.setCursor(0,1);
           LcdClearLine(); 
           lcd.setCursor(0,1);
@@ -249,11 +262,12 @@ ptrn_step:
           lcd.setCursor(8,1);
           LcdPrintScale();
           lcd.setCursor(12,1);
-          // [TR-909 STYLE] Display track number in EXT INST edit mode
+          // [TR-909 STYLE] Value field shows the transmitted MIDI note of the selected
+          // track. A number, not a note name: the name depends on octave convention.
           if (curInst == EXT_INST && extInstEditMode) {
-            lcd.print("T");
-            if (currentExtTrack + 1 < 10) lcd.print(" ");  // Pad single digit
-            lcd.print(currentExtTrack + 1);  // Display as 1-16
+            lcd.print(extTrackNote[currentExtTrack]);
+            if (extTrackNote[currentExtTrack] < 100) lcd.print(" ");
+            if (extTrackNote[currentExtTrack] < 10) lcd.print(" ");
           } else {
             char instName[3];
             strcpy_P(instName, (char*)pgm_read_word(&(selectInstString[curInst])));
