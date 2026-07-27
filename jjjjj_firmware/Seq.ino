@@ -128,7 +128,6 @@ void SeqParameter() {
       needLcdUpdate = TRUE;
       curSeqMode = TRACK_WRITE;
       trk.pos = 0;
-      keyboardMode = FALSE;
       seq.configMode = FALSE;
       nextPattern = track[trkBuffer].patternNbr[trk.pos];  // Get the correct pattern
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;
@@ -147,7 +146,6 @@ void SeqParameter() {
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;  //
       curSeqMode = PTRN_TAP;
       needLcdUpdate = TRUE;
-      keyboardMode = FALSE;
       seq.configMode = FALSE;
       trackNeedSaved = FALSE;
     }
@@ -164,7 +162,6 @@ void SeqParameter() {
       if (!seq.configMode) {
         // First press - enter config mode
         seq.configMode = TRUE;
-        keyboardMode = FALSE;
         seq.configPage = 1; // Start at page 1
       } else {
         // Already in config mode, cycle to next page
@@ -204,7 +201,6 @@ void SeqParameter() {
     if (trkBtn.justPressed) {
       curSeqMode = TRACK_PLAY;
       needLcdUpdate = TRUE;
-      keyboardMode = FALSE;
       seq.configMode = FALSE;
       nextPattern = track[trkBuffer].patternNbr[trk.pos];
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;
@@ -221,7 +217,6 @@ void SeqParameter() {
       if (curSeqMode == PTRN_PLAY) curSeqMode = PTRN_STEP;
       else curSeqMode = PTRN_PLAY;
       needLcdUpdate = TRUE;
-      keyboardMode = FALSE;
       seq.configMode = FALSE;
       trackNeedSaved = FALSE;
     }
@@ -297,7 +292,6 @@ void SeqParameter() {
 
     if (instBtn && readButtonState && !extInstEditMode && !extInstButtonHandled) {  // [zabox] [1.027] added flam, [SIZZLE] Normal instrument selection (not for EXT INST edit mode)
       curInstChanged = TRUE;
-      keyboardMode = FALSE;
       switch (FirstBitOn()) {
         case BD_BTN:
         case BD_LOW_BTN:
@@ -407,7 +401,7 @@ void SeqParameter() {
     //---------still in: if (curSeqMode == PTRN_STEP || curSeqMode == PTRN_TAP) ------
 
     //-------------------Clear Button for STEP Mode------------------------------
-    if (clearBtn.pressed && !keyboardMode && curSeqMode != PTRN_TAP && isRunning) {
+    if (clearBtn.pressed && curSeqMode != PTRN_TAP && isRunning) {
 
 
       if (clearBtn.justPressed) prev_muteInst = muteInst;  // [zabox] save mute state
@@ -422,7 +416,7 @@ void SeqParameter() {
     if (clearBtn.justRelease) muteInst = prev_muteInst;  // [zabox] unmute
 
 
-    if (shiftBtn && clearBtn.justPressed && !keyboardMode && !isRunning) {  //curSeqMode != PTRN_TAP &&
+    if (shiftBtn && clearBtn.justPressed && !isRunning) {  //curSeqMode != PTRN_TAP &&
       //clear full pattern
       for (int a = 0; a < NBR_INST; a++) {
         pattern[ptrnBuffer].inst[a] = 0;
@@ -492,7 +486,7 @@ void SeqParameter() {
     }
 
     //-------------------scale button------------------------------
-    if (scaleBtn.justPressed && !keyboardMode) {
+    if (scaleBtn.justPressed) {
       needLcdUpdate = TRUE;
       patternWasEdited = TRUE;
       scaleBtn.counter++;
@@ -525,7 +519,7 @@ void SeqParameter() {
     /////////////////////////////STEP EDIT + PATTERN SELECTION FOR STEP & TAP ///////////////////////////////////////////////////////////////////
 
     if (stepsBtn.justRelease) doublePush = FALSE;
-    if (!lastStepBtn.pressed && !instBtn && !keyboardMode && !shufBtn.pressed) {  // [zabox] test
+    if (!lastStepBtn.pressed && !instBtn && !shufBtn.pressed) {  // [zabox] test
       if (curSeqMode == PTRN_STEP && isRunning)                                   //step programming
       {
         pattern[ptrnBuffer].inst[curInst] = InstValueGet(pattern[ptrnBuffer].inst[curInst]);  //cf InstValueGet()

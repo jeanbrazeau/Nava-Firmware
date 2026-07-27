@@ -1,6 +1,6 @@
 //-------------------------------------------------
 //                  NAVA v1.x
-//                   EEprom 1024K
+//                 EEprom 1024K
 //
 //Pattern size:
 //  -16 instruments with 2 bytes each = 32 bytes
@@ -258,7 +258,7 @@ void SaveTrack(byte trackNbr)
   track[trkBuffer].patternNbr[1023] = highbyte;
 
   unsigned long adress;
-  for(int nbrPage = 0; nbrPage < TRACK_SIZE/MAX_PAGE_SIZE; nbrPage++){
+  for(unsigned int nbrPage = 0; nbrPage < TRACK_SIZE/MAX_PAGE_SIZE; nbrPage++){
     adress = (unsigned long)(PTRN_OFFSET + (trackNbr * TRACK_SIZE) + (MAX_PAGE_SIZE * nbrPage) + TRACK_OFFSET);
     WireBeginTX(adress);
     for (byte i = 0; i < MAX_PAGE_SIZE; i++){//loop as many instrument for a page
@@ -273,7 +273,7 @@ void SaveTrack(byte trackNbr)
 void LoadTrack(byte trackNbr)
 {
   unsigned long adress;
-  for(int nbrPage = 0; nbrPage < TRACK_SIZE/MAX_PAGE_SIZE; nbrPage++){
+  for(unsigned int nbrPage = 0; nbrPage < TRACK_SIZE/MAX_PAGE_SIZE; nbrPage++){
     adress = (unsigned long)(PTRN_OFFSET + (trackNbr * TRACK_SIZE) + (MAX_PAGE_SIZE * nbrPage) + TRACK_OFFSET);
     WireBeginTX(adress);
     Wire.endTransmission();

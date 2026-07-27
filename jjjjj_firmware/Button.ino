@@ -147,6 +147,8 @@ unsigned int StepButtonGet(byte mode)
     return data;
     break;
   }
+  // Default fallback: should never reach here with valid mode
+  return 0;
 }
 
 unsigned int InstValueGet(unsigned int value)
@@ -340,6 +342,8 @@ byte FirstBitOn()
       break;
     }
   }
+  // Default: no button pressed
+  return 0;
 }
 
 //return value of second pressed step button

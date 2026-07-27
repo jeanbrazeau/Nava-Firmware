@@ -201,32 +201,6 @@ ptrn_step:
           lcd.setCursor(8 + pattern[ptrnBuffer].flam, 1);
           lcd.print((char)219);        
         }
-        else if (keyboardMode){
-          lcd.setCursor(0,0);
-          lcd.print("stp not act oct "); // [SIZZLE FW] TR-909 style display
-          lcd.setCursor(cursorPos[curIndex],0);
-          lcd.print(letterUpExtInst[curIndex]);
-          lcd.setCursor(0,1);
-          LcdClearLine();
-          lcd.setCursor(1,1);
-          lcd.print(noteIndex + 1);                                               // [zabox] looks better
-          lcd.setCursor(4,1);
-          char note[2];
-          strcpy_P(note, (char*)pgm_read_word(&(nameNote[keyboardNotes[noteIndex] % 12])));
-          lcd.print(note);
-          lcd.print(keyboardNotes[noteIndex] / 12);//note octave [SIZZLE FW]
-          // Display if this step is active or not [SIZZLE FW]
-          lcd.setCursor(9,1);
-          if (bitRead(pattern[ptrnBuffer].inst[EXT_INST], noteIndex)) {
-            lcd.print("ON "); // Step is active [SIZZLE FW]
-          } else {
-            lcd.print("OFF"); // Step is inactive [SIZZLE FW]
-          }
-          lcd.setCursor(13,1);
-          char octave[2];
-          strcpy_P(octave, (char*)pgm_read_word(&(nameOct[keybOct])));
-          lcd.print(octave);
-        }
         else{
           lcd.setCursor(0,0);
           lcd.print("ptr len scl ins ");

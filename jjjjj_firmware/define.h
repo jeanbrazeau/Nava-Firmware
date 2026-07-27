@@ -397,7 +397,7 @@ int shuffle[MAX_SHUF_TYPE][2] = {
   { 0 }, { 0, -1 }, { 0, -2 }, { 0, -3 }, { 0, -4 }, { 0, -5 }, { 0, -6 }
 };
 volatile boolean shufPolarity;
-int flam[MAX_FLAM_TYPE] =                                // [zabox] [1.028] flam
+unsigned int flam[MAX_FLAM_TYPE] =                       // [zabox] [1.028] flam
   { 4999, 5999, 6999, 7999, 8999, 9999, 10999, 11999 };  // flam timings from EchoBoy (in ms: 20, 24, 28, 32, 36, 40, 44, 48)
 
 //Pattern-------------------------------------------
@@ -495,10 +495,8 @@ volatile boolean incrementRequired = FALSE;
 unsigned long timeSinceSaved;
 
 //Ext inst-------------------------------------------
-boolean keyboardMode;
 byte keybOct = DEFAULT_OCT;
 byte noteIndex = 0;  //external inst note index
-byte keyboardNotes[16] = {36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36};  // [KEYBOARD MODE] Note storage for old keyboard mode (C2 default)
 boolean extInstEditMode = FALSE;              // [TR-909 STYLE] Flag to indicate when we're in EXT INST edit mode
 byte currentExtTrack = 0;                     // [TR-909 STYLE] Selected track (0-15)
 byte currentExtNote = 36;                     // [TR-909 STYLE] Display value (C2 = MIDI 36)

@@ -27,16 +27,9 @@ void SetLeds()
   trackLed =((curSeqMode == TRACK_WRITE)? blinkTempo:((curSeqMode == TRACK_PLAY)? 1:0));
   ptrnLed =((curSeqMode == PTRN_STEP)? blinkTempo:((curSeqMode == PTRN_PLAY)? 1:0));
   tapLed =((curSeqMode == PTRN_TAP)? blinkTempo:((tapBtn.pressed) ? 1:0));
-  if (keyboardMode){
-    backLed = HIGH;
-    fwdLed = HIGH;
-    numLed = HIGH; //[oort]
-  }
-  else{
-    backLed = backBtn.pressed;
-    fwdLed = fwdBtn.pressed;
-    numLed = LOW; //[oort]
-  }
+  backLed = backBtn.pressed;
+  fwdLed = fwdBtn.pressed;
+  numLed = LOW; //[oort]
 
   dirLed = dirBtn.pressed;
   scaleLeds = 1 << scaleBtn.counter;

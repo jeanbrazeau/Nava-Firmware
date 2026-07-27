@@ -73,42 +73,6 @@ void EncGet() {
     }
   }
 
-  ///////////////////////////////////KEYBOARD MODE////////////////////////////////////
-  else if (keyboardMode) {
-    switch (curIndex) {
-      //track position
-      case 0:  //external instrument note index
-        if (instBtn) {
-          noteIndex = EncGet(noteIndex, 10);
-        } else {
-          noteIndex = EncGet(noteIndex, 1);
-        }
-        noteIndex = constrain(noteIndex, 0, 99);
-        static unsigned int prevNoteIndex;
-        if (noteIndex != prevNoteIndex) {
-          prevNoteIndex = noteIndex;
-          needLcdUpdate = TRUE;
-          break;
-          case 1:  // [TR-909] External instrument encoder - not used in TR-909 mode
-            // TR-909 uses fixed chromatic notes (C2-D#3), no encoder editing
-            // Track and note selection handled in key.ino
-            break;
-          case 2:  // Unused in TR-909 style EXT INSTRUMENT implementation [SIZZLE FW]
-            // In the TR-909, this encoder function does nothing [SIZZLE FW]
-            break;
-          case 3:  //octave
-            keybOct = EncGet(keybOct, 1);
-            keybOct = constrain(keybOct, 0, 7);
-            static unsigned int prevKeybOct;
-            if (keybOct != prevKeybOct) {
-              prevKeybOct = keybOct;
-              needLcdUpdate = TRUE;
-            }
-            break;
-        }
-    }
-  }
-
   ///////////////////////////////////CONFIG MODE////////////////////////////////////
   //[oort] comment: The Config Mode is very cryptic with three letter abbreviations.
   //Tt would benefit from a complete rewrite with one item per page instead.
