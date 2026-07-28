@@ -51,11 +51,12 @@ either way, but its position moves:
 
 | Build | Pages | BOOTLOADER page | SHIFT+TEMPO presses |
 |---|---|---|---|
-| PlatformIO (`platformio.ini` sets `-DMIDI_HAS_SYSEX=1`) | 1, 2, 3 = SysEx dump, 4 | **4** | 4 |
-| Arduino IDE (`features.h` leaves `MIDI_HAS_SYSEX` commented out) | 1, 2, 3 | **3** | 3 |
+| PlatformIO (`platformio.ini` sets `-DMIDI_HAS_SYSEX=1`) | 1, 2, 3 = SysEx dump, 4, 5 = ext velocity | **4** | 4 |
+| Arduino IDE (`features.h` leaves `MIDI_HAS_SYSEX` commented out) | 1, 2, 3, 4 = ext velocity | **3** | 3 |
 
-Pressing SHIFT + TEMPO once more from the last page wraps back to page 1, so if you
-overshoot, keep going rather than starting over.
+BOOTLOADER is no longer the last page - the ext instrument velocity page sits after it -
+so one press past BOOTLOADER lands on `low hi  ext vel`, and the next wraps back to page
+1. If you overshoot, keep going rather than starting over.
 
 ### Building and sending
 
