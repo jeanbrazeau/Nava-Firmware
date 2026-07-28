@@ -93,12 +93,16 @@ void InitMidiNoteOff() {
 // discard the newer step.
 void ServiceExtMidiNotes() {
   unsigned int noteOnMask;
+  unsigned int accentMask;
   byte velocity;
+  byte accentVelocity;
   boolean noteOffDue;
 
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
     noteOnMask = extPendingOn;
+    accentMask = extPendingAcc;
     velocity = extPendingVel;
+    accentVelocity = extPendingVelAcc;
     noteOffDue = extPendingOff;
     extPendingOn = 0;
     extPendingOff = FALSE;
@@ -111,7 +115,7 @@ void ServiceExtMidiNotes() {
   }
   if (!noteOnMask && !noteOffDue) return;
 
-  ExtTransmitStep(noteOnMask, velocity, noteOffDue);
+  ExtTransmitStep(noteOnMask, accentMask, velocity, accentVelocity, noteOffDue);
   extMidiBusy = FALSE;
 }
 
@@ -131,7 +135,9 @@ void ServiceExtMidiNotes() {
 // where the cost is absorbable. Nothing on this path can ever wait on the wire.
 void ServiceExtMidiNotesFromClock() {
   unsigned int noteOnMask = 0;
+  unsigned int accentMask = 0;
   byte velocity = 0;
+  byte accentVelocity = 0;
   boolean noteOffDue = FALSE;
 
   // Test, cost and claim in one critical section. CountPPQN() reaches here from the
@@ -152,9 +158,13 @@ void ServiceExtMidiNotesFromClock() {
       // steps that would have fit, handing them to the loop where an end-of-measure
       // LCD repaint blocks ~14ms - 10x the entire wire time of the step it was
       // protecting. The cliff moves from 10 tracks to 15.
+      // Two velocity levels do not change the budget: under running status a note-on is
+      // two bytes whatever velocity it carries.
       if ((int)messages * 2 + 1 <= Serial1.availableForWrite()) {
         noteOnMask = extPendingOn;
+        accentMask = extPendingAcc;
         velocity = extPendingVel;
+        accentVelocity = extPendingVelAcc;
         noteOffDue = extPendingOff;
         extPendingOn = 0;
         extPendingOff = FALSE;
@@ -164,7 +174,7 @@ void ServiceExtMidiNotesFromClock() {
   }
   if (!noteOnMask && !noteOffDue) return;
 
-  ExtTransmitStep(noteOnMask, velocity, noteOffDue);
+  ExtTransmitStep(noteOnMask, accentMask, velocity, accentVelocity, noteOffDue);
   extMidiBusy = FALSE;
 }
 
@@ -191,7 +201,11 @@ void ServiceExtMidiNotesFromClock() {
 //
 // GUIDE is the master enable for sequenced note-ons. Note-offs are unconditional:
 // dropping them would strand notes on the external synth.
-void ExtTransmitStep(unsigned int noteOnMask, byte velocity, boolean noteOffDue) {
+// accentMask names the tracks of noteOnMask that take accentVelocity instead of
+// velocity - the step's second level. Passed as a mask rather than 16 per-track values
+// because a step only ever carries the two levels the editor can program.
+void ExtTransmitStep(unsigned int noteOnMask, unsigned int accentMask, byte velocity,
+                     byte accentVelocity, boolean noteOffDue) {
   if (!guideBtn.counter) noteOnMask = 0;
 
   for (byte track = 0; track < 16; track++) {
@@ -205,7 +219,7 @@ void ExtTransmitStep(unsigned int noteOnMask, byte velocity, boolean noteOffDue)
       extTrackNoteOn[track] = FALSE;
     }
     byte noteToSend = extTrackNote[track];
-    MidiSendExtNoteOn(noteToSend, velocity);
+    MidiSendExtNoteOn(noteToSend, bitRead(accentMask, track) ? accentVelocity : velocity);
     extSoundingNote[track] = noteToSend;  // Note-off must reuse this exact note
     extTrackNoteOn[track] = TRUE;
     midiNoteOnActive = TRUE;

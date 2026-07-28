@@ -172,32 +172,41 @@ void CountPPQN() {
                      ? curStep
                      : extStepCount;
 
-      byte extVelocity = HIGH_VEL;
+      // Two levels per track, not one per step: extAccent[] is the second velocity level
+      // the step editor programs, so a step can be loud on one track and soft on another.
+      // extCurStep for both, since they are the same lane; TOTAL_ACC below stays on
+      // curStep - it accents the whole machine at that moment, so it has to line up with
+      // the kit rather than with the ext loop.
+      byte extVelocity = HIGH_VEL;     // unaccented tracks of this step
+      byte extVelocityAcc = HIGH_VEL;  // tracks whose extAccent bit is set
       unsigned int extOnMask = 0;
+      unsigned int extAccMask = 0;
       for (byte track = 0; track < 16; track++) {
-        if (bitRead(pattern[ptrnBuffer].extTrack[track], extCurStep)) bitSet(extOnMask, track);
+        if (!bitRead(pattern[ptrnBuffer].extTrack[track], extCurStep)) continue;
+        bitSet(extOnMask, track);
+        if (bitRead(pattern[ptrnBuffer].extAccent[track], extCurStep)) bitSet(extAccMask, track);
       }
 #if MIDI_EXT_CHANNEL
       if (extOnMask) {
-        // Velocity is shared across all tracks of the step
-        // extCurStep: the EXT_INST velocity lane belongs to the ext layer and moves with
-        // it. TOTAL_ACC below stays on curStep - it accents the whole machine at that
-        // moment, so it has to line up with the kit rather than with the ext loop.
-        if (pattern[ptrnBuffer].velocity[EXT_INST][extCurStep] > 0) {
-          long scaled = map(pattern[ptrnBuffer].velocity[EXT_INST][extCurStep],
-                            instVelLow[EXT_INST], instVelHigh[EXT_INST],
-                            MIDI_LOW_VELOCITY, MIDI_HIGH_VELOCITY);
-          // A stored velocity outside the instVel table range maps past 127 and would
-          // wrap when the MIDI library masks to 7 bits, landing near the bottom instead
-          extVelocity = constrain(scaled, 1L, 127L);
-        }
+        // The pair set on the ext velocity config page, expressed directly in the MIDI
+        // domain - the ext lane has no DAC to drive, so mapping through the instVel
+        // table only added a rounding step. Defaults are MIDI_LOW/HIGH_VELOCITY.
+        extVelocity = seq.extVelLow;
+        extVelocityAcc = seq.extVelHigh;
         if (bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) {
-          // Accent sits on top of the nominal high velocity, as the drum path does
-          extVelocity = MIDI_HIGH_VELOCITY + MIDI_ACCENT_VELOCITY;
+          // Accent sits on top of whichever level the track already has, as the drum path
+          // does, instead of flattening both to 127: TOTAL_ACC lifts the step, it does
+          // not erase the dynamics programmed inside it. Clamped, because a configured
+          // level near the top would otherwise sum past 127 and wrap when the MIDI
+          // library masks to 7 bits, landing near silence on the loudest step.
+          extVelocity = min(extVelocity + MIDI_ACCENT_VELOCITY, MAX_VEL);
+          extVelocityAcc = min(extVelocityAcc + MIDI_ACCENT_VELOCITY, MAX_VEL);
         }
       }
 #endif
       extPendingVel = extVelocity;
+      extPendingVelAcc = extVelocityAcc;
+      extPendingAcc = extAccMask;
       extPendingOn = extOnMask;
       // Still set unconditionally: if the early release did not get out in time - a very
       // short shuffled gap, or a burst the UART could not absorb - this is the safety net

@@ -216,7 +216,24 @@ void LcdUpdate()
           lcd.setCursor(0,1);
           lcd.print("PRESS ENC TO ACTV");
           break;
-        }        
+        }
+      case CONF_PAGE_EXT_VEL:  // [TR-909 STYLE] ext instrument velocity levels
+        {
+          // Two fields in the first two columns; the rest of the header names the page,
+          // since three-letter abbreviations alone would not say which lane this is.
+          lcd.print("low hi  ext vel ");
+          lcd.setCursor(cursorPos[curIndex],0);
+          lcd.print(letterUpConfPageExtVel[curIndex]);
+          lcd.setCursor(0,1);
+          LcdClearLine();
+          lcd.setCursor(0,1);
+          lcd.print(seq.extVelLow);
+          lcd.setCursor(4,1);
+          lcd.print(seq.extVelHigh);
+          lcd.setCursor(8,1);
+          lcd.print("tap 1/2");  // 7 chars from col 8: the last column stays on screen
+          break;
+        }
       }
     }
     else if (seq.sync == EXPANDER) {                                               // [1.028] Expander

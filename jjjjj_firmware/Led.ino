@@ -117,8 +117,19 @@ void SetLeds()
   
   // [TR-909 STYLE] Special handling for EXT INST edit mode
   if (extInstEditMode && curInst == EXT_INST && curSeqMode == PTRN_STEP) {
-    // Show steps for currently selected track
-    stepLeds = pattern[ptrnBuffer].extTrack[currentExtTrack];
+    // Show steps for currently selected track, at the two brightnesses the drum lane
+    // uses for its own two velocity levels: accented steps are lit on every pass, the
+    // rest only on one pass in four, so the level is read off the panel at a glance.
+    unsigned int extStepsOn = pattern[ptrnBuffer].extTrack[currentExtTrack];
+    unsigned int extStepsAcc = extStepsOn & pattern[ptrnBuffer].extAccent[currentExtTrack];
+    if (flagLedIntensity >= 3) {  //[oort] Sandor uses 8 instead of 3
+      stepLeds = extStepsOn;
+      flagLedIntensity = 0;
+    }
+    else {
+      stepLeds = extStepsAcc;
+      flagLedIntensity++;
+    }
 
     // Flash current step when running
     if (isRunning) {
@@ -268,7 +279,9 @@ void SetLeds()
 
   if (seq.configMode) {
     if (flagLedIntensity >= 8) {
-      stepLeds = ~(1 << MAX_CONF_PAGE) & 0xF;
+      // One LED per available page. The old form masked to 0xF, which silently stopped
+      // counting once there were more than four pages.
+      stepLeds = (1 << MAX_CONF_PAGE) - 1;
       flagLedIntensity = 0;
     }
     else {

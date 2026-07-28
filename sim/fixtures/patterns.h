@@ -38,6 +38,18 @@
 #define FX_EXT_WIRE(track)  ((uint8_t)(FX_EXT_WIRE_BASE + (track)))
 #define FX_MIDI_ACCENT_VEL  127u  /* accent adds on top of the nominal high velocity */
 
+/* The two levels an ext step can be programmed at (Clock.ino: MIDI_HIGH_VELOCITY and
+ * MIDI_LOW_VELOCITY).  TOTAL_ACC adds MIDI_ACCENT_VELOCITY=16 on top of either. */
+#define FX_MIDI_HIGH_VEL     111u
+#define FX_MIDI_LOW_VEL       63u
+#define FX_MIDI_LOW_ACC_VEL   79u  /* unaccented track on a TOTAL_ACC step */
+
+/* Config page carrying the two ext velocity levels, counted in TEMPO presses from
+ * outside config mode.  Matches CONF_PAGE_EXT_VEL (define.h) for a MIDI_HAS_SYSEX
+ * build, which is what platformio.ini produces: 1 setup, 2 setup, 3 sysex, 4
+ * bootloader, 5 ext velocity. */
+#define FX_CONF_PAGE_EXT_VEL   5
+
 /* Pattern fixture data structure (mirrors firmware's Pattern struct fields
  * needed to build EEPROM images and inject via I2C EEPROM seed). */
 typedef struct {
@@ -47,6 +59,11 @@ typedef struct {
     uint8_t  flam;          /* 0-7 */
     uint16_t inst[16];      /* step bitmask per instrument */
     uint16_t extTrack[16];  /* step bitmask per EXT track */
+    /* Second velocity level, per step per track: set = FX_MIDI_HIGH_VEL, clear =
+     * FX_MIDI_LOW_VEL.  Stored inverted on the wire to EEPROM (see
+     * fx_pattern_to_eeprom), so a fixture leaving this zero does NOT reproduce a
+     * legacy image — 0xFFFF does. */
+    uint16_t extAccent[16];
     uint8_t  velocity[16][16]; /* per-instrument per-step velocity */
     uint8_t  groupPos;
     uint8_t  groupLength;
@@ -75,9 +92,15 @@ extern const fx_pattern_t FX_PTRN_SHUFFLED;
 /* 16-step, BD with flam on steps 0,4; flam type 0 (20ms) */
 extern const fx_pattern_t FX_PTRN_FLAM;
 
-/* EXT_INST pattern: extTrack[0] and extTrack[3] active on steps 0,8;
- * EXT_INST velocity set to HIGH_VEL; accent on step 8 (pinned bug test). */
+/* EXT_INST pattern: extTrack[0] and extTrack[3] active on steps 0,8, both fully
+ * accented; TOTAL_ACC on step 8 (pinned bug test). Its accent words serialize to
+ * zeros, so it is also a byte-exact image of a pattern saved before ext steps had
+ * two velocity levels. */
 extern const fx_pattern_t FX_PTRN_EXT;
+
+/* Both velocity levels live on one step across two tracks: track 0 accented and
+ * track 3 unaccented on step 0, track 0 unaccented again on step 8. */
+extern const fx_pattern_t FX_PTRN_EXT_LEVELS;
 
 /* BD and ext tracks 0/3 on every step: lets a test measure, per step, the delay
  * between the analog trigger CountPPQN() writes inline and the ext note-on the

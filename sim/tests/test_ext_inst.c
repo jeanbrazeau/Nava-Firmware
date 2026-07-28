@@ -15,10 +15,13 @@
  *     previous step's note-offs go out EXT_RELEASE_LEAD ticks before the next step
  *     rather than at it, so the step boundary carries note-ons only; note-offs still
  *     precede the next step's note-ons, just earlier.
- *   - An accented step sends MIDI_HIGH_VELOCITY + MIDI_ACCENT_VELOCITY = 127.
+ *   - Each ext step carries one of two velocity levels, per track: extAccent[track]
+ *     bit set → MIDI_HIGH_VELOCITY (111), clear → MIDI_LOW_VELOCITY (63).  TOTAL_ACC
+ *     adds MIDI_ACCENT_VELOCITY (16) on top of either, so an accented step on a
+ *     TOTAL_ACC beat sends 127.
  *
  * Test fixture (FX_PTRN_EXT):
- *   - extTrack[0] and extTrack[3] active on steps 0 and 8
+ *   - extTrack[0] and extTrack[3] active on steps 0 and 8, both fully accented
  *   - TOTAL_ACC (bit 12) set on step 8 → velocity = 127
  *   - EXTchannel = 2
  *
@@ -32,6 +35,7 @@
 #include "nava_sim.h"
 #include "midi.h"
 #include "gpio.h"
+#include "lcd.h"
 #include "patterns.h"
 
 #include <stdio.h>
@@ -361,6 +365,234 @@ static size_t count_ext_note_ons(const event_log_t *log, uint8_t wire,
     return n;
 }
 
+/* The two programmable velocity levels, and their independence per track.
+ *
+ * FX_PTRN_EXT_LEVELS puts track 0 accented and track 3 unaccented on the SAME step,
+ * which is the assertion a shared per-step velocity cannot satisfy: it would emit one
+ * value for both. Step 8 then repeats track 0 unaccented, so the same track is observed
+ * at both levels within one bar - a firmware that ignored extAccent entirely and sent a
+ * constant velocity would fail there even if the step-0 pair happened to match. */
+static void test_ext_two_velocity_levels(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);
+    event_log_clear(&ctx->log);
+
+    uint64_t t0 = ctx->avr->cycle;
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, STEP_CYCLES * 10);
+
+    uint64_t step0_hi = t0 + STEP_CYCLES * 3;
+    uint64_t step8_lo = t0 + STEP_CYCLES * 8 - STEP_CYCLES / 2;
+    uint64_t step8_hi = t0 + STEP_CYCLES * 9 + STEP_CYCLES / 2;
+
+    const sim_event_t *loud = nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T0,
+                                                        t0, step0_hi);
+    const sim_event_t *soft = nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T3,
+                                                        t0, step0_hi);
+    const sim_event_t *same_track_soft = nava_midi_expect_note_on(&ctx->log, EXT_CH,
+                                                                   WIRE_T0,
+                                                                   step8_lo, step8_hi);
+    if (!loud || !soft || !same_track_soft) {
+        test_fail("ext/levels/notes_present",
+                  "missing note-ons: step0/t0=%d step0/t3=%d step8/t0=%d",
+                  loud != NULL, soft != NULL, same_track_soft != NULL);
+        return;
+    }
+
+    if (loud->midi_note.velocity != FX_MIDI_HIGH_VEL) {
+        test_fail("ext/levels/accented_track",
+                  "accented track on step 0: expected velocity=%u got %u",
+                  FX_MIDI_HIGH_VEL, loud->midi_note.velocity);
+    }
+    if (soft->midi_note.velocity != FX_MIDI_LOW_VEL) {
+        test_fail("ext/levels/per_track",
+                  "unaccented track sharing step 0 with an accented one: "
+                  "expected velocity=%u got %u (level leaked across tracks)",
+                  FX_MIDI_LOW_VEL, soft->midi_note.velocity);
+    }
+    if (same_track_soft->midi_note.velocity != FX_MIDI_LOW_VEL) {
+        test_fail("ext/levels/per_step",
+                  "same track unaccented on step 8: expected velocity=%u got %u",
+                  FX_MIDI_LOW_VEL, same_track_soft->midi_note.velocity);
+    }
+}
+
+/* Programming the two levels from the panel: press once for the low level, again for
+ * the high one, a third time to clear - the cycle InstValueGet() gives the drum
+ * instruments, applied to the ext lane.
+ *
+ * Driven while the transport runs, where a bare step press programs (paused it would be
+ * a track switch). The velocity of what the sequencer then transmits is the assertion:
+ * an implementation that toggled the step on and off in two presses would never reach
+ * the second level, and one that stored the level but did not transmit it would keep
+ * sending the low velocity after the second press. */
+static void test_ext_second_press_sets_high_level(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);
+    enter_ext_edit(ctx);
+
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, STEP_CYCLES);
+
+    /* First press: step on, low level. */
+    fp_press_step(ctx, PROG_STEP);
+    fp_release_step(ctx, PROG_STEP);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    uint64_t t0 = ctx->avr->cycle;
+    nava_sim_run_cycles(ctx, BAR_CYCLES * 2);
+    const sim_event_t *low = nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T0,
+                                                       t0, ctx->avr->cycle);
+    if (!low) {
+        test_fail("ext/press/first_press_programs",
+                  "one press on step %d produced no note", PROG_STEP);
+        return;
+    }
+    if (low->midi_note.velocity != FX_MIDI_LOW_VEL) {
+        test_fail("ext/press/first_press_low",
+                  "first press: expected velocity=%u got %u",
+                  FX_MIDI_LOW_VEL, low->midi_note.velocity);
+    }
+
+    /* Second press: same step, high level. */
+    fp_press_step(ctx, PROG_STEP);
+    fp_release_step(ctx, PROG_STEP);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    uint64_t t1 = ctx->avr->cycle;
+    nava_sim_run_cycles(ctx, BAR_CYCLES * 2);
+    const sim_event_t *high = nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T0,
+                                                        t1, ctx->avr->cycle);
+    if (!high) {
+        test_fail("ext/press/second_press_keeps_step",
+                  "second press silenced the step instead of accenting it");
+    }
+    else if (high->midi_note.velocity != FX_MIDI_HIGH_VEL) {
+        test_fail("ext/press/second_press_high",
+                  "second press: expected velocity=%u got %u",
+                  FX_MIDI_HIGH_VEL, high->midi_note.velocity);
+    }
+
+    /* Third press: step off. */
+    fp_press_step(ctx, PROG_STEP);
+    fp_release_step(ctx, PROG_STEP);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    uint64_t t2 = ctx->avr->cycle;
+    nava_sim_run_cycles(ctx, BAR_CYCLES * 2);
+    size_t after = count_ext_note_ons(&ctx->log, WIRE_T0, t2, ctx->avr->cycle);
+    if (after != 0) {
+        test_fail("ext/press/third_press_clears",
+                  "third press left the step sounding %zu times", after);
+    }
+}
+
+/* The ext velocity config page sets both levels, and playback uses what it set.
+ *
+ * End to end through the panel: TEMPO walks to the page, the encoder edits the field the
+ * encoder button selects, and the transport (which drops config mode) then has to
+ * transmit the edited pair. Asserting only the LCD would pass with the values stored and
+ * Clock.ino still sending the compiled-in defaults.
+ *
+ * The two fields move in opposite directions on purpose: raising both would still pass if
+ * the second field aliased the first.
+ *
+ * The expected velocities are read back off the page rather than computed from the
+ * detent count: Enc.ino's debounce swallows an edge often enough that a fixed count is
+ * off by one, and pinning the exact arithmetic of the encoder is not what this test is
+ * for. Reading the display instead adds an assertion worth having - what the page shows
+ * and what the wire carries have to be the same number. Both values must still have
+ * MOVED off their defaults, or a firmware that ignored the encoder entirely would
+ * satisfy the comparison trivially. */
+#define EXT_VEL_DETENTS  20   /* ~10 increments; EncGet needs two detents per step */
+
+/* SHIFT+TEMPO is the config gesture: the page handler lives in SeqParameter's
+ * shift-held branch. SHIFT is held across the whole walk. */
+static void walk_to_config_page(nava_sim_t *ctx, int page) {
+    fp_press_button(ctx, FP_BTN_SHIFT);
+    for (int i = 0; i < page; i++) {
+        fp_press_button(ctx, FP_BTN_TEMPO);
+        fp_release_button(ctx, FP_BTN_TEMPO);
+        fp_settle(ctx);
+    }
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    fp_settle(ctx);
+}
+
+static void test_ext_velocity_config_page(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);
+
+    /* SHIFT+TEMPO enters config mode on page 1 and advances one page per press. */
+    walk_to_config_page(ctx, FX_CONF_PAGE_EXT_VEL);
+    assert_lcd_contains("ext/velconf/page_reached", ctx, 0, "Low hi  ext vel");
+
+    /* Field 0 (low) is selected on arrival: raise it. */
+    nava_gpio_inject_encoder(ctx->gpio, +1, EXT_VEL_DETENTS);
+    fp_settle(ctx);
+
+    /* Encoder button moves the cursor to field 1 (high): lower it. */
+    nava_gpio_set_encoder_switch(ctx->gpio, 1);
+    fp_settle(ctx);
+    nava_gpio_set_encoder_switch(ctx->gpio, 0);
+    fp_settle(ctx);
+    assert_lcd_contains("ext/velconf/cursor_moved", ctx, 0, "low Hi  ext vel");
+    nava_gpio_inject_encoder(ctx->gpio, -1, EXT_VEL_DETENTS);
+    fp_settle(ctx);
+
+    /* Line 1 is "<low> <high> 1 / 2 tap" in 4-column fields. */
+    const char *shown = nava_lcd_get_line(ctx->lcd, 1);
+    unsigned shown_low = 0, shown_high = 0;
+    if (!shown || sscanf(shown, "%u %u", &shown_low, &shown_high) != 2) {
+        test_fail("ext/velconf/page_values_shown",
+                  "could not read the two levels off the page: \"%s\"",
+                  shown ? shown : "(no LCD output)");
+        return;
+    }
+    if (shown_low <= FX_MIDI_LOW_VEL || shown_high >= FX_MIDI_HIGH_VEL) {
+        test_fail("ext/velconf/encoder_moved_values",
+                  "encoder did not move both levels off their defaults: "
+                  "low %u (default %u), high %u (default %u)",
+                  shown_low, FX_MIDI_LOW_VEL, shown_high, FX_MIDI_HIGH_VEL);
+        return;
+    }
+    uint8_t want_low  = (uint8_t)shown_low;
+    uint8_t want_high = (uint8_t)shown_high;
+
+    /* Starting the transport drops config mode (Seq.ino refuses config while running). */
+    event_log_clear(&ctx->log);
+    uint64_t t0 = ctx->avr->cycle;
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, STEP_CYCLES * 3);
+
+    const sim_event_t *accented = nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T0,
+                                                            t0, ctx->avr->cycle);
+    const sim_event_t *plain = nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T3,
+                                                         t0, ctx->avr->cycle);
+    if (!accented || !plain) {
+        test_fail("ext/velconf/notes_present",
+                  "step 0 produced no notes after the config edit (t0=%d t3=%d)",
+                  accented != NULL, plain != NULL);
+        return;
+    }
+    if (accented->midi_note.velocity != want_high) {
+        test_fail("ext/velconf/high_level_applied",
+                  "double-tap level: expected velocity=%u got %u",
+                  want_high, accented->midi_note.velocity);
+    }
+    if (plain->midi_note.velocity != want_low) {
+        test_fail("ext/velconf/low_level_applied",
+                  "single-tap level: expected velocity=%u got %u",
+                  want_low, plain->midi_note.velocity);
+    }
+}
+
 /* LAST STEP inside ext edit mode sets the EXT layer's last step, not the sequencer's.
  *
  * Both halves are asserted, because either alone passes for the wrong reason: that the
@@ -622,6 +854,12 @@ int main(void) {
                       test_ext_note_off_at_next_step, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_accent_velocity",
                       test_ext_accent_velocity, &FX_PTRN_EXT, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_two_velocity_levels",
+                      test_ext_two_velocity_levels, &FX_PTRN_EXT_LEVELS, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_second_press_sets_high_level",
+                      test_ext_second_press_sets_high_level, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_velocity_config_page",
+                      test_ext_velocity_config_page, &FX_PTRN_EXT_LEVELS, 2, 1);
     TEST_WITH_PATTERN("ext_inst_no_drum_notes_in_midi",
                       test_ext_notes_only_midi_traffic, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_encoder_sets_track_note",

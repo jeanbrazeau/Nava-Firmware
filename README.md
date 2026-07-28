@@ -17,6 +17,11 @@ The version found here is called Nava Oortone (0Tone) and draws heavily on the p
 * Button logic improvements with less unexpected results
 * Working metronome
 * Improved External Instruments (midi note sequencer)
+* External Instrument steps have two velocity levels, programmed like the analog voices:
+  press a step once for the soft level, again for the loud one, a third time to clear.
+  Each of the 16 MIDI tracks keeps its own levels, so one track can accent where another
+  does not. The two MIDI velocities are set on the last config page (SHIFT+TEMPO to it,
+  encoder button to move between the fields), and default to 63 and 111.
 
 ## Flashing firmware over MIDI SysEx
 

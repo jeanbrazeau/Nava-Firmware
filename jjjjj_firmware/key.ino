@@ -36,8 +36,8 @@ void ExtSetTrackNote(byte note)
 
   // A sustained preview (step button still held from track select) has to move with
   // the note, otherwise the user hears the old pitch while the display shows the new.
-  if (previewActive && !previewOffAt) ExtPreviewOn(note, 0);
-  else ExtPreviewOn(note, 50);
+  if (previewActive && !previewOffAt) ExtPreviewOn(note, seq.extVelHigh, 0);
+  else ExtPreviewOn(note, seq.extVelHigh, 50);
 
   // Deferred to mode exit rather than seq.setupNeedSaved: that flag is cleared every
   // pass while outside config mode, and writing here would burn an EEPROM cycle on
@@ -49,7 +49,11 @@ void ExtSetTrackNote(byte note)
 // Preview notes are started from the main loop, so they can never be closed with a
 // delay(): ExtPreviewCheck() retires them instead. Only one preview may sound at a
 // time, otherwise a second track select strands the first note on the synth.
-void ExtPreviewOn(byte note, unsigned long holdMs)
+// velocity is what the audition should sound at: a programming press passes the level it
+// just wrote, so the two velocity levels are told apart by ear as they are programmed.
+// Track select and retune pass the high level - they are auditioning a pitch, and the
+// louder of the two is the one that carries on every synth patch.
+void ExtPreviewOn(byte note, byte velocity, unsigned long holdMs)
 {
   // The preview and the sequencer have no shared ownership of a note: both send on
   // seq.EXTchannel from EXT_TRACK_NOTES, so if the running pattern uses this track
@@ -64,7 +68,7 @@ void ExtPreviewOn(byte note, unsigned long holdMs)
   }
 
   if (previewActive) ExtPreviewOff();
-  MidiSendExtNoteOn(note, HIGH_VEL);
+  MidiSendExtNoteOn(note, velocity);
   previewNote = note;
   previewActive = TRUE;
   if (holdMs) {
@@ -155,7 +159,7 @@ void ExtInstUpdate()
           currentExtTrack = i;
 
           // Preview note, sustained until the step button is released
-          ExtPreviewOn(extTrackNote[i], 0);
+          ExtPreviewOn(extTrackNote[i], seq.extVelHigh, 0);
           needLcdUpdate = TRUE;
           stepBtn[i].justPressed = FALSE;
         }
@@ -172,18 +176,33 @@ void ExtInstUpdate()
     if (!selectingTrack) extInstButtonHandled = FALSE;
 
     // [TR-909 STYLE] Program steps with the gesture that is not selecting a track
+    //
+    // Three states per step, the same cycle and the same gesture the drum instruments
+    // get from InstValueGet(): off -> low velocity -> high velocity -> off, so the
+    // second level is reached by pressing the step again rather than by a modifier.
+    // The pair is (extTrack bit, extAccent bit); the accent bit is cleared on the way
+    // out so a step re-entered later starts at the low level, as a drum step does.
     if (!selectingTrack && !extInstButtonHandled && currentButtonState) {
       for (byte step = 0; step < NBR_STEP; step++) {
         if (bitRead(currentButtonState, step) && !bitRead(prevExtStepState, step)) {
-          // Toggle step for current track
-          if (bitRead(pattern[ptrnBuffer].extTrack[currentExtTrack], step)) {
-            bitClear(pattern[ptrnBuffer].extTrack[currentExtTrack], step);
-          } else {
+          if (!bitRead(pattern[ptrnBuffer].extTrack[currentExtTrack], step)) {
             // Audition before the bitSet, not after: ExtPreviewOn() declines when the
             // running pattern already uses this track, and setting the bit first would
             // make that true of every step the user adds.
-            ExtPreviewOn(extTrackNote[currentExtTrack], 50);
+            ExtPreviewOn(extTrackNote[currentExtTrack], seq.extVelLow, 50);
             bitSet(pattern[ptrnBuffer].extTrack[currentExtTrack], step);
+            bitClear(pattern[ptrnBuffer].extAccent[currentExtTrack], step);
+          }
+          else if (!bitRead(pattern[ptrnBuffer].extAccent[currentExtTrack], step)) {
+            // Second press: same note, accented. The audition is declined while the
+            // sequencer is sounding this track, which is exactly when the step the user
+            // just accented is about to be heard at the new level anyway.
+            ExtPreviewOn(extTrackNote[currentExtTrack], seq.extVelHigh, 50);
+            bitSet(pattern[ptrnBuffer].extAccent[currentExtTrack], step);
+          }
+          else {
+            bitClear(pattern[ptrnBuffer].extTrack[currentExtTrack], step);
+            bitClear(pattern[ptrnBuffer].extAccent[currentExtTrack], step);
           }
           patternWasEdited = TRUE;
           needLcdUpdate = TRUE;

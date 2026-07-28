@@ -254,6 +254,38 @@ void EncGet() {
       }
     }
 #endif
+    // [TR-909 STYLE] Ext instrument velocities. Floor of 1, not 0: a note-on with
+    // velocity 0 is a note-off on the wire, so a level of 0 would silence the lane
+    // rather than make it quiet. The two are not ordered against each other - inverting
+    // them is a legitimate way to make the second press the softer of the pair.
+    else if (seq.configPage == CONF_PAGE_EXT_VEL) {
+      switch (curIndex) {
+        case 0:
+          {
+            seq.extVelLow = EncGet(seq.extVelLow, 1);
+            seq.extVelLow = constrain(seq.extVelLow, 1, MAX_VEL);
+            static byte prevExtVelLow;
+            if (seq.extVelLow != prevExtVelLow) {
+              prevExtVelLow = seq.extVelLow;
+              seq.setupNeedSaved = TRUE;
+              needLcdUpdate = TRUE;
+            }
+            break;
+          }
+        case 1:
+          {
+            seq.extVelHigh = EncGet(seq.extVelHigh, 1);
+            seq.extVelHigh = constrain(seq.extVelHigh, 1, MAX_VEL);
+            static byte prevExtVelHigh;
+            if (seq.extVelHigh != prevExtVelHigh) {
+              prevExtVelHigh = seq.extVelHigh;
+              seq.setupNeedSaved = TRUE;
+              needLcdUpdate = TRUE;
+            }
+            break;
+          }
+      }
+    }
   } else {
     seq.bpm = EncGet(seq.bpm, 1);
     if (seq.bpm <= MIN_BPM) seq.bpm = MIN_BPM;
