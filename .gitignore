@@ -29,7 +29,8 @@
 
 Nava2021Neuromancer/*
 Nava_v1_028beta/*
-Nava_Oortone_firmware/build/*
+downtown-solutions_firmware/build/*
+downtown-solutions_firmware/*.lst
 *.syx
 
 #macOS

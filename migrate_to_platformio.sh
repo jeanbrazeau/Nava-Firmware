@@ -1,6 +1,6 @@
 #!/bin/bash
 # Migrate Nava Arduino project to PlatformIO structure
-# This script maintains Arduino IDE compatibility by keeping jjjjj_firmware/ intact
+# This script maintains Arduino IDE compatibility by keeping downtown-solutions_firmware/ intact
 
 set -e  # Exit on error
 
@@ -18,28 +18,28 @@ mkdir -p include
 
 # 2. Copy source files to src/
 echo "[2/5] Copying Arduino source files to src/..."
-cp jjjjj_firmware/*.ino src/
-cp jjjjj_firmware/*.h src/
-[ -f jjjjj_firmware/*.cpp ] && cp jjjjj_firmware/*.cpp src/ || true
+cp downtown-solutions_firmware/*.ino src/
+cp downtown-solutions_firmware/*.h src/
+[ -f downtown-solutions_firmware/*.cpp ] && cp downtown-solutions_firmware/*.cpp src/ || true
 
 # Rename main .ino to main.cpp for PlatformIO
-if [ -f src/jjjjj_firmware.ino ]; then
-    mv src/jjjjj_firmware.ino src/main.cpp
-    echo "  - Renamed jjjjj_firmware.ino -> main.cpp"
+if [ -f src/downtown-solutions_firmware.ino ]; then
+    mv src/downtown-solutions_firmware.ino src/main.cpp
+    echo "  - Renamed downtown-solutions_firmware.ino -> main.cpp"
 fi
 
 # 3. Move custom libraries to lib/
 echo "[3/5] Moving custom libraries to lib/..."
-if [ -d jjjjj_firmware/src/SPI ]; then
-    cp -r jjjjj_firmware/src/SPI lib/
+if [ -d downtown-solutions_firmware/src/SPI ]; then
+    cp -r downtown-solutions_firmware/src/SPI lib/
     echo "  - Copied SPI library"
 fi
-if [ -d jjjjj_firmware/src/WireN ]; then
-    cp -r jjjjj_firmware/src/WireN lib/
+if [ -d downtown-solutions_firmware/src/WireN ]; then
+    cp -r downtown-solutions_firmware/src/WireN lib/
     echo "  - Copied WireN library"
 fi
-if [ -d jjjjj_firmware/src/MemoryFree ]; then
-    cp -r jjjjj_firmware/src/MemoryFree lib/
+if [ -d downtown-solutions_firmware/src/MemoryFree ]; then
+    cp -r downtown-solutions_firmware/src/MemoryFree lib/
     echo "  - Copied MemoryFree library"
 fi
 
@@ -65,8 +65,8 @@ cat > PLATFORMIO_MIGRATION.md << 'EOF'
 ```
 Nava-Firmware/
 ├── platformio.ini          # PlatformIO configuration
-├── src/                    # PlatformIO source files (auto-generated from jjjjj_firmware/)
-│   ├── main.cpp           # Main firmware (was jjjjj_firmware.ino)
+├── src/                    # PlatformIO source files (auto-generated from downtown-solutions_firmware/)
+│   ├── main.cpp           # Main firmware (was downtown-solutions_firmware.ino)
 │   ├── *.ino              # Other Arduino modules
 │   └── *.h                # Headers
 ├── lib/                    # Custom libraries
@@ -74,7 +74,7 @@ Nava-Firmware/
 │   ├── WireN/
 │   └── MemoryFree/
 ├── include/                # Global headers (if needed)
-├── jjjjj_firmware/        # ORIGINAL Arduino IDE project (keep for compatibility)
+├── downtown-solutions_firmware/        # ORIGINAL Arduino IDE project (keep for compatibility)
 │   └── ...                # Use this for Arduino IDE development
 └── tools/                  # Build tools
     └── hex2sysex/
@@ -98,7 +98,7 @@ pio run  # SysEx file created in .pio/build/nava_sysex/
 ```
 
 ### Arduino IDE (Still Supported)
-1. Open `jjjjj_firmware/jjjjj_firmware.ino` in Arduino IDE
+1. Open `downtown-solutions_firmware/downtown-solutions_firmware.ino` in Arduino IDE
 2. Develop and test as before
 3. After changes, sync to PlatformIO:
    ```bash
@@ -107,7 +107,7 @@ pio run  # SysEx file created in .pio/build/nava_sysex/
 
 ## Synchronization
 
-If you modify files in `jjjjj_firmware/`, run:
+If you modify files in `downtown-solutions_firmware/`, run:
 ```bash
 ./sync_to_platformio.sh
 ```
@@ -116,8 +116,8 @@ This will copy updated files to `src/` and `lib/`.
 
 ## Notes
 
-- `src/` and `lib/` are derived from `jjjjj_firmware/` - treat as build artifacts
-- Always edit in `jjjjj_firmware/` if using Arduino IDE
+- `src/` and `lib/` are derived from `downtown-solutions_firmware/` - treat as build artifacts
+- Always edit in `downtown-solutions_firmware/` if using Arduino IDE
 - PlatformIO users can edit `src/` directly
 - Both workflows are supported - choose based on preference
 EOF
@@ -125,13 +125,13 @@ EOF
 # Create sync script
 cat > sync_to_platformio.sh << 'EOF'
 #!/bin/bash
-# Sync changes from jjjjj_firmware/ to src/ and lib/
+# Sync changes from downtown-solutions_firmware/ to src/ and lib/
 echo "Syncing Arduino sources to PlatformIO structure..."
-cp jjjjj_firmware/*.ino src/
-cp jjjjj_firmware/*.h src/
-[ -f jjjjj_firmware/*.cpp ] && cp jjjjj_firmware/*.cpp src/ || true
-mv src/jjjjj_firmware.ino src/main.cpp 2>/dev/null || true
-cp -r jjjjj_firmware/src/* lib/
+cp downtown-solutions_firmware/*.ino src/
+cp downtown-solutions_firmware/*.h src/
+[ -f downtown-solutions_firmware/*.cpp ] && cp downtown-solutions_firmware/*.cpp src/ || true
+mv src/downtown-solutions_firmware.ino src/main.cpp 2>/dev/null || true
+cp -r downtown-solutions_firmware/src/* lib/
 echo "Sync complete!"
 EOF
 chmod +x sync_to_platformio.sh
@@ -145,7 +145,7 @@ echo "  ✓ lib/         - Custom libraries (SPI, WireN, MemoryFree)"
 echo "  ✓ include/     - Global headers"
 echo ""
 echo "Original Arduino IDE project preserved in:"
-echo "  → jjjjj_firmware/"
+echo "  → downtown-solutions_firmware/"
 echo ""
 echo "Next steps:"
 echo "  1. Review PLATFORMIO_MIGRATION.md"
