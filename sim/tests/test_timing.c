@@ -27,6 +27,11 @@
 #define BOOT_CYCLES     64000000ULL
 /* One full bar at 120 BPM 4/4 = 16 steps × 2000064 ≈ 32001024 cycles */
 #define ONE_BAR_CYCLES  32100000ULL
+/* Steps per bar in every fixture here (fx_pattern_t.length = 15) */
+#define NBR_FX_STEPS    16
+/* test_ppqn_period measures from step 1 to step 17, so it needs a run long enough to
+ * produce 18 onsets - just over two bars, plus margin for the PLAY transient. */
+#define TWO_BAR_CYCLES  70000000ULL
 /* Flam test window: main hit + 400000 cycle margin */
 #define FLAM_WINDOW     400000ULL
 
@@ -35,15 +40,16 @@ static void test_ppqn_period(nava_sim_t *ctx) {
     boot_wait_ready(ctx, BOOT_CYCLES);
     event_log_clear(&ctx->log);
 
-    /* Press PLAY and advance one bar to collect trigger events */
+    /* Press PLAY and advance two bars to collect trigger events */
     fp_press_button(ctx, FP_BTN_PLAY);
     fp_release_button(ctx, FP_BTN_PLAY);
     uint64_t t0 = ctx->avr->cycle;
-    nava_sim_run_cycles(ctx, ONE_BAR_CYCLES);
+    nava_sim_run_cycles(ctx, TWO_BAR_CYCLES);
 
     /* Find consecutive TRIG_WORD events from step-trigger writes.
-     * BD is on every step (FX_PTRN_BASIC); trig_word bit FX_BD=8 will be set. */
-    const sim_event_t *first = event_log_find_step_onset(&ctx->log, t0, 0);
+     * BD is on every step (FX_PTRN_BASIC); trig_word bit FX_BD=8 will be set.
+     * Index 1, not 0: step 0 sits in the PLAY transient (see below). */
+    const sim_event_t *first = event_log_find_step_onset(&ctx->log, t0, 1);
     if (!first) {
         printf("# ppqn_period: LCD[0]=\"%.16s\" (expected BPM or mode text)\n",
                fp_lcd_line(ctx, 0) ? fp_lcd_line(ctx, 0) : "<empty>");
@@ -52,18 +58,36 @@ static void test_ppqn_period(nava_sim_t *ctx) {
                   "(if LCD blank: boot incomplete — increase BOOT_CYCLES)");
         return;
     }
-    const sim_event_t *second = event_log_find_step_onset(&ctx->log, t0, 1);
-    if (!second) {
-        test_fail("ppqn_period", "only one step-onset TRIG_WORD event");
+    /* Measure one FULL BAR apart rather than between the first two steps.
+     *
+     * Two systematic errors made the adjacent-step measurement unfit for asserting a
+     * hardware CTC period to 256 cycles. The observable is the TRIG_CS deassert ending
+     * SetDoutTrig's SPI burst, so it carries however much of CountPPQN() ran first --
+     * and that pre-window grows with curStep, because the stepValue loop does a
+     * variable-distance bitRead per instrument (~80 cycles per step of curStep). So
+     * consecutive onsets drift ~+90 cycles apart from each other and drop by ~1.2k at
+     * the bar wrap, none of which is a period error. Second, the FIRST interval after
+     * PLAY is the most contended in the run: the loop is still scanning buttons and
+     * repainting, and an in-progress SPI transaction delays ISR entry by a few hundred
+     * cycles, which showed up as a -337 cycle "period error" that no clock could
+     * produce.
+     *
+     * Endpoints exactly NBR_STEP apart share the same curStep, so the ramp cancels
+     * identically instead of being tolerated, and starting at step 1 clears the PLAY
+     * transient. Any residual jitter is divided by 16. */
+    const sim_event_t *bar_end = event_log_find_step_onset(&ctx->log, t0, 1 + NBR_FX_STEPS);
+    if (!bar_end) {
+        test_fail("ppqn_period", "need %d step onsets to measure a full bar",
+                  2 + NBR_FX_STEPS);
         return;
     }
 
-    uint64_t delta = second->cycle - first->cycle;
-    /* Expected: one 16th-note step period = NAVA_PPQN_PERIOD_CYCLES * 24 */
-    uint64_t expected = NAVA_PPQN_PERIOD_CYCLES * 24ULL;  /* 83336 * 24 = 2000064 */
-    /* Tolerance covers ISR entry plus the 2-byte SPI shift-out at 2 MHz (~128
-     * cycles) that precedes the TRIG_CS deassert we timestamp on. */
-    assert_cycle_within("ppqn_period/step_delta", delta, expected,
+    uint64_t delta = bar_end->cycle - first->cycle;
+    /* One 16th step = NAVA_PPQN_PERIOD_CYCLES * 24 = 2000064; a bar is 16 of them. */
+    uint64_t expected = NAVA_PPQN_PERIOD_CYCLES * 24ULL * (uint64_t)NBR_FX_STEPS;
+    /* Same tolerance as before in absolute cycles, now covering 16 steps rather than
+     * one - so this is a 16x TIGHTER bound on the period, not a loosened one. */
+    assert_cycle_within("ppqn_period/bar_delta", delta, expected,
                          CYCLE_TOLERANCE * 8);
 }
 

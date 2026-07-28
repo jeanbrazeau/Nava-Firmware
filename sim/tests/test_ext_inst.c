@@ -337,6 +337,132 @@ static void test_ext_shuffle_button_owns_encoder(nava_sim_t *ctx) {
                         NAVA_PPQN_PERIOD_CYCLES / 2);
 }
 
+/* Enter ext edit mode and outlast the 800ms entry splash. */
+static void enter_ext_edit(nava_sim_t *ctx) {
+    fp_press_button(ctx, FP_BTN_SHIFT);
+    fp_press_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    fp_settle(ctx);
+    nava_sim_run_cycles(ctx, 16000000ULL);
+}
+
+static size_t count_ext_note_ons(const event_log_t *log, uint8_t wire,
+                                 uint64_t from, uint64_t to) {
+    size_t n = 0;
+    for (size_t i = 0; i < log->count; i++) {
+        const sim_event_t *e = &log->buf[i];
+        if (e->cycle < from || e->cycle >= to) continue;
+        if (e->type != EVT_MIDI_NOTE_ON) continue;
+        if (e->midi_note.channel != EXT_CH || e->midi_note.note != wire) continue;
+        if (e->midi_note.velocity == 0) continue;
+        n++;
+    }
+    return n;
+}
+
+/* LAST STEP inside ext edit mode sets the EXT layer's last step, not the sequencer's.
+ *
+ * Both halves are asserted, because either alone passes for the wrong reason: that the
+ * ext lane got shorter is equally true of the bug (which truncated the whole pattern and
+ * dragged the ext lane along), and that the pattern is intact is trivially true if
+ * LAST STEP did nothing at all.
+ *
+ * FX_PTRN_EXT fires ext track 0 on steps 0 and 8 and puts a drum trigger on those same
+ * two steps. Setting the ext last step to 3 makes the ext lane cycle 0..3, so track 0
+ * sounds every 4 steps - 4 times a bar instead of 2 - while the kit must still reach
+ * step 8, which it can only do if pattern.length was left alone. */
+static void test_ext_last_step_scoped_to_ext_layer(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);
+    enter_ext_edit(ctx);
+
+    fp_press_button(ctx, FP_BTN_LASTSTEP);
+    fp_press_step(ctx, 3);              /* step button 4 -> last step index 3 */
+    fp_release_step(ctx, 3);
+    fp_release_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    uint64_t t0 = ctx->avr->cycle;
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, BAR_CYCLES);
+
+    size_t ons = count_ext_note_ons(&ctx->log, WIRE_T0, t0, t0 + BAR_CYCLES);
+    printf("# ext_last_step: track0 note-ons in one bar = %zu (expect ~4)\n", ons);
+    if (ons < 3) {
+        test_fail("ext/last_step/ext_loops_short",
+                  "ext lane sounded %zu times in a bar; a 4-step ext loop should fire ~4",
+                  ons);
+    }
+
+    /* Count drum triggers instead of looking for one near step 8. FX_PTRN_EXT puts a
+     * trigger on steps 0 and 8 of a 16-step pattern, so an intact sequencer fires twice
+     * a bar. Truncating pattern.length to 3 makes it fire on curStep 0 of a 4-step loop
+     * - absolute steps 0, 4, 8, 12 - which still puts a trigger near step 8 and would
+     * satisfy a "did it reach step 8" check while being exactly the bug. The COUNT is
+     * what separates them: 2 when scoped correctly, 4 when the sequencer was truncated. */
+    size_t onsets = 0;
+    for (int i = 0; i < 40; i++) {
+        const sim_event_t *e = event_log_find_step_onset(&ctx->log, t0, i);
+        if (!e || e->cycle >= t0 + BAR_CYCLES) break;
+        onsets++;
+    }
+    printf("# ext_last_step: drum onsets in one bar = %zu (expect 2)\n", onsets);
+    if (onsets > 3) {
+        test_fail("ext/last_step/pattern_length_intact",
+                  "%zu drum triggers in a bar; an intact 16-step pattern fires 2, a "
+                  "pattern truncated to 4 steps fires 4 - LAST STEP hit the sequencer",
+                  onsets);
+    }
+}
+
+/* CLEAR inside ext edit mode clears the selected ext track, not the analog instrument.
+ *
+ * The old behaviour cleared inst[EXT_INST] - a word the ext playback path never reads -
+ * so the track kept sounding. Held across a bar, the ext note-ons must stop; the drum
+ * triggers, which CLEAR must not have touched, must not. */
+static void test_ext_clear_scoped_to_ext_track(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);
+    enter_ext_edit(ctx);
+
+    event_log_clear(&ctx->log);
+    uint64_t t0 = ctx->avr->cycle;
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, BAR_CYCLES);
+
+    size_t before = count_ext_note_ons(&ctx->log, WIRE_T0, t0, t0 + BAR_CYCLES);
+    if (before == 0) {
+        test_fail("ext/clear/precondition", "track 0 never sounded before CLEAR");
+        return;
+    }
+
+    /* Hold CLEAR for two bars so the playhead passes every programmed step. */
+    fp_press_button(ctx, FP_BTN_CLEAR);
+    nava_sim_run_cycles(ctx, BAR_CYCLES * 2);
+    fp_release_button(ctx, FP_BTN_CLEAR);
+
+    uint64_t t1 = ctx->avr->cycle;
+    event_log_clear(&ctx->log);
+    nava_sim_run_cycles(ctx, BAR_CYCLES);
+
+    size_t after = count_ext_note_ons(&ctx->log, WIRE_T0, t1, t1 + BAR_CYCLES);
+    printf("# ext_clear: track0 note-ons before=%zu after=%zu\n", before, after);
+    if (after != 0) {
+        test_fail("ext/clear/track_cleared",
+                  "track 0 still sounded %zu times after holding CLEAR", after);
+    }
+
+    /* CLEAR belonged to the ext track, so the drum grid must be untouched. */
+    if (!event_log_find_step_onset(&ctx->log, t1, 0)) {
+        test_fail("ext/clear/drums_intact",
+                  "no drum triggers after CLEAR - it cleared the analog layer too");
+    }
+}
+
 /* Leaving edit mode returns to the instrument that was selected on the way in.
  *
  * SD is chosen over BD deliberately: BD is the old hardcoded fallback, so restoring to
@@ -500,6 +626,10 @@ int main(void) {
                       test_ext_notes_only_midi_traffic, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_encoder_sets_track_note",
                       test_ext_encoder_sets_track_note, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_last_step_scoped_to_ext_layer",
+                      test_ext_last_step_scoped_to_ext_layer, &FX_PTRN_EXT, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_clear_scoped_to_ext_track",
+                      test_ext_clear_scoped_to_ext_track, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_shuffle_button_owns_encoder",
                       test_ext_shuffle_button_owns_encoder, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_exit_restores_instrument",

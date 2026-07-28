@@ -358,6 +358,13 @@ volatile byte ppqn = 0;
 volatile byte curStep = 0;
 //volatile int stepCount = -1;  //[oort] strange initialisation
 volatile byte stepCount = 0;  //[oort] volatile preferably byte
+// Position of the external-instrument layer, wrapping at pattern.extLength rather than
+// pattern.length. Separate from stepCount so a shorter ext length loops the MIDI tracks
+// against the kit instead of truncating the whole pattern.
+volatile byte extStepCount = 0;
+// The step the ext layer is currently sounding, published by CountPPQN() so the editor
+// can clear and display against the lane the user is actually looking at.
+volatile byte extCurStep = 0;
 volatile byte tapStepCount;  //this counter is used to get a better tap response
 volatile boolean stepChanged = FALSE;
 int stepCountContinue = 0;      //[oort] for stop/continue modes
@@ -409,6 +416,13 @@ struct Pattern {
   unsigned int step[NBR_STEP];
   byte velocity[NBR_INST][NBR_STEP];
   unsigned int extTrack[16];  // [TR-909 STYLE] 16 tracks × 16-bit word = 32 bytes (saves 97 bytes per pattern)
+  // Last step of the external-instrument layer, independent of `length`. LAST STEP
+  // inside EXT INST edit mode sets this rather than the sequencer's own length, so the
+  // ext tracks can loop shorter than the kit. Equal to `length` by default, where the
+  // ext lane advances in lockstep with the drums and behaviour is unchanged. It lives
+  // in the byte the stored format already reserved for it (EEPROM offset 36), so no
+  // pattern written by an older build needs migrating.
+  byte extLength;
   byte groupPos;
   byte groupLength;
   byte totalAcc;

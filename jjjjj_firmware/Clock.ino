@@ -162,16 +162,29 @@ void CountPPQN() {
       // (SLAVE runs CountPPQN four times in a row from HandleClock): the older step's
       // notes were about to be cut by this one anyway, and extPendingOff is sticky
       // so the sounding notes still get their note-off.
+      // The ext layer reads its own position. extLength equals length unless LAST STEP
+      // was used inside EXT INST edit mode, in which case the MIDI tracks loop shorter
+      // than the kit and the two lanes phase against each other. Direction is
+      // deliberately not applied here: BACKWARD/PING_PONG/RANDOM are defined against
+      // pattern.length, and re-deriving them from a different length would make the ext
+      // lane disagree with the drums even when the two lengths match.
+      extCurStep = (pattern[ptrnBuffer].extLength == pattern[ptrnBuffer].length)
+                     ? curStep
+                     : extStepCount;
+
       byte extVelocity = HIGH_VEL;
       unsigned int extOnMask = 0;
       for (byte track = 0; track < 16; track++) {
-        if (bitRead(pattern[ptrnBuffer].extTrack[track], curStep)) bitSet(extOnMask, track);
+        if (bitRead(pattern[ptrnBuffer].extTrack[track], extCurStep)) bitSet(extOnMask, track);
       }
 #if MIDI_EXT_CHANNEL
       if (extOnMask) {
         // Velocity is shared across all tracks of the step
-        if (pattern[ptrnBuffer].velocity[EXT_INST][curStep] > 0) {
-          long scaled = map(pattern[ptrnBuffer].velocity[EXT_INST][curStep],
+        // extCurStep: the EXT_INST velocity lane belongs to the ext layer and moves with
+        // it. TOTAL_ACC below stays on curStep - it accents the whole machine at that
+        // moment, so it has to line up with the kit rather than with the ext loop.
+        if (pattern[ptrnBuffer].velocity[EXT_INST][extCurStep] > 0) {
+          long scaled = map(pattern[ptrnBuffer].velocity[EXT_INST][extCurStep],
                             instVelLow[EXT_INST], instVelHigh[EXT_INST],
                             MIDI_LOW_VELOCITY, MIDI_HIGH_VELOCITY);
           // A stored velocity outside the instVel table range maps past 127 and would
@@ -200,6 +213,11 @@ void CountPPQN() {
       //TRIG_HIGH;
       //ResetDoutTrig();
       stepCount++;
+      // Wraps on its own length, so a shorter ext loop phases against the kit rather
+      // than truncating the pattern. Guarded against a stored length of 0 from a bank
+      // that has not been through InitPattern() yet.
+      extStepCount++;
+      if (extStepCount > pattern[ptrnBuffer].extLength || extStepCount >= NBR_STEP) extStepCount = 0;
 
       //endMeasure
       //[oort] comment: This is executed at the last step of every bar.
@@ -215,6 +233,9 @@ void CountPPQN() {
         //[oort] addition
         if (nextPatternReady) {  //&& curSeqMode == PTRN_PLAY
           nextPatternReady = FALSE;
+          // The incoming pattern brings its own extLength, so a phase carried over from
+          // the outgoing one would start the new ext loop at an arbitrary offset.
+          extStepCount = 0;
           ptrnBuffer = !ptrnBuffer;  //[oort] comment: switch between twin buffers
           prevPattern = curPattern;  //[oort] needed in tap mode
           curPattern = nextPattern;

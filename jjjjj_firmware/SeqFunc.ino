@@ -10,6 +10,7 @@ void InitSeq() {
   LoadExtTrackNotes();  // [TR-909 STYLE] must precede any ext preview or playback
   ppqn = 0;
   stepCount = 0;
+  extStepCount = 0;
   seq.configPage = 0;
   seq.configMode = FALSE;
   randomSeed(analogRead(0));
@@ -57,6 +58,10 @@ void InitPattern() {
     group.length = pattern[ptrnBuffer].groupLength;
     group.firstPattern = curPattern - pattern[ptrnBuffer].groupPos;
   }
+  // Backstop for any path that reaches a live buffer without going through the EEPROM
+  // read, which is where the stored bias is decoded. An out-of-range ext length would
+  // index extTrack[] past its 16 bits.
+  if (pattern[ptrnBuffer].extLength >= NBR_STEP) pattern[ptrnBuffer].extLength = pattern[ptrnBuffer].length;
   //Init Ride, Crash velocity to HIGH_VEL
   for (int stp = 0; stp < NBR_STEP; stp++) {
     if (pattern[ptrnBuffer].velocity[CH][stp] == 0) pattern[ptrnBuffer].velocity[CH][stp] = instVelHigh[HH];  //HH
@@ -87,6 +92,7 @@ void InitPattern() {
 }*/
 
 void InitPattern(Pattern* bufferToSet) {
+  if (bufferToSet->extLength >= NBR_STEP) bufferToSet->extLength = bufferToSet->length;
   if (!group.priority && !group.isLoaded) {
     group.length = bufferToSet->groupLength;
     group.firstPattern = curPattern - bufferToSet->groupPos;
@@ -213,6 +219,7 @@ void CopyPatternToBuffer(byte patternNum) {
     bufferedPattern.inst[i] = pattern[ptrnBuffer].inst[i];
   }
   bufferedPattern.length = pattern[ptrnBuffer].length;
+  bufferedPattern.extLength = pattern[ptrnBuffer].extLength;  // copied with the ext tracks it bounds
   bufferedPattern.scale = pattern[ptrnBuffer].scale;
   bufferedPattern.shuffle = pattern[ptrnBuffer].shuffle;
   bufferedPattern.flam = pattern[ptrnBuffer].flam;
@@ -236,6 +243,11 @@ void PasteBufferToPattern(byte patternNum) {
     pattern[ptrnBuffer].inst[i] = bufferedPattern.inst[i];
   }
   pattern[ptrnBuffer].length = bufferedPattern.length;
+  // Guarded rather than copied blind: bufferedPattern is BSS until something is copied
+  // into it, so a paste before any copy would otherwise install a garbage ext length.
+  pattern[ptrnBuffer].extLength = (bufferedPattern.extLength < NBR_STEP)
+                                    ? bufferedPattern.extLength
+                                    : bufferedPattern.length;
   pattern[ptrnBuffer].scale = bufferedPattern.scale;
   pattern[ptrnBuffer].shuffle = bufferedPattern.shuffle;
   pattern[ptrnBuffer].flam = bufferedPattern.flam;

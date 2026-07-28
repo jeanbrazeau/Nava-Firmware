@@ -80,7 +80,10 @@ void SavePattern(byte patternNbr)
   Wire.write((byte)(pattern[ptrnBuffer].scale));
   Wire.write((byte)(pattern[ptrnBuffer].shuffle));
   Wire.write((byte)(pattern[ptrnBuffer].flam));
-  Wire.write((byte)(0));  // [TR-909] Placeholder for old extLength (not used)
+  // [TR-909] Reuses the slot the stored format reserved for extLength, biased by one so
+  // that 0 still means "written before this existed". extLength 0 is itself a legal
+  // setting (a one-step ext loop), so the bias is what keeps the full 0-15 range usable.
+  Wire.write((byte)(pattern[ptrnBuffer].extLength + 1));
   Wire.write((byte)(pattern[ptrnBuffer].groupPos));
   Wire.write((byte)(pattern[ptrnBuffer].groupLength));
   Wire.write((byte)(pattern[ptrnBuffer].totalAcc));
@@ -150,7 +153,8 @@ void LoadPattern(byte patternNbr)
   pattern[!ptrnBuffer].scale = Wire.read();
   prevShuf = pattern[!ptrnBuffer].shuffle = Wire.read();                                                         // [zabox] [1.027] flam
   prevFlam = pattern[!ptrnBuffer].flam = Wire.read();                                                            // [zabox] [1.027] flam
-  Wire.read();  // [TR-909] Skip old extLength byte (not used)
+  byte storedExtLength = Wire.read();  // [TR-909] biased by one; 0 = pattern predates ext length
+  pattern[!ptrnBuffer].extLength = storedExtLength ? storedExtLength - 1 : pattern[!ptrnBuffer].length;
   pattern[!ptrnBuffer].groupPos = Wire.read();
   pattern[!ptrnBuffer].groupLength = Wire.read();
   pattern[!ptrnBuffer].totalAcc = Wire.read();
@@ -214,7 +218,8 @@ void LoadTempPattern(byte patternNbr)
   tempPattern.scale = Wire.read();
   prevShuf = tempPattern.shuffle = Wire.read();                                                         // [zabox] [1.027] flam
   prevFlam = tempPattern.flam = Wire.read();                                                            // [zabox] [1.027] flam
-  Wire.read();  // [TR-909] Skip old extLength byte (not used)
+  byte storedTempExtLength = Wire.read();  // [TR-909] biased by one; 0 = pattern predates ext length
+  tempPattern.extLength = storedTempExtLength ? storedTempExtLength - 1 : tempPattern.length;
   tempPattern.groupPos = Wire.read();
   tempPattern.groupLength = Wire.read();
   tempPattern.totalAcc = Wire.read();

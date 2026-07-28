@@ -449,6 +449,33 @@ arms it first via `latch_guide()`.
 The metronome now has no binding. `Metronome()` is uncalled and `metronomeState`
 (read by Mux.ino) is never set, so it is permanently off until rebound to something.
 
+### CLEAR and LAST STEP inside edit mode
+Both are scoped to the ext layer, because the mode is a layer over the instrument
+selection rather than a separate page - the buttons keep their meaning, applied one level
+down. CLEAR clears the selected ext track (the step under the playhead while running,
+the whole track on SHIFT+CLEAR while stopped) instead of `inst[curInst]`, which in this
+mode is `inst[EXT_INST]` - a word the ext playback path never reads, so the old behaviour
+muted a voice that drives no circuit and left the track sounding.
+
+LAST STEP sets `pattern.extLength`, not `pattern.length`. Writing the sequencer's own
+length from a page that only shows MIDI tracks changed the kit's bar length with no
+visible cause. `extLength` lives in the byte the stored format already reserved for it
+(EEPROM offset 36, previously written as 0 and skipped), biased by one on the way out so
+0 still means "written before this existed" - `extLength` 0 is itself legal, a one-step
+ext loop, so the bias is what keeps the full 0-15 range usable. `bufferedPattern` is BSS
+until something is copied into it, so `PasteBufferToPattern()` range-checks rather than
+copying blind.
+
+`extStepCount` tracks the ext layer's position and wraps on `extLength`, so a shorter ext
+length loops the MIDI tracks against the kit instead of truncating the pattern. When the
+two lengths are equal - the default, and what every pattern loads as - `extCurStep` is
+just `curStep` and behaviour is unchanged. Direction modes are deliberately not
+re-derived against `extLength`: BACKWARD/PING_PONG/RANDOM are defined against
+`pattern.length`, and recomputing them would make the lanes disagree even when the
+lengths match. TOTAL_ACC stays on `curStep` for the same reason it always did - it
+accents the whole machine at that moment, so it has to line up with the kit rather than
+with the ext loop.
+
 ### Playback
 `CountPPQN()` records the step into a queue: a track bitmask, the shared velocity and a
 sticky note-off request (`extPendingOn`, `extPendingVel`, `extPendingOff`). If a step is

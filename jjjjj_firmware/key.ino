@@ -133,7 +133,7 @@ void ExtInstUpdate()
   // this mode - Seq.ino's step handler already stands down for it. Without the same
   // guard here the presses were swallowed as track selection and shuffle could not be
   // set at all while editing ext tracks.
-  if (extInstEditMode && curSeqMode == PTRN_STEP && !shufBtn.pressed)
+  if (extInstEditMode && curSeqMode == PTRN_STEP && !shufBtn.pressed && !lastStepBtn.pressed)
   {
     // Which gesture the step buttons perform depends on the transport.
     //

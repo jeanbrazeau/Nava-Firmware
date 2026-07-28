@@ -77,6 +77,7 @@ void SeqParameter() {
       groupPosContinue = group.pos;
 
       stepCount = 0;
+      extStepCount = 0;  // the ext lane has its own phase and must restart with the kit
       tapStepCount = 0;
       group.pos = 0;  //[oort] maybe don't do this?
       trk.pos = 0;
@@ -404,7 +405,14 @@ void SeqParameter() {
     //---------still in: if (curSeqMode == PTRN_STEP || curSeqMode == PTRN_TAP) ------
 
     //-------------------Clear Button for STEP Mode------------------------------
-    if (clearBtn.pressed && curSeqMode != PTRN_TAP && isRunning) {
+    // [TR-909 STYLE] Inside ext edit mode CLEAR belongs to the selected ext track. The
+    // analog branch below would clear inst[EXT_INST], a word the ext playback path never
+    // reads - so it muted an instrument that drives no circuit and left the track intact.
+    if (extInstEditMode && clearBtn.pressed && curSeqMode == PTRN_STEP && isRunning) {
+      bitClear(pattern[ptrnBuffer].extTrack[currentExtTrack], extCurStep);
+      patternWasEdited = TRUE;
+    }
+    else if (clearBtn.pressed && curSeqMode != PTRN_TAP && isRunning) {
 
 
       if (clearBtn.justPressed) prev_muteInst = muteInst;  // [zabox] save mute state
@@ -419,7 +427,15 @@ void SeqParameter() {
     if (clearBtn.justRelease) muteInst = prev_muteInst;  // [zabox] unmute
 
 
-    if (shiftBtn && clearBtn.justPressed && !isRunning) {  //curSeqMode != PTRN_TAP &&
+    // [TR-909 STYLE] SHIFT+CLEAR clears everything at the level being edited, which
+    // inside ext edit mode is the selected track - not the whole pattern, which would
+    // take the kit with it while the user is looking at a single MIDI lane.
+    if (extInstEditMode && shiftBtn && clearBtn.justPressed && !isRunning && curSeqMode == PTRN_STEP) {
+      pattern[ptrnBuffer].extTrack[currentExtTrack] = 0;
+      patternWasEdited = TRUE;
+      needLcdUpdate = TRUE;
+    }
+    else if (shiftBtn && clearBtn.justPressed && !isRunning) {  //curSeqMode != PTRN_TAP &&
       //clear full pattern
       for (int a = 0; a < NBR_INST; a++) {
         pattern[ptrnBuffer].inst[a] = 0;
@@ -443,6 +459,7 @@ void SeqParameter() {
       pattern[ptrnBuffer].shuffle = DEFAULT_SHUF;
       pattern[ptrnBuffer].flam = DEFAULT_FLAM;  // [1.028] flam
       pattern[ptrnBuffer].length = NBR_STEP - 1;
+      pattern[ptrnBuffer].extLength = NBR_STEP - 1;  // back in lockstep with the kit
       pattern[ptrnBuffer].scale = SCALE_16;
       patternWasEdited = TRUE;
       needLcdUpdate = TRUE;
@@ -511,7 +528,16 @@ void SeqParameter() {
 
     //-------------------last step button------------------------------
     if (lastStepBtn.pressed && readButtonState) {
-      pattern[ptrnBuffer].length = FirstBitOn();
+      // [TR-909 STYLE] In ext edit mode LAST STEP sets the ext layer's own last step.
+      // Writing pattern.length here would shorten the whole sequencer from inside a
+      // page that only shows the MIDI tracks - the kit would change length with no
+      // visible cause. Setting them equal restores lockstep with the drums.
+      if (extInstEditMode && curSeqMode == PTRN_STEP) {
+        pattern[ptrnBuffer].extLength = FirstBitOn();
+        if (extStepCount > pattern[ptrnBuffer].extLength) extStepCount = 0;  // do not strand the lane past its new end
+      } else {
+        pattern[ptrnBuffer].length = FirstBitOn();
+      }
       needLcdUpdate = TRUE;
       patternWasEdited = TRUE;
     }
