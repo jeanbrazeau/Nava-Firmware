@@ -27,30 +27,19 @@ void SetLeds()
   trackLed =((curSeqMode == TRACK_WRITE)? blinkTempo:((curSeqMode == TRACK_PLAY)? 1:0));
   ptrnLed =((curSeqMode == PTRN_STEP)? blinkTempo:((curSeqMode == PTRN_PLAY)? 1:0));
   tapLed =((curSeqMode == PTRN_TAP)? blinkTempo:((tapBtn.pressed) ? 1:0));
-  if (keyboardMode){
-    backLed = HIGH;
-    fwdLed = HIGH;
-    numLed = HIGH; //[oort]
-  }
-  else{
-    backLed = backBtn.pressed;
-    fwdLed = fwdBtn.pressed;
-    numLed = LOW; //[oort]
-  }
+  backLed = backBtn.pressed;
+  fwdLed = fwdBtn.pressed;
+  numLed = LOW; //[oort]
 
   dirLed = dirBtn.pressed;
   scaleLeds = 1 << scaleBtn.counter;
   
-  // [SIZZLE] Make GUIDE LED flash when in EXT INST edit mode
-  if (extInstEditMode) {
-    guideLed = blinkTempo;
-  }
-  else if (curSeqMode == PTRN_STEP && curInst == EXT_INST) {
-    guideLed = blinkTempo;
-  }
-  else {
-    guideLed = guideBtn.counter;
-  }
+  // [TR-909 STYLE] GUIDE shows the external instrument MIDI output latch. In edit mode
+  // it blinks instead of sitting solid, so the LED carries both facts at once: blinking
+  // means the mode is open, and dark means output is muted whichever mode is current.
+  // curInst == EXT_INST needs no separate branch - only edit mode selects it.
+  if (extInstEditMode) guideLed = guideBtn.counter ? blinkTempo : LOW;
+  else guideLed = guideBtn.counter;
   
   bankLed = bankBtn.pressed;
 
@@ -127,7 +116,7 @@ void SetLeds()
   unsigned int temp = 0;// temp data of stepLeds
   
   // [TR-909 STYLE] Special handling for EXT INST edit mode
-  if (extInstEditMode && curInst == EXT_INST) {
+  if (extInstEditMode && curInst == EXT_INST && curSeqMode == PTRN_STEP) {
     // Show steps for currently selected track
     stepLeds = pattern[ptrnBuffer].extTrack[currentExtTrack];
 
@@ -254,11 +243,6 @@ void SetLeds()
         //Display Bank number
         if (bankBtn.pressed){
           stepLeds = 1 << curBank;
-        }
-        // [TR-909 STYLE] Special handling for EXT INST edit mode when stopped
-        else if (extInstEditMode) {
-          // Show steps for currently selected track
-          stepLeds = pattern[ptrnBuffer].extTrack[currentExtTrack];
         }
         //display selected pattern
         else {

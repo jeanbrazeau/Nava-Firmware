@@ -40,7 +40,6 @@ void SeqParameter() {
       stopBtn.counter = 0;
       changeDir = 1;     //restart Forward
       shufPolarity = 0;  //Init shuffle polarity
-      noteIndexCpt = 0;  //init ext instrument note index counter [oort] comment: start offset problem, this index is handled strangely TO DO
       blinkTempo = 0;    // [zabox] looks more consistent
 
       //[oort] differences to keep in mind in previous firmwares
@@ -78,6 +77,7 @@ void SeqParameter() {
       groupPosContinue = group.pos;
 
       stepCount = 0;
+      extStepCount = 0;  // the ext lane has its own phase and must restart with the kit
       tapStepCount = 0;
       group.pos = 0;  //[oort] maybe don't do this?
       trk.pos = 0;
@@ -128,7 +128,7 @@ void SeqParameter() {
       needLcdUpdate = TRUE;
       curSeqMode = TRACK_WRITE;
       trk.pos = 0;
-      keyboardMode = FALSE;
+      ExitExtInstEditMode();
       seq.configMode = FALSE;
       nextPattern = track[trkBuffer].patternNbr[trk.pos];  // Get the correct pattern
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;
@@ -147,7 +147,7 @@ void SeqParameter() {
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;  //
       curSeqMode = PTRN_TAP;
       needLcdUpdate = TRUE;
-      keyboardMode = FALSE;
+      ExitExtInstEditMode();
       seq.configMode = FALSE;
       trackNeedSaved = FALSE;
     }
@@ -164,7 +164,7 @@ void SeqParameter() {
       if (!seq.configMode) {
         // First press - enter config mode
         seq.configMode = TRUE;
-        keyboardMode = FALSE;
+        ExitExtInstEditMode();
         seq.configPage = 1; // Start at page 1
       } else {
         // Already in config mode, cycle to next page
@@ -204,7 +204,7 @@ void SeqParameter() {
     if (trkBtn.justPressed) {
       curSeqMode = TRACK_PLAY;
       needLcdUpdate = TRUE;
-      keyboardMode = FALSE;
+      ExitExtInstEditMode();
       seq.configMode = FALSE;
       nextPattern = track[trkBuffer].patternNbr[trk.pos];
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;
@@ -221,24 +221,24 @@ void SeqParameter() {
       if (curSeqMode == PTRN_PLAY) curSeqMode = PTRN_STEP;
       else curSeqMode = PTRN_PLAY;
       needLcdUpdate = TRUE;
-      keyboardMode = FALSE;
+      ExitExtInstEditMode();
       seq.configMode = FALSE;
       trackNeedSaved = FALSE;
     }
     if (tapBtn.justPressed) ShiftLeftPattern();
     if (dirBtn.justPressed) ShiftRightPattern();
-    if (guideBtn.justPressed) {
-      guideBtn.counter++;
-      switch (guideBtn.counter) {
-        case 1:
-          metronomeState = TRUE;  //[oort]
-          break;
-        case 2:
-          metronomeState = FALSE;  //[oort]
-          guideBtn.counter = 0;
-          break;
-      }
-      Metronome(metronomeState);
+    // [TR-909 STYLE] GUIDE latches external instrument MIDI output on and off. This
+    // replaces the metronome, which had no other binding and is now unreachable.
+    //
+    // Guarded against SHIFT and INST: those combinations are the edit-mode enter and
+    // exit gestures, and an unguarded latch here toggled on them as well - the same
+    // way it used to toggle the metronome whenever the mode was entered.
+    if (guideBtn.justPressed && !shiftBtn && !instBtn) {
+      guideBtn.counter = !guideBtn.counter;   // drives guideLed in Led.ino
+      // Unlatching has to silence what is already sounding and drop the queued step,
+      // or the last notes transmitted stay held on the external synth forever.
+      if (!guideBtn.counter) InitMidiNoteOff();
+      needLcdUpdate = TRUE;
     }
 
     if (muteBtn.justPressed && curSeqMode != TRACK_WRITE) {
@@ -286,7 +286,7 @@ void SeqParameter() {
     static boolean curInstChanged;  //flag that curInstchanged to not update LCD more than one time
 
     // Force instrument to EXT_INST if we're in EXT INST edit mode but somehow lost the selection
-    if (extInstEditMode && curInst != EXT_INST) {
+    if (extInstEditMode && curSeqMode == PTRN_STEP && curInst != EXT_INST) {
       curInst = EXT_INST;
       needLcdUpdate = TRUE;
     }
@@ -297,7 +297,6 @@ void SeqParameter() {
 
     if (instBtn && readButtonState && !extInstEditMode && !extInstButtonHandled) {  // [zabox] [1.027] added flam, [SIZZLE] Normal instrument selection (not for EXT INST edit mode)
       curInstChanged = TRUE;
-      keyboardMode = FALSE;
       switch (FirstBitOn()) {
         case BD_BTN:
         case BD_LOW_BTN:
@@ -399,15 +398,21 @@ void SeqParameter() {
       curFlam = 0;
       needLcdUpdate = TRUE;
     }
-    if (shiftBtn && guideBtn.justPressed && !extInstEditMode) {
-      curInst = EXT_INST;
-      curFlam = 0;
-      needLcdUpdate = TRUE;
-    }
+    // SHIFT+GUIDE is owned by ButtonGet(), which sets curInst = EXT_INST on entry and
+    // restores the previous instrument on exit. A second handler here could only ever
+    // fire on the exit pass - ButtonGet() runs first and has already cleared the flag
+    // that guards it, so it re-selected EXT_INST immediately after the restore.
     //---------still in: if (curSeqMode == PTRN_STEP || curSeqMode == PTRN_TAP) ------
 
     //-------------------Clear Button for STEP Mode------------------------------
-    if (clearBtn.pressed && !keyboardMode && curSeqMode != PTRN_TAP && isRunning) {
+    // [TR-909 STYLE] Inside ext edit mode CLEAR belongs to the selected ext track. The
+    // analog branch below would clear inst[EXT_INST], a word the ext playback path never
+    // reads - so it muted an instrument that drives no circuit and left the track intact.
+    if (extInstEditMode && clearBtn.pressed && curSeqMode == PTRN_STEP && isRunning) {
+      bitClear(pattern[ptrnBuffer].extTrack[currentExtTrack], extCurStep);
+      patternWasEdited = TRUE;
+    }
+    else if (clearBtn.pressed && curSeqMode != PTRN_TAP && isRunning) {
 
 
       if (clearBtn.justPressed) prev_muteInst = muteInst;  // [zabox] save mute state
@@ -422,7 +427,15 @@ void SeqParameter() {
     if (clearBtn.justRelease) muteInst = prev_muteInst;  // [zabox] unmute
 
 
-    if (shiftBtn && clearBtn.justPressed && !keyboardMode && !isRunning) {  //curSeqMode != PTRN_TAP &&
+    // [TR-909 STYLE] SHIFT+CLEAR clears everything at the level being edited, which
+    // inside ext edit mode is the selected track - not the whole pattern, which would
+    // take the kit with it while the user is looking at a single MIDI lane.
+    if (extInstEditMode && shiftBtn && clearBtn.justPressed && !isRunning && curSeqMode == PTRN_STEP) {
+      pattern[ptrnBuffer].extTrack[currentExtTrack] = 0;
+      patternWasEdited = TRUE;
+      needLcdUpdate = TRUE;
+    }
+    else if (shiftBtn && clearBtn.justPressed && !isRunning) {  //curSeqMode != PTRN_TAP &&
       //clear full pattern
       for (int a = 0; a < NBR_INST; a++) {
         pattern[ptrnBuffer].inst[a] = 0;
@@ -446,8 +459,8 @@ void SeqParameter() {
       pattern[ptrnBuffer].shuffle = DEFAULT_SHUF;
       pattern[ptrnBuffer].flam = DEFAULT_FLAM;  // [1.028] flam
       pattern[ptrnBuffer].length = NBR_STEP - 1;
+      pattern[ptrnBuffer].extLength = NBR_STEP - 1;  // back in lockstep with the kit
       pattern[ptrnBuffer].scale = SCALE_16;
-      keybOct = DEFAULT_OCT;
       patternWasEdited = TRUE;
       needLcdUpdate = TRUE;
     }
@@ -492,7 +505,7 @@ void SeqParameter() {
     }
 
     //-------------------scale button------------------------------
-    if (scaleBtn.justPressed && !keyboardMode) {
+    if (scaleBtn.justPressed) {
       needLcdUpdate = TRUE;
       patternWasEdited = TRUE;
       scaleBtn.counter++;
@@ -515,7 +528,16 @@ void SeqParameter() {
 
     //-------------------last step button------------------------------
     if (lastStepBtn.pressed && readButtonState) {
-      pattern[ptrnBuffer].length = FirstBitOn();
+      // [TR-909 STYLE] In ext edit mode LAST STEP sets the ext layer's own last step.
+      // Writing pattern.length here would shorten the whole sequencer from inside a
+      // page that only shows the MIDI tracks - the kit would change length with no
+      // visible cause. Setting them equal restores lockstep with the drums.
+      if (extInstEditMode && curSeqMode == PTRN_STEP) {
+        pattern[ptrnBuffer].extLength = FirstBitOn();
+        if (extStepCount > pattern[ptrnBuffer].extLength) extStepCount = 0;  // do not strand the lane past its new end
+      } else {
+        pattern[ptrnBuffer].length = FirstBitOn();
+      }
       needLcdUpdate = TRUE;
       patternWasEdited = TRUE;
     }
@@ -525,7 +547,7 @@ void SeqParameter() {
     /////////////////////////////STEP EDIT + PATTERN SELECTION FOR STEP & TAP ///////////////////////////////////////////////////////////////////
 
     if (stepsBtn.justRelease) doublePush = FALSE;
-    if (!lastStepBtn.pressed && !instBtn && !keyboardMode && !shufBtn.pressed) {  // [zabox] test
+    if (!lastStepBtn.pressed && !instBtn && !shufBtn.pressed && !extInstEditMode) {  // [zabox] test, [TR-909 STYLE] ext track editing owns the step buttons
       if (curSeqMode == PTRN_STEP && isRunning)                                   //step programming
       {
         pattern[ptrnBuffer].inst[curInst] = InstValueGet(pattern[ptrnBuffer].inst[curInst]);  //cf InstValueGet()
@@ -1144,9 +1166,6 @@ void SeqParameter() {
     //prepare twin pattern buffer before swapping
     playingPattern = curPattern;  //used by LCD
     //curPattern = nextPattern; //[oort] moved this into clock.ino
-    keybOct = DEFAULT_OCT;
-    //noteIndex = 0;        //[oort] Should we not reset noteIndexCpt instead?
-    noteIndexCpt = 1;       //[oort] possibility to fetch remembered position here? TO DO?
     InitMidiNoteOff();                   //[oort] can all these be moved to read from EE-prom? Probably not needed in RAM-buffers
     InitPattern(&pattern[!ptrnBuffer]);  //SHOULD BE REMOVED WHEN EEPROM WILL BE INITIALIZED ([oort] don't understand this old comment)
     SetHHPattern(&pattern[!ptrnBuffer]);

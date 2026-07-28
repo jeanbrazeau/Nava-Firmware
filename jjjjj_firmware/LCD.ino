@@ -6,10 +6,75 @@
 #include "nava_strings.h"
 
 /////////////////////Function//////////////////////
+// Print a MIDI note number as a name, returning the characters written so the caller
+// can pad a fixed-width field.
+//
+// MIDI 60 is C4 here - the convention nearly every DAW and modern synth displays - so
+// the ext track defaults of 48..63 read C3..D#4. The octave therefore runs -1..9, and
+// "C#-1" is the widest result at four characters, which is exactly the width of the
+// value field. Sharps only: choosing the flat spelling of the same pitch would need a
+// key signature the sequencer does not have.
+byte LcdPrintNoteName(byte note)
+{
+  byte idx = (note % 12) * 2;
+  char letter = pgm_read_byte(&noteNames[idx]);
+  char accidental = pgm_read_byte(&noteNames[idx + 1]);
+
+  lcd.print(letter);
+  byte width = 1;
+  if (accidental != ' ') {
+    lcd.print(accidental);
+    width++;
+  }
+
+  int octave = (int)(note / 12) - 1;
+  lcd.print(octave);
+  width += (octave < 0) ? 2 : 1;   // "-1" is two characters, 0..9 one
+  return width;
+}
+
 //Initialise IO PORT and libraries
 void LcdUpdate()
 {
   static byte previousMode;
+
+  // [TR-909 STYLE] Non-blocking EXT INST splash, painted once on entry. The falling
+  // edge has to request a redraw or the display stays stuck on the message.
+  // The deadline is tested by signed elapsed time and disarmed once it passes: an
+  // absolute millis() < deadline test reads a stale deadline as still in the future
+  // across the 49.7 day wrap and would freeze the display for up to 800 seconds.
+  // Keyed on the deadline rather than a painted flag: toggling the mode twice inside
+  // the splash window re-arms with a new deadline, and a flag would suppress the
+  // repaint and leave the panel showing the previous toggle's text.
+  static unsigned long paintedDeadline = 0;
+  if (extInstSplashArmed) {
+    if ((long)(millis() - extInstSplashUntil) < 0) {
+      if (paintedDeadline != extInstSplashUntil) {
+        paintedDeadline = extInstSplashUntil;
+        lcd.clear();
+        lcd.setCursor(0,0);
+        if (extInstEditMode) {
+          lcd.print("EXT TRCK EDIT ON");
+          lcd.setCursor(0,1);
+          // MIDI note number rather than a note name: the pitch depends on the
+          // reader's octave convention, the number does not
+          lcd.print("TRK:");
+          lcd.print(currentExtTrack + 1);
+          lcd.print(" NOTE:");
+          LcdPrintNoteName(extTrackNote[currentExtTrack]);
+        }
+        else {
+          lcd.print("EXT TRCK EDIT");
+          lcd.setCursor(0,1);
+          lcd.print("MODE OFF");
+        }
+      }
+      return;
+    }
+    extInstSplashArmed = FALSE;
+    needLcdUpdate = TRUE;
+  }
+
   //display tempo
   if (tempoBtn.pressed) {                                                         // [1.028] 
     if(curSeqMode != PTRN_PLAY && !shiftBtn && !seq.configMode) {                 // + !seq.configMode
@@ -201,35 +266,19 @@ ptrn_step:
           lcd.setCursor(8 + pattern[ptrnBuffer].flam, 1);
           lcd.print((char)219);        
         }
-        else if (keyboardMode){
-          lcd.setCursor(0,0);
-          lcd.print("stp not act oct "); // [SIZZLE FW] TR-909 style display
-          lcd.setCursor(cursorPos[curIndex],0);
-          lcd.print(letterUpExtInst[curIndex]);
-          lcd.setCursor(0,1);
-          LcdClearLine();
-          lcd.setCursor(1,1);
-          lcd.print(noteIndex + 1);                                               // [zabox] looks better
-          lcd.setCursor(4,1);
-          char note[2];
-          strcpy_P(note, (char*)pgm_read_word(&(nameNote[keyboardNotes[noteIndex] % 12])));
-          lcd.print(note);
-          lcd.print(keyboardNotes[noteIndex] / 12);//note octave [SIZZLE FW]
-          // Display if this step is active or not [SIZZLE FW]
-          lcd.setCursor(9,1);
-          if (bitRead(pattern[ptrnBuffer].inst[EXT_INST], noteIndex)) {
-            lcd.print("ON "); // Step is active [SIZZLE FW]
-          } else {
-            lcd.print("OFF"); // Step is inactive [SIZZLE FW]
-          }
-          lcd.setCursor(13,1);
-          char octave[2];
-          strcpy_P(octave, (char*)pgm_read_word(&(nameOct[keybOct])));
-          lcd.print(octave);
-        }
         else{
           lcd.setCursor(0,0);
-          lcd.print("ptr len scl ins ");
+          // In ext edit mode the last column carries the note value, so the track
+          // number takes over its header - the label names what the encoder edits.
+          if (curInst == EXT_INST && extInstEditMode) {
+            lcd.print("ptr len scl ");
+            lcd.print("T");
+            lcd.print(currentExtTrack + 1);  // 1-16
+            if (currentExtTrack + 1 < 10) lcd.print(" ");
+          }
+          else {
+            lcd.print("ptr len scl ins ");
+          }
           lcd.setCursor(0,1);
           LcdClearLine(); 
           lcd.setCursor(0,1);
@@ -240,11 +289,11 @@ ptrn_step:
           lcd.setCursor(8,1);
           LcdPrintScale();
           lcd.setCursor(12,1);
-          // [TR-909 STYLE] Display track number in EXT INST edit mode
+          // [TR-909 STYLE] Value field shows the selected track's note as a name,
+          // under the MIDI 60 = C4 convention documented on LcdPrintNoteName()
           if (curInst == EXT_INST && extInstEditMode) {
-            lcd.print("T");
-            if (currentExtTrack + 1 < 10) lcd.print(" ");  // Pad single digit
-            lcd.print(currentExtTrack + 1);  // Display as 1-16
+            byte w = LcdPrintNoteName(extTrackNote[currentExtTrack]);
+            while (w++ < 4) lcd.print(" ");   // clear the rest of the field
           } else {
             char instName[3];
             strcpy_P(instName, (char*)pgm_read_word(&(selectInstString[curInst])));

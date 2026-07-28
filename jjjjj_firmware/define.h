@@ -134,15 +134,13 @@ byte lcdVal = 0; //[oort] for traces
 #define END_OF_TRACK 128
 
 //Ext inst
-#define MAX_OCT 8
-#define DEFAULT_OCT 3  //corresponding to +0
-#define MAX_EXT_INST_NOTE 99
-#define EXT_INST_EDIT_MODE 1  // [SIZZLE] Flag to indicate we're in EXT INST edit mode
-
-// [TR-909 STYLE] 16 chromatic notes from C2 (MIDI 36) to D#3 (MIDI 51)
+// [TR-909 STYLE] Power-on default note per track, used when the setup EEPROM holds
+// no usable map. These are literal wire notes: the ext send path does not apply the
+// +12 that MidiSendNoteOn/Off add for drum notes, so the defaults still transmit
+// MIDI 48 to 63 exactly as the fixed table did before the notes became editable.
 const byte EXT_TRACK_NOTES[16] PROGMEM = {
-  36, 37, 38, 39, 40, 41, 42, 43,  // C2-G#2
-  44, 45, 46, 47, 48, 49, 50, 51   // A2-D#3
+  48, 49, 50, 51, 52, 53, 54, 55,
+  56, 57, 58, 59, 60, 61, 62, 63
 };
 
 
@@ -360,9 +358,15 @@ volatile byte ppqn = 0;
 volatile byte curStep = 0;
 //volatile int stepCount = -1;  //[oort] strange initialisation
 volatile byte stepCount = 0;  //[oort] volatile preferably byte
+// Position of the external-instrument layer, wrapping at pattern.extLength rather than
+// pattern.length. Separate from stepCount so a shorter ext length loops the MIDI tracks
+// against the kit instead of truncating the whole pattern.
+volatile byte extStepCount = 0;
+// The step the ext layer is currently sounding, published by CountPPQN() so the editor
+// can clear and display against the lane the user is actually looking at.
+volatile byte extCurStep = 0;
 volatile byte tapStepCount;  //this counter is used to get a better tap response
 volatile boolean stepChanged = FALSE;
-volatile byte noteIndexCpt = 0; //[oort] to use accross pattern groups we need to save count of these in an array between patterns TO DO?
 int stepCountContinue = 0;      //[oort] for stop/continue modes
 byte tapStepCountContinue = 0;  //[oort] for stop/continue modes
 unsigned int trackPosContinue = 0;
@@ -397,7 +401,7 @@ int shuffle[MAX_SHUF_TYPE][2] = {
   { 0 }, { 0, -1 }, { 0, -2 }, { 0, -3 }, { 0, -4 }, { 0, -5 }, { 0, -6 }
 };
 volatile boolean shufPolarity;
-int flam[MAX_FLAM_TYPE] =                                // [zabox] [1.028] flam
+unsigned int flam[MAX_FLAM_TYPE] =                       // [zabox] [1.028] flam
   { 4999, 5999, 6999, 7999, 8999, 9999, 10999, 11999 };  // flam timings from EchoBoy (in ms: 20, 24, 28, 32, 36, 40, 44, 48)
 
 //Pattern-------------------------------------------
@@ -412,6 +416,13 @@ struct Pattern {
   unsigned int step[NBR_STEP];
   byte velocity[NBR_INST][NBR_STEP];
   unsigned int extTrack[16];  // [TR-909 STYLE] 16 tracks × 16-bit word = 32 bytes (saves 97 bytes per pattern)
+  // Last step of the external-instrument layer, independent of `length`. LAST STEP
+  // inside EXT INST edit mode sets this rather than the sequencer's own length, so the
+  // ext tracks can loop shorter than the kit. Equal to `length` by default, where the
+  // ext lane advances in lockstep with the drums and behaviour is unchanged. It lives
+  // in the byte the stored format already reserved for it (EEPROM offset 36), so no
+  // pattern written by an older build needs migrating.
+  byte extLength;
   byte groupPos;
   byte groupLength;
   byte totalAcc;
@@ -495,15 +506,32 @@ volatile boolean incrementRequired = FALSE;
 unsigned long timeSinceSaved;
 
 //Ext inst-------------------------------------------
-boolean keyboardMode;
-byte keybOct = DEFAULT_OCT;
-byte noteIndex = 0;  //external inst note index
-byte keyboardNotes[16] = {36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36};  // [KEYBOARD MODE] Note storage for old keyboard mode (C2 default)
 boolean extInstEditMode = FALSE;              // [TR-909 STYLE] Flag to indicate when we're in EXT INST edit mode
 byte currentExtTrack = 0;                     // [TR-909 STYLE] Selected track (0-15)
-byte currentExtNote = 36;                     // [TR-909 STYLE] Display value (C2 = MIDI 36)
+// Editable wire note per track, set by the encoder while in edit mode. Global rather
+// than per pattern: 16 bytes inside every Pattern would cost ~320 bytes of RAM across
+// the bank cache and buffers, and would change the stored pattern format.
+byte extTrackNote[16];                        // [TR-909 STYLE] MIDI note each track transmits, seeded from EXT_TRACK_NOTES
 boolean extInstButtonHandled = FALSE;         // [TR-909 STYLE] Flag to indicate when an EXT INST button press has been handled
-boolean extTrackNoteOn[16] = {FALSE};         // [TR-909 STYLE] Track note-on states for polyphonic note-off
+boolean extTrackNoteOn[16] = {FALSE};         // [TR-909 STYLE] Track note-on states for polyphonic note-off, owned by the main loop only
+// The note actually transmitted, kept separately from extTrackNote: retuning a track
+// while it sounds must still note-off the pitch that was sent, or the old note strands.
+byte extSoundingNote[16] = {0};               // [TR-909 STYLE] Note held open per track by the sequencer
+byte extInstPrevInst = BD;                    // [TR-909 STYLE] Instrument selected before entering edit mode, restored on exit
+boolean extNotesNeedSaved = FALSE;            // [TR-909 STYLE] extTrackNote changed; written to EEPROM once, on mode exit
+unsigned int volatile extPendingOn = 0;       // [TR-909 STYLE] Tracks the clock wants sounding, drained by ServiceExtMidiNotes
+byte volatile extPendingVel = 0;              // [TR-909 STYLE] Velocity that goes with extPendingOn
+boolean volatile extPendingOff = FALSE;       // [TR-909 STYLE] Sticky request to silence the previous step before the queued one starts
+boolean volatile extReleaseArmed = FALSE;     // [TR-909 STYLE] A step is sounding and its note-offs have not been queued yet
+// How many PPQN ticks before the next step the sounding notes are released. Two ticks
+// is 10.4ms at 120 BPM, which covers a full 16-track release burst (33 bytes at 320us)
+// with the wire idle again before the step's note-ons are due.
+#define EXT_RELEASE_LEAD 2
+unsigned long extInstSplashUntil = 0;         // [TR-909 STYLE] Deadline of the non-blocking EXT INST splash (millis)
+boolean extInstSplashArmed = FALSE;           // [TR-909 STYLE] TRUE while extInstSplashUntil is a live deadline
+byte previewNote = 0;                         // [TR-909 STYLE] Note currently held open by the preview
+boolean previewActive = FALSE;                // [TR-909 STYLE] TRUE while a preview note is sounding
+unsigned long previewOffAt = 0;               // [TR-909 STYLE] Preview note-off deadline, 0 = hold until released
 
 //SPI------------------------------------------------ //[oort] lowered in Neuro, why? 4000000 in 1.028
 SPISettings SPIset(2000000, MSBFIRST, SPI_MODE0);
@@ -534,9 +562,6 @@ byte cursorPos[MAX_CUR_POS] = {
 };
 const char *letterUpTrackWrite[MAX_CUR_POS] = {
   "P", "P", "L", "N"
-};
-const char *letterUpExtInst[MAX_CUR_POS] = {
-  "I", "N", "L", "O"
 };
 const char *letterUpConfPage1[MAX_CUR_POS] = {
   "S", "B", "X", "M"

@@ -1,461 +1,209 @@
 # TR-909 External Instrument Feature Verification Report
 
-**Date:** 2025-12-26
+**Date:** 2026-07-26 (supersedes the 2025-12-26 revision)
 **Firmware:** Nava Oortone (jjjjj_firmware)
 **Feature:** TR-909 Style Multi-Track External Instrument Sequencer
 
 ## Executive Summary
 
-All code for the TR-909 style external instrument functionality has been implemented and verified through static code analysis. The feature replaces the previous single-note external instrument sequencer with a 16-track polyphonic system modeled after the TR-909's architecture.
+The 16-track external instrument sequencer is implemented and integrated. The previous
+revision of this document declared the feature verified on the strength of static code
+analysis alone. That claim did not hold: four subsequent commits found and fixed nine real
+defects in code this document had marked as passing, several of them user-visible on the
+first press of a button, and one of them introduced by the fix for another. The
+verification matrix below therefore separates what has been checked mechanically from what
+has only been read.
 
-**Status:** ✅ All implementation tasks COMPLETE
+**Status:** implemented; regression-covered for MIDI note behaviour; not yet validated on
+hardware.
+
+### What static analysis missed
+
+The bugs listed here were all present in code the previous revision marked ✅ VERIFIED.
+They are recorded so the failure mode is not repeated: reading a code path confirms it
+exists, not that it is correct, reachable, or exclusive of the paths around it.
+
+| Defect | Where | Effect |
+|---|---|---|
+| Input double-handling | Seq.ino step handler vs key.ino | One physical press was consumed twice — as a pattern selection or a legacy `inst[EXT_INST]` edit and again as an `extTrack` toggle. Programming steps while stopped jumped patterns and wrote the toggle into the pattern that had just been swapped out. |
+| Mode-state leakage | Seq.ino mode handlers | `extInstEditMode` was never cleared on a mode change, and `curInst` was left stranded on EXT_INST, a voice that drives no drum circuit. The forced selection and the step-LED override also applied in TRACK_PLAY, PTRN_PLAY, PTRN_TAP and MUTE. |
+| Blocking delays | Button.ino, key.ino | Mode entry and exit each ran `delay(1000)` inside `ButtonGet()`, and each step audition ran `delay(50)`. `MIDI.read()` is not called during those windows, so under SLAVE and EXPANDER sync incoming clock was dropped and the sequencer stalled. |
+| Hanging preview notes | key.ino | The preview note-off was gated on the INST button, so releasing the step button first emitted nothing. Only one note was tracked, so previewing a second track inside one INST hold stranded the first note on the synth. |
+| Velocity truncation | Clock.ino / SeqFunc.ino | `InitPattern` seeded `velocity[EXT_INST]` with HIGH_VEL (80), outside the EXT_INST table range of 25..50. `map()` returned 168, the MIDI library masked to 7 bits, and every unaccented note left the machine at 40. |
+| Inverted accent | Clock.ino | An accented step was assigned MIDI_ACCENT_VELOCITY (16) — quieter than every unaccented note. |
+| ISR-blocking MIDI | Clock.ino | The step handler transmitted up to 96 MIDI bytes from the timer ISR against a 64-byte TX buffer, busy-waiting on UDRE with interrupts disabled. A dense step blocked `CountPPQN()` for roughly 30ms against a PPQN tick of about 5ms, collapsing the MIDI clock and DIN sync generated in the same function. |
+| Step programming dead | key.ino vs Button.ino | Programming tested `stepBtn[].justPressed`, whose only live setter is `InstValueGet`. Fixing the input double-handling stopped `SeqParameter` calling it in edit mode, and `ButtonGet` clears the flags every scan, so the flag was always 0 and no step could be programmed at all. The fix that caused this was still correct; it removed the feature's only edge source without replacing it. |
+| Preview hung via MUTE | key.ino vs Seq.ino | A sustained track-select preview is released by the step-button release inside the edit block. MUTE assigns `curSeqMode` directly instead of going through `ExitExtInstEditMode()`, so the release was never observed and the note sustained with no way to clear it — `InitMidiNoteOff()` only walks `extTrackNoteOn[]` and `SendAllNoteOff()` targets `seq.TXchannel`. |
 
 ---
 
 ## Implementation Overview
 
-### Architecture Changes
+### Architecture
 
-**Data Structure (define.h:414)**
-- Replaced `byte extNote[128]` (128 bytes) with `unsigned int extTrack[16]` (32 bytes)
-- Saves 96 bytes per pattern (~12KB across all patterns)
-- Each track has a 16-bit word representing 16 steps
+**Data structure (define.h:409)**
+`unsigned int extTrack[16]` replaced `byte extNote[128]` plus `byte extLength`. Each track
+is one 16-bit word, one bit per step. Net saving is 97 bytes per pattern; `sizeof(Pattern)`
+is 360 bytes, confirmed against the linked ELF.
 
-**MIDI Note Mapping (define.h:142-146)**
+**MIDI note mapping (define.h:137-142)**
 ```cpp
+// One chromatic note per track. MidiSendNoteOn/Off add 12 before
+// transmitting, so these values map to MIDI notes 48 to 63 on the wire.
 const byte EXT_TRACK_NOTES[16] PROGMEM = {
-  36, 37, 38, 39, 40, 41, 42, 43,  // C2-G#2 (MIDI 36-43)
-  44, 45, 46, 47, 48, 49, 50, 51   // A2-D#3 (MIDI 44-51)
+  36, 37, 38, 39, 40, 41, 42, 43,  // transmitted as MIDI 48-55
+  44, 45, 46, 47, 48, 49, 50, 51   // transmitted as MIDI 56-63
 };
 ```
+The table values and the transmitted values differ by the +12 in `MidiSendNoteOn`/`MidiSendNoteOff`
+(Midi.ino:84-96). Labels in code and on the LCD cite the transmitted MIDI number rather
+than a note name, because the name for a given number depends on the octave convention.
 
-**Global Variables (define.h:500-504)**
-- `boolean extInstEditMode` - Mode flag
-- `byte currentExtTrack` - Selected track (0-15)
-- `byte currentExtNote` - Display value for current track note
-- `boolean extInstButtonHandled` - Prevents double-triggering
-- `boolean extTrackNoteOn[16]` - Note-on state tracking for polyphonic note-off
+**Global variables (define.h:493-503)**
+- `boolean extInstEditMode` — mode flag
+- `byte currentExtTrack` — selected track (0-15)
+- `byte currentExtNote` — table value for the selected track
+- `boolean extInstButtonHandled` — prevents double-triggering within an INST hold
+- `boolean extTrackNoteOn[16]` — what is currently sounding; main loop only, never touched from an ISR
+- `unsigned int volatile extPendingOn`, `byte volatile extPendingVel`, `boolean volatile extPendingOff` — the clock-to-loop note queue
+- `unsigned long extInstSplashUntil` — non-blocking splash deadline
+- `byte previewNote`, `boolean previewActive`, `unsigned long previewOffAt` — preview note ownership
+
+**Threading model**
+`CountPPQN()` records a step into the queue and transmits nothing (Clock.ino:167-169).
+`ServiceExtMidiNotes()` (Midi.ino:51) drains it from `loop()` right after `MIDI.read()` (jjjjj_firmware.ino:167),
+so under SLAVE sync — where the MIDI parser drives `CountPPQN()` — a queued step goes out with
+no added delay. The queue is latched and cleared inside one `ATOMIC_BLOCK`; transmission
+happens outside it.
 
 ---
 
 ## Feature Verification Matrix
 
+Status legend: **TESTED** — covered by an automated regression test; **READ** — confirmed by
+reading the code, not exercised; **HW** — requires hardware.
+
 | # | Feature | File:Line | Status | Notes |
 |---|---------|-----------|--------|-------|
-| 1 | **Mode Entry/Exit** | Button.ino:59-90 | ✅ VERIFIED | SHIFT + GUIDE toggles mode, initializes variables |
-| 2 | **Track Selection (1-16)** | key.ino:154-173 | ✅ VERIFIED | INST + step buttons select track with MIDI preview |
-| 3 | **Step Programming** | key.ino:186-211 | ✅ VERIFIED | Step buttons toggle bits in extTrack[currentExtTrack] |
-| 4 | **Polyphonic Triggering** | Clock.ino:134-164 | ✅ VERIFIED | Loops through all 16 tracks, sends concurrent notes |
-| 5 | **LED Feedback** | Led.ino:130-142, 259-261 | ✅ VERIFIED | Shows current track steps, flashes on INST, blinks current step |
-| 6 | **LCD Display** | LCD.ino:244-247 | ✅ VERIFIED | Shows "T1"-"T16" instead of instrument name |
-| 7 | **EEPROM Save** | EEprom.ino:87-98 | ✅ VERIFIED | Saves all 16 extTrack words (32 bytes) |
-| 8 | **EEPROM Load** | EEprom.ino:156-163 | ✅ VERIFIED | Loads all 16 extTrack words |
-| 9 | **Pattern Copy** | SeqFunc.ino:220-223 | ✅ VERIFIED | Copies all 16 extTrack words to buffer |
-| 10 | **Pattern Paste** | SeqFunc.ino:243-246 | ✅ VERIFIED | Pastes all 16 extTrack words from buffer |
-| 11 | **Pattern Clear** | Seq.ino:442-445 | ✅ VERIFIED | Clears all 16 extTrack words on SHIFT+CLEAR |
-| 12 | **No Stuck Notes** | Midi.ino:16-32 | ✅ VERIFIED | InitMidiNoteOff() loops through all 16 tracks |
-| 13 | **Keyboard Mode Block** | key.ino:31-52 | ✅ VERIFIED | Prevents keyboard mode when extInstEditMode active |
+| 1 | Mode entry/exit | Button.ino:59-77, key.ino:98-104 | READ | SHIFT+GUIDE toggles, INST+GUIDE exits; both route through `ExitExtInstEditMode()` |
+| 2 | Mode-state teardown | key.ino:9-19, Seq.ino:130,149,166,206,223 | READ | TRK, PTRN, TAP and config entry clear the flag and restore `curInst = BD`. MUTE does neither by design — see below |
+| 3 | Track selection (1-16) | key.ino:114-132 | READ | INST + step selects track, preview sustains until step release. Edge-detected on `prevExtStepState`, so re-tapping the same track with INST still held selects it again |
+| 4 | Step programming | key.ino:140-158 | TESTED | `ext_inst_step_programming_via_panel` drives the panel and asserts the resulting note. Toggles bits in `extTrack[currentExtTrack]`; adding a step auditions for 50ms unless the running pattern already uses the track |
+| 5 | Preview note ownership | key.ino:21-73, 95-96, 136 | READ | One note at a time. Four release paths: step release (136), the timeout in `ExtPreviewCheck()` (69-73), the context guard for modes that leave PTRN_STEP without clearing the flag (95-96), and `ExitExtInstEditMode()` (16) |
+| 6 | Polyphonic note-on | Clock.ino:134-169, Midi.ino:51-81 | TESTED | `ext_inst_polyphonic_note_on` |
+| 7 | Note-off at next step | Midi.ino:16-32 | TESTED | `ext_inst_note_off_at_next_step` |
+| 8 | Accent velocity | Clock.ino:159-163 | TESTED | `ext_inst_accent_velocity` asserts accent is louder, not quieter |
+| 9 | Channel separation | Clock.ino:150-165 | TESTED | `ext_inst_no_drum_notes_in_midi` |
+| 10 | Queue discard on stop/pattern change | Midi.ino:35-43 | READ | `InitMidiNoteOff()` clears the queue before silencing what sounds |
+| 11 | Step buttons not shared with pattern select | Seq.ino:525 | READ | Handler stands down while ext edit mode owns the step buttons |
+| 12 | LED feedback | Led.ino:38-46, 123-135 | READ | GUIDE LED blinks in mode; step LEDs show the selected track, scoped to PTRN_STEP |
+| 13 | LCD track display | LCD.ino:247-250 | READ | Shows "T 1".."T16" in place of the instrument name |
+| 14 | Non-blocking splash | Button.ino:71-77, LCD.ino:14-46 | READ | 800ms deadline, painted once per deadline so a re-arm inside the window repaints, one forced redraw on expiry |
+| 15 | EEPROM save | EEprom.ino:87-98 | READ | 16 extTrack words (32 bytes) plus page padding |
+| 16 | EEPROM load | EEprom.ino:156-163, 220-227 | READ | Matching read for pattern and pattern-bank paths |
+| 17 | Pattern copy | SeqFunc.ino:220-223 | READ | |
+| 18 | Pattern paste | SeqFunc.ino:243-246 | READ | |
+| 19 | Pattern clear | Seq.ino:440-443 | READ | SHIFT+CLEAR zeroes all 16 tracks |
+
+Row 13 of the previous revision verified a "Keyboard Mode Block" at key.ino:31-52. That code
+no longer exists: the single-note keyboard mode it guarded was removed, and with it the
+`keyboardMode` flag, `keybOct`, `noteIndex`, `noteIndexCpt`, and the `nameOct`/`nameNote`
+string tables. The entry point in key.ino is now `ExtInstUpdate()`. The file keeps its name
+because .ino files are concatenated in name order and renaming it would reorder definitions.
 
 ---
 
-## Detailed Feature Analysis
+## Regression Coverage
 
-### 1. Mode Entry/Exit (Button.ino:59-90)
+`sim/` holds a simavr-based harness that boots the real firmware ELF and drives it through
+the emulated panel and MIDI ports. `cd sim && make test` runs 18 tests across 5 binaries.
+Five cover this feature directly, in `sim/tests/test_ext_inst.c`:
 
-**Entry:** SHIFT + GUIDE
-- Sets `extInstEditMode = TRUE`
-- Forces `curInst = EXT_INST`
-- Initializes `currentExtTrack = 0` (Track 1)
-- Initializes `currentExtNote = 36` (C2)
-- Displays confirmation: "EXT TRCK EDIT ON / TRK:1 NOTE:C2"
+| Test | Asserts |
+|---|---|
+| `ext_inst_step_programming_via_panel` | SHIFT+GUIDE enters edit mode, a bare step press programs the step, and the sequencer sounds it |
+| `ext_inst_polyphonic_note_on` | Multiple tracks programmed on one step all emit note-on |
+| `ext_inst_note_off_at_next_step` | The previous step's notes are silenced before the next step's note-ons |
+| `ext_inst_accent_velocity` | An accented step is louder than an unaccented one |
+| `ext_inst_no_drum_notes_in_midi` | Drum voices do not leak onto the external channel |
 
-**Exit:** SHIFT + GUIDE (toggle)
-- Sets `extInstEditMode = FALSE`
-- Displays confirmation: "EXT TRCK EDIT / MODE OFF"
-- Marks pattern as edited
+The accent test previously pinned the buggy value as expected behaviour; it now asserts the
+corrected one. The panel test is the first to exercise the edit-mode UI: it was written
+against the broken firmware, confirmed failing, and only then made to pass. The four
+MIDI-level tests could not have caught the dead-programming defect, because they seed
+`extTrack[]` through the EEPROM fixture and never press a step button.
 
-**Verification:** ✅ Code paths confirmed in Button.ino
-
----
-
-### 2. Track Selection (key.ino:154-173)
-
-**Operation:** INST + Step Button (1-16)
-- Pressing step button 1-16 while holding INST selects corresponding track
-- Updates `currentExtTrack` (0-15)
-- Reads note from `EXT_TRACK_NOTES[trackNumber]`
-- Sends MIDI note-on as preview
-- Sends MIDI note-off on INST release
-
-**Visual Feedback:**
-- LCD shows "T1" through "T16"
-- LEDs flash all steps when INST held (Led.ino:139-141)
-
-**Verification:** ✅ Full track selection logic implemented
-
----
-
-### 3. Step Programming (key.ino:186-211)
-
-**Operation:** Step Button (without INST)
-- Toggles bit in `pattern[ptrnBuffer].extTrack[currentExtTrack]`
-- Sends brief MIDI note preview (50ms)
-- Marks pattern as edited
-- Updates LCD and LED display
-
-**Note Preview:**
-- Uses current track note from `EXT_TRACK_NOTES[currentExtTrack]`
-- Respects MIDI channel (`seq.EXTchannel` or `seq.TXchannel`)
-
-**Verification:** ✅ Step toggle and preview logic confirmed
-
----
-
-### 4. Polyphonic Triggering (Clock.ino:134-164)
-
-**Clock ISR Integration:**
-```cpp
-// Turn off previous notes
-InitMidiNoteOff();
-
-// Loop through all 16 tracks
-for (byte track = 0; track < 16; track++) {
-  if (bitRead(pattern[ptrnBuffer].extTrack[track], curStep)) {
-    byte noteToSend = pgm_read_byte(&EXT_TRACK_NOTES[track]);
-    MidiSendNoteOn(seq.EXTchannel, noteToSend, velocity);
-    extTrackNoteOn[track] = TRUE;
-  }
-}
-```
-
-**Features:**
-- Polyphonic triggering (up to 16 simultaneous notes)
-- Shared velocity across all tracks (from EXT_INST velocity settings)
-- Proper note-off tracking per track
-
-**Verification:** ✅ Polyphonic loop implemented correctly
-
----
-
-### 5. LED Feedback (Led.ino:130-142, 259-261)
-
-**Display Modes:**
-
-**Running Mode (Led.ino:130-137):**
-- Shows `pattern[ptrnBuffer].extTrack[currentExtTrack]`
-- Current step blinks using XOR with `blinkFast << curStep`
-
-**Track Select Mode (Led.ino:139-141):**
-- When INST held: all LEDs flash (`stepLeds = 0xFFFF`)
-
-**Stopped Mode (Led.ino:259-261):**
-- Shows current track's programmed steps
-
-**GUIDE LED (Led.ino:45-46):**
-- Blinks when `extInstEditMode` active
-
-**Verification:** ✅ All LED feedback paths implemented
-
----
-
-### 6. LCD Display (LCD.ino:244-247)
-
-**Normal Mode:** Shows instrument name (e.g., "BD", "SD")
-**EXT INST Edit Mode:** Shows track number
-
-```cpp
-if (curInst == EXT_INST && extInstEditMode) {
-  lcd.print("T");
-  if (currentExtTrack + 1 < 10) lcd.print(" ");  // Pad single digit
-  lcd.print(currentExtTrack + 1);  // Display as 1-16
-}
-```
-
-**Example Output:**
-- Track 1: "T 1"
-- Track 10: "T10"
-- Track 16: "T16"
-
-**Verification:** ✅ LCD track display implemented
-
----
-
-### 7. EEPROM Persistence (EEprom.ino:87-98, 156-163)
-
-**Save Operation (SavePattern):**
-```cpp
-// Save 16 extTrack words (32 bytes)
-for (byte i = 0; i < 16; i++) {
-  byte lowbyte = (pattern[ptrnBuffer].extTrack[i] & 0xFF);
-  byte highbyte = (pattern[ptrnBuffer].extTrack[i] >> 8) & 0xFF;
-  Wire.write((byte)(lowbyte));
-  Wire.write((byte)(highbyte));
-}
-// Pad to 64-byte page
-for (byte j = 0; j < 32; j++) {
-  Wire.write((byte)(0));
-}
-```
-
-**Load Operation (LoadPattern):**
-```cpp
-for (byte i = 0; i < 16; i++) {
-  pattern[!ptrnBuffer].extTrack[i] = (unsigned int)((Wire.read() & 0xFF) |
-                                                     ((Wire.read() << 8) & 0xFF00));
-}
-// Skip padding (32 bytes)
-for (byte j = 0; j < 32; j++) {
-  Wire.read();
-}
-```
-
-**LoadTempPattern:** Same logic for loading pattern banks into RAM
-
-**Verification:** ✅ Full save/load cycle with 16-bit word handling
-
----
-
-### 8. Pattern Operations
-
-**Copy (SeqFunc.ino:220-223):**
-```cpp
-// Copy external tracks to buffer
-for (byte i = 0; i < 16; i++) {
-  bufferedPattern.extTrack[i] = pattern[ptrnBuffer].extTrack[i];
-}
-```
-
-**Paste (SeqFunc.ino:243-246):**
-```cpp
-// Paste external tracks from buffer
-for (byte i = 0; i < 16; i++) {
-  pattern[ptrnBuffer].extTrack[i] = bufferedPattern.extTrack[i];
-}
-```
-
-**Clear (Seq.ino:442-445):**
-```cpp
-// Clear all external tracks
-for (byte t = 0; t < 16; t++) {
-  pattern[ptrnBuffer].extTrack[t] = 0;
-}
-```
-
-**Verification:** ✅ All pattern operations handle extTrack data
-
----
-
-### 9. MIDI Note-Off Protection (Midi.ino:16-32)
-
-**InitMidiNoteOff() - Prevents Stuck Notes:**
-```cpp
-void InitMidiNoteOff() {
-  if (midiNoteOnActive) {
-    // Turn off all active external track notes
-    for (byte track = 0; track < 16; track++) {
-      if (extTrackNoteOn[track]) {
-        byte noteToSend = pgm_read_byte(&EXT_TRACK_NOTES[track]);
-        MidiSendNoteOff(seq.EXTchannel, noteToSend);
-        extTrackNoteOn[track] = FALSE;
-      }
-    }
-    midiNoteOnActive = FALSE;
-  }
-}
-```
-
-**Called On:**
-- Every step before new notes trigger (Clock.ino:135)
-- Pattern change
-- Stop button
-- Mode exit
-
-**Verification:** ✅ Comprehensive note-off handling prevents stuck notes
-
----
-
-### 10. Keyboard Mode Protection (key.ino:31-52)
-
-**Prevents Conflicts:**
-```cpp
-if (numBtn.justPressed && curInst == EXT_INST && curSeqMode == PTRN_STEP){
-  if (!extInstEditMode) {
-    keyboardMode = !keyboardMode;
-    // ... normal keyboard mode logic
-  } else {
-    // [TR-909 STYLE] Keyboard mode not available in TR-909 edit mode
-    lcd.clear();
-    lcd.print("KEYBOARD MODE");
-    lcd.setCursor(0,1);
-    lcd.print("NOT AVAILABLE");
-    delay(500);
-    needLcdUpdate = TRUE;
-  }
-}
-```
-
-**Verification:** ✅ Keyboard mode blocked when in TR-909 edit mode
-
----
-
-## Memory Savings
-
-**Per Pattern:**
-- Old: `byte extNote[128]` = 128 bytes
-- New: `unsigned int extTrack[16]` = 32 bytes
-- **Savings: 96 bytes per pattern**
-
-**Total Savings (128 patterns):**
-- 128 patterns × 96 bytes = **12,288 bytes (~12KB)**
-
-**Trade-off:**
-- Old system: Free-form note entry (0-127), variable length sequences
-- New system: Fixed 16 chromatic notes (C2-D#3), 16-step sequences per track
-- **Benefit:** Massive memory savings, TR-909 authentic workflow
+**Still not covered by the suite:** track selection, preview note lifecycle, LED feedback,
+the splash, and mode-state teardown — including the MUTE path that stranded a preview note.
+Those rows are marked READ above. The lesson from the defect table stands: every defect
+found so far was in the untested UI surface, and one round of tests has not changed that for
+the rows still marked READ.
 
 ---
 
 ## Known Limitations
 
-1. **Fixed Note Range:** C2 (MIDI 36) to D#3 (MIDI 51) - chromatic scale only
-2. **Step Length:** All tracks share same 16-step length as main pattern
-3. **Velocity:** Shared velocity across all external tracks (from EXT_INST settings)
-4. **Pattern Groups:** External track data not included in group save/load (groups not fully implemented in this firmware)
+1. **Fixed note range:** 16 chromatic notes, MIDI 48 to 63 as transmitted
+2. **Step length:** all tracks share the main pattern's 16-step length
+3. **Velocity:** one velocity per step, shared by every track firing on it
+4. **Pattern groups:** external track data is not included in group save/load (groups are not fully implemented in this firmware)
+5. **Queue depth:** one step. A step overtaken before the loop drains it is coalesced away; this is intentional, since its notes were about to be cut by the newer step anyway and the note-off request is sticky
+6. **External notes inherit main-loop stalls that drum triggers do not.** Triggers fire from the clock ISR; external MIDI is queued there and transmitted from `loop()`. Anything that blocks the loop therefore drops queued external steps while the drums stay in time — a pattern bank load (Seq.ino:531) or a bank save (Seq.ino:1108, tens of `delay(DELAY_WR)` page writes) are the realistic cases. Accepted: the alternative is transmitting from the ISR, which is the defect this design replaced
+7. **A pattern change drops one in-flight external step.** `InitMidiNoteOff()` discards the queue on every `selectedPatternChanged`, including SYNC mode, so selecting a pattern mid-bar loses at most one step of external notes. Accepted: the discard is what stops notes arriving after a stop or sounding twice
+8. **No preview while the sequencer owns the track.** `ExtPreviewOn()` declines when the running pattern has any step programmed on the selected track, because preview and sequencer share the note and channel with no ownership arbitration and would cut each other off. The pitch is audible from the sequencer anyway. This applies to track selection and to the on-add audition alike; the audition is issued before the bit is set, so adding the first step to an empty track while running still sounds, and only later additions to that track are silent
 
 ---
 
-## Testing Recommendations
+## Hardware Testing Required
 
-### Hardware Testing Required
+Static analysis and the simavr suite cannot substitute for the following. The UI items
+matter most: that is where the defects were.
 
-Since this is embedded firmware for ATmega1284p hardware, the following hardware tests are recommended:
+1. **Mode entry/exit**
+   - [ ] SHIFT + GUIDE enters and exits; splash appears and clears without freezing the display
+   - [ ] Sequencer keeps running and MIDI clock keeps flowing across the splash, under SLAVE sync
+   - [ ] Leaving the mode lands on BD, and step buttons drive a real voice again
+   - [ ] GUIDE LED blinks while in the mode
 
-1. **Mode Entry/Exit**
-   - [ ] SHIFT + GUIDE enters mode (LCD shows confirmation)
-   - [ ] SHIFT + GUIDE exits mode (LCD shows confirmation)
-   - [ ] GUIDE LED blinks when in mode
+2. **Track selection**
+   - [ ] INST + step 1-16 selects tracks; LCD shows T 1 through T16
+   - [ ] Preview sounds the right pitch and stops on release, including when INST is released first
+   - [ ] Selecting a second track inside one INST hold leaves no note sounding
 
-2. **Track Selection**
-   - [ ] INST + Step 1-16 selects tracks (LCD shows T1-T16)
-   - [ ] MIDI note preview plays correct notes (C2-D#3)
-   - [ ] All 16 step LEDs flash when INST held
+3. **Step programming**
+   - [ ] Step buttons toggle steps for the selected track and nothing else
+   - [ ] Programming while stopped does not change the current pattern
+   - [ ] Audition on add, silence on remove
 
-3. **Step Programming**
-   - [ ] Step buttons toggle steps for selected track
-   - [ ] LED feedback shows programmed steps
-   - [ ] Brief MIDI preview on step add
-   - [ ] No preview on step remove
+4. **Mode isolation**
+   - [ ] TRACK_PLAY, PTRN_PLAY, PTRN_TAP and MUTE show their own step LEDs and allow normal instrument selection after leaving ext edit mode
 
-4. **Polyphonic Playback**
-   - [ ] Multiple tracks trigger simultaneously at same step
-   - [ ] Up to 16 concurrent MIDI notes possible
-   - [ ] Velocity respects EXT_INST settings
-   - [ ] Notes respect MIDI channel settings
+5. **Playback**
+   - [ ] Multiple tracks trigger simultaneously
+   - [ ] Unaccented notes sound near the top of the range, accented ones louder still
+   - [ ] Dense steps do not disturb tempo, MIDI clock or DIN sync
 
-5. **Pattern Operations**
+6. **Pattern operations and persistence**
    - [ ] SHIFT + CLEAR clears all external tracks
-   - [ ] BANK button copies pattern including external tracks
-   - [ ] MUTE button pastes pattern including external tracks
+   - [ ] Copy and paste carry external tracks
+   - [ ] External track data survives EEPROM save, load and bank change
 
-6. **EEPROM Persistence**
-   - [ ] External track data saves to EEPROM
-   - [ ] External track data loads from EEPROM
-   - [ ] Pattern bank changes preserve external track data
-
-7. **MIDI Note-Off**
-   - [ ] No stuck notes on pattern change
-   - [ ] No stuck notes on STOP
-   - [ ] No stuck notes on mode exit
-   - [ ] No stuck notes on track switch
-
-8. **Safety Features**
-   - [ ] Keyboard mode blocked when in TR-909 edit mode
-   - [ ] Error message displays on LCD
-
----
-
-## Code Quality Assessment
-
-**Strengths:**
-- ✅ Consistent coding style with existing firmware
-- ✅ Memory-efficient data structure design
-- ✅ Comprehensive comment documentation
-- ✅ Proper use of PROGMEM for constants
-- ✅ Complete integration with existing sequencer modes
-
-**Areas for Future Enhancement:**
-- ⚠️ Could add velocity per track (currently shared)
-- ⚠️ Could add pattern group support for external tracks
-- ⚠️ Could make note range configurable
-
-**Code Paths Verified:**
-- Mode entry/exit: Button.ino, key.ino
-- Track selection: key.ino
-- Step programming: key.ino
-- Polyphonic trigger: Clock.ino
-- LED feedback: Led.ino
-- LCD display: LCD.ino
-- EEPROM save/load: EEprom.ino
-- Pattern operations: Seq.ino, SeqFunc.ino
-- MIDI note-off: Midi.ino
-
----
-
-## Integration Testing Status
-
-| Component | Integration Status | File References |
-|-----------|-------------------|-----------------|
-| Pattern Structure | ✅ COMPLETE | define.h:414 |
-| Global Variables | ✅ COMPLETE | define.h:500-505 |
-| Mode Toggle | ✅ COMPLETE | Button.ino:59-90 |
-| Track Selection | ✅ COMPLETE | key.ino:154-173 |
-| Step Programming | ✅ COMPLETE | key.ino:186-211 |
-| Clock Trigger | ✅ COMPLETE | Clock.ino:134-164 |
-| LED Display | ✅ COMPLETE | Led.ino:130-142, 259-261 |
-| LCD Display | ✅ COMPLETE | LCD.ino:244-247 |
-| EEPROM I/O | ✅ COMPLETE | EEprom.ino:87-98, 156-163, 220-227 |
-| Pattern Copy | ✅ COMPLETE | SeqFunc.ino:220-223 |
-| Pattern Paste | ✅ COMPLETE | SeqFunc.ino:243-246 |
-| Pattern Clear | ✅ COMPLETE | Seq.ino:442-445 |
-| Note-Off Safety | ✅ COMPLETE | Midi.ino:16-32 |
-| Mode Protection | ✅ COMPLETE | key.ino:31-52 |
+7. **No stuck notes**
+   - [ ] On STOP, on pattern change, on mode exit, on track switch
+   - [ ] Hold INST + a step to preview, press MUTE, then release: the note must stop
 
 ---
 
 ## Conclusion
 
-**All code implementation is COMPLETE and VERIFIED through static analysis.**
-
-The TR-909 style external instrument feature has been fully integrated into the Nava Oortone firmware. All 12 dependent implementation tasks have been completed:
-
-- ✅ Pattern structure modified
-- ✅ MIDI note mapping added
-- ✅ Polyphonic triggering implemented
-- ✅ Multi-track note-off handling
-- ✅ Mode entry (SHIFT + GUIDE)
-- ✅ Track selection logic
-- ✅ Step programming logic
-- ✅ LED feedback
-- ✅ LCD display updates
-- ✅ EEPROM save/load
-- ✅ Pattern copy/paste support
-- ✅ Pattern clear support
-- ✅ Keyboard mode protection
-
-**Hardware testing is now required to validate the implementation on actual Nava hardware.**
+The feature is implemented, its MIDI note behaviour is pinned by automated regression
+tests, and one edit-mode path — entering the mode and programming a step — is now driven
+through the emulated front panel. The rest of the user interface is still untested and has
+been the source of every defect found so far, including one introduced by the fix for
+another. Hardware validation is required before this can be called verified, and the UI
+checks above should be run first.
 
 ---
 
-## Compiled Artifacts
-
-The firmware has been compiled successfully:
-- Build artifacts found in `jjjjj_firmware/build/MightyCore.avr.1284/`
-- Assembly listing (.lst files) confirm all TR-909 code paths are present in compiled binary
-
-**Next Step:** Flash firmware to Nava hardware and perform integration testing.
-
----
-
-**Report Generated:** 2025-12-26
-**Reviewed By:** Claude Code (Static Code Analysis)
+**Report revised:** 2026-07-26
 **Firmware Version:** Nava Oortone (jjjjj_firmware)

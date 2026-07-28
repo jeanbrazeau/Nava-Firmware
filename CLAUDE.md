@@ -83,9 +83,13 @@ Patterns are stored in RAM (patternBank[16]) for quick access, and only saved to
 
 The firmware follows a real-time polling architecture where each loop cycle:
 1. Checks MIDI input and expander mode status
-2. Polls buttons and encoders for user input
-3. Updates LEDs, LCD, and sequencer parameters
-4. Manages sequencer configuration and keyboard updates
+2. Drains any external-instrument MIDI the clock queued (`ServiceExtMidiNotes()`, immediately after `MIDI.read()`)
+3. Polls buttons and encoders for user input
+4. Updates LEDs, LCD, and sequencer parameters
+5. Manages sequencer configuration and the external instrument track editor (`ExtInstUpdate()`)
+
+External-instrument notes are transmitted by the clock when that cannot block, and by
+the loop otherwise - see "Transmission timing" under the EXT_INST section.
 
 ### Key Improvements in this Firmware
 
@@ -146,7 +150,7 @@ The firmware follows a real-time polling architecture where each loop cycle:
   - `CountPPQN()`: Processes each PPQN tick (96 per quarter note)
     - Handles shuffle, direction modes, step triggering
     - Sets velocity via DAC, triggers via shift registers
-    - Manages MIDI note on/off for external instruments
+    - Queues external instrument MIDI for the loop to transmit; sends none itself
     - DIN sync clock output
     - End-of-measure pattern/track progression
 
@@ -162,7 +166,9 @@ The firmware follows a real-time polling architecture where each loop cycle:
   - EXT_INST edit mode toggle detection
 
 - **Enc.ino** - Rotary encoder handling
-- **key.ino** - Keyboard mode for external instrument note entry
+- **key.ino** - External instrument track editor (`ExtInstUpdate()`) and MIDI note preview.
+  The filename is historical: .ino files are concatenated in name order, so renaming it
+  would reorder definitions.
 
 #### Output Handling
 - **Led.ino** - LED control via shift registers
@@ -172,7 +178,9 @@ The firmware follows a real-time polling architecture where each loop cycle:
 
 #### Hardware Interface
 - **EEprom.ino** - Pattern/track storage and retrieval
-- **Midi.ino** - MIDI in/out, note handling, clock sync
+- **Midi.ino** - MIDI in/out, note handling, clock sync. Owns the external instrument
+  note queue: `ServiceExtMidiNotes()` drains it from the loop, `SendExtTrackNoteOff()`
+  silences what is sounding, `InitMidiNoteOff()` also discards anything still queued.
 - **Expander.ino** - Expander mode (trigger-to-MIDI conversion)
 
 ### Configuration Files
@@ -184,7 +192,7 @@ The firmware follows a real-time polling architecture where each loop cycle:
 
 ## Data Structures Deep Dive
 
-### Pattern Structure (457 bytes each)
+### Pattern Structure (360 bytes each)
 ```cpp
 struct Pattern {
   byte length;              // 0-15 (actual step count - 1)
@@ -196,8 +204,7 @@ struct Pattern {
   unsigned int step[16];    // 16-bit word per step (each bit = instrument on/off)
   byte velocity[16][16];    // Velocity per instrument per step
                            // Bit 7 = flam flag, bits 0-6 = velocity value
-  byte extNote[128];        // MIDI note numbers for external instrument sequencer
-  byte extLength;           // Number of notes in external instrument sequence
+  unsigned int extTrack[16];// 16-bit word per external track (each bit = step on/off)
   byte groupPos;            // Position in pattern group/chain
   byte groupLength;         // Length of pattern group/chain
   byte totalAcc;            // Total accent track
@@ -206,7 +213,7 @@ struct Pattern {
 
 ### Memory Management Strategy
 - **pattern[2]**: Twin buffers - edit one (`!ptrnBuffer`) while playing other (`ptrnBuffer`)
-- **patternBank[16]**: Current bank cached in RAM (16 patterns × 457 bytes = 7.3KB)
+- **patternBank[16]**: Current bank cached in RAM (16 patterns × 360 bytes = 5.6KB)
 - **editedPatterns[16]**: Boolean flags to track which patterns need EEPROM save
 - **bufferedPattern**: Copy/paste buffer for pattern operations
 - **tempPattern**: Temporary buffer for EEPROM read/write operations
@@ -343,32 +350,224 @@ byte muxInst[10] = {LT, SD, BD, MT, HT, HC, RM, CH, CRASH, RIDE};
 - Bits 0-15 map to instruments/functions
 - Special handling for CH/OH (bits 1-2) to prevent hi-hat circuit noise
 
-## External Instrument (EXT_INST) - SIZZLE Firmware Extension
+## External Instrument (EXT_INST) - TR-909 style track editor
 
 ### Feature Overview
-- Full MIDI note sequencer on dedicated track
-- Each of 16 steps can have different MIDI note
-- Velocity control per step
-- Separate MIDI channel (`seq.EXTchannel`)
+- 16 fixed-pitch MIDI tracks, one chromatic note each, all sharing the 16-step grid
+- Polyphonic: any number of tracks may fire on the same step
+- One velocity shared by all tracks on a step, taken from the EXT_INST velocity table
+- Separate MIDI channel (`seq.EXTchannel`) when `MIDI_EXT_CHANNEL` is enabled, else `seq.TXchannel`
+
+### Note Mapping
+`extTrackNote[16]` (define.h) holds the note each track transmits, editable per track
+with the encoder while in edit mode. Values are literal wire notes: the ext path uses
+`MidiSendExtNoteOn`/`MidiSendExtNoteOff`, which do not apply the +12 that
+`MidiSendNoteOn`/`MidiSendNoteOff` add for drum notes, so what the encoder sets, the LCD
+prints and the wire carries are one number. `EXT_TRACK_NOTES[16]` is now the PROGMEM
+default table (48..63), which reproduces the pitches the old fixed table transmitted.
+
+The map is global rather than per pattern: 16 bytes inside `Pattern` would cost ~320
+bytes of RAM across the bank cache and buffers and would change the stored pattern
+format. It persists in the unused tail of the setup EEPROM block at `EXT_NOTES_OFFSET`,
+written once on edit-mode exit rather than per encoder detent (`extNotesNeedSaved`).
+A signature byte precedes the record because neither erased state can be assumed - an
+erased EEPROM reads 0xFF but `InitEEprom()` zeroes the device, and 0x00 is a legal MIDI
+note, so a range check alone would silently tune every track to note 0.
+
+The LCD renders the note as a name via `LcdPrintNoteName()`, under the MIDI 60 = C4
+convention that nearly every DAW and modern synth displays, so the track defaults of
+48..63 read C3..D#4. The octave therefore runs -1..9 and `C#-1` is the widest result at
+four characters, exactly the width of the value field. Sharps only: picking the flat
+spelling of the same pitch would need a key signature the sequencer does not have.
+Code comments still cite MIDI numbers, since those are unambiguous.
 
 ### Edit Mode Activation
-- SHIFT + GUIDE toggles EXT_INST edit mode
-- Forces `curInst = EXT_INST`
-- Display shows: "EXT INST EDIT ON / NOTE: C3"
+- SHIFT + GUIDE toggles the mode; INST + GUIDE also exits it
+- Entering forces `curInst = EXT_INST` and selects track 1; leaving restores the
+  instrument selected on entry (`extInstPrevInst`), so the mode behaves as a layer
+  nested under the instrument selection. EXT_INST is never restored as a selection since
+  it drives no drum circuit, and a saved value of it falls back to BD
+- `Seq.ino` must not carry its own SHIFT+GUIDE handler. `ButtonGet()` runs first in the
+  loop and toggles the flag, so a second handler guarded on `!extInstEditMode` fires only
+  on the exit pass and re-selects EXT_INST straight after the restore
+- Only active in PTRN_STEP. The TRK, PTRN, TAP and config-entry handlers clear the flag
+  via `ExitExtInstEditMode()`. MUTE is the deliberate exception: it assigns `curSeqMode`
+  directly so the mode stays re-enterable, which means the flag survives it. Nothing in
+  the edit block runs while `curSeqMode != PTRN_STEP`, and `ExtInstUpdate()` retires a
+  sustained preview whose owning context has gone away
+- Entry and exit paint a splash for 800ms; the deadline is `extInstSplashUntil` and
+  `LcdUpdate()` renders it without blocking the loop
 
 ### Note Entry
-- Uses `extNote[128]` array in Pattern structure
-- Each step stores MIDI note number (0-127)
-- Keyboard mode for note entry (octave selection)
+The step buttons swap roles with the transport (`selectingTrack` in `ExtInstUpdate()`):
+
+- Paused, they are track switches. A bare press selects the track and sustains its note
+  until release, so the whole map can be auditioned by ear; INST qualifies a programming
+  press instead
+- Running, the mapping is reversed - a bare press programs, INST selects - because live
+  step entry is the point of holding the transport open, and a sustained audition would
+  collide with the note the sequencer is already sounding
+
+Programming toggles the step in `pattern[ptrnBuffer].extTrack[currentExtTrack]` and
+auditions for 50ms when adding. The audition is issued before the bit is set, because
+`ExtPreviewOn()` declines a preview the running sequencer would collide with and setting
+the bit first would make every addition look like a collision.
+
+The encoder sets the selected track's note via `ExtSetTrackNote()`, which auditions the
+new pitch and moves an open sustained preview to it. Holding TEMPO yields the encoder
+back to BPM, and holding SHUFFLE yields it to the shuffle amount, matching every other
+PTRN_STEP page - the edit mode is a layer over the instrument selection, not a takeover
+of the panel. SHUFFLE also takes back the step buttons, which set shuffle and flam while
+it is held; `ExtInstUpdate()` stands down for it exactly as `Seq.ino`'s step handler does.
+
+The SHUFFLE branch of `EncGet()` is not scoped to the edit mode: holding SHUFFLE left the
+encoder on BPM everywhere, so the button that owns shuffle could not adjust it. It writes
+through the same global `prevShuf` the SHUFFLE+step handler tracks, or that handler's
+incremental erase of the old LCD marker would fire against a position the encoder had
+already moved past.
+
+Previews are owned by `ExtPreviewOn`/`ExtPreviewOff`/`ExtPreviewCheck` in key.ino so
+that a preview is never left sounding and never held open by `delay()`.
+
+### Output Enable (GUIDE)
+GUIDE latches sequenced external MIDI output on and off, replacing the metronome it used
+to toggle. `guideBtn.counter` is the latch and also drives `guideLed`. `ServiceExtMidiNotes()`
+still latches and clears the queue when output is off, so steps do not pile up and the
+note-off pass still runs - only the note-ons are dropped. Unlatching calls
+`InitMidiNoteOff()` because the last transmitted step would otherwise stay held on the
+external synth with no later note-off to close it, the drain that would have sent one
+now being gated off.
+
+The latch is guarded against SHIFT and INST, which qualify GUIDE as the edit-mode enter
+and exit gestures. Unguarded it toggled on those too - as the metronome handler did.
+
+Previews and auditions are deliberately not gated: they are a direct response to a button
+press rather than sequencer output, so the note map stays audible while editing with
+output muted. Output boots unlatched, so every simulator test expecting sequenced notes
+arms it first via `latch_guide()`.
+
+The metronome now has no binding. `Metronome()` is uncalled and `metronomeState`
+(read by Mux.ino) is never set, so it is permanently off until rebound to something.
+
+### CLEAR and LAST STEP inside edit mode
+Both are scoped to the ext layer, because the mode is a layer over the instrument
+selection rather than a separate page - the buttons keep their meaning, applied one level
+down. CLEAR clears the selected ext track (the step under the playhead while running,
+the whole track on SHIFT+CLEAR while stopped) instead of `inst[curInst]`, which in this
+mode is `inst[EXT_INST]` - a word the ext playback path never reads, so the old behaviour
+muted a voice that drives no circuit and left the track sounding.
+
+LAST STEP sets `pattern.extLength`, not `pattern.length`. Writing the sequencer's own
+length from a page that only shows MIDI tracks changed the kit's bar length with no
+visible cause. `extLength` lives in the byte the stored format already reserved for it
+(EEPROM offset 36, previously written as 0 and skipped), biased by one on the way out so
+0 still means "written before this existed" - `extLength` 0 is itself legal, a one-step
+ext loop, so the bias is what keeps the full 0-15 range usable. `bufferedPattern` is BSS
+until something is copied into it, so `PasteBufferToPattern()` range-checks rather than
+copying blind.
+
+`extStepCount` tracks the ext layer's position and wraps on `extLength`, so a shorter ext
+length loops the MIDI tracks against the kit instead of truncating the pattern. When the
+two lengths are equal - the default, and what every pattern loads as - `extCurStep` is
+just `curStep` and behaviour is unchanged. Direction modes are deliberately not
+re-derived against `extLength`: BACKWARD/PING_PONG/RANDOM are defined against
+`pattern.length`, and recomputing them would make the lanes disagree even when the
+lengths match. TOTAL_ACC stays on `curStep` for the same reason it always did - it
+accents the whole machine at that moment, so it has to line up with the kit rather than
+with the ext loop.
 
 ### Playback
-Located in Clock.ino:196-152:
-```cpp
-if (bitRead(pattern[ptrnBuffer].inst[EXT_INST], curStep)) {
-  MidiSendNoteOn(seq.EXTchannel, pattern[ptrnBuffer].extNote[curStep], velocity);
-  midiNoteOnActive = TRUE;
-}
-```
+`CountPPQN()` records the step into a queue: a track bitmask, the shared velocity and a
+sticky note-off request (`extPendingOn`, `extPendingVel`, `extPendingOff`). If a step is
+overtaken before the queue is drained the newer step wins, which is what the four
+consecutive `CountPPQN()` calls per incoming MIDI clock can produce. `InitMidiNoteOff()`
+discards a queued but untransmitted step before silencing what is sounding, so stop and
+pattern change cannot let notes arrive late or twice. `extSoundingNote[]` records the note
+each track actually transmitted, and `SendExtTrackNoteOff()` replays that rather than the
+current map entry - retuning a track while it sounds would otherwise note-off a pitch that
+was never started.
+
+### Transmission timing
+The drum voices are triggered inline in `CountPPQN()`, so anything that delays the ext
+notes shows up as the MIDI track playing behind the analog kit. Three separate costs were
+measured with `sim/tests/test_ext_latency.c`, which differences the trigger-word write
+against the note-on on the wire.
+
+The figure that matters is the LAST ext note of a step, not the first. MIDI is serial, so
+a measurement pinned to track 0 reports the best case and hides the spread that a
+multi-track pattern is actually heard as - which is why an early version of this test
+reported 1.27 ms while the hardware sounded 6 ms late. At 120 BPM:
+
+| ext tracks/step | last note, before | after |
+|---|---|---|
+| 2 | 2.71 ms | 1.32 ms |
+| 6 | 8.37 ms | 4.13 ms |
+
+- **Wire order.** Sending every sounding note-off and then every new note-on put track 0's
+  note-on behind `2N+3` bytes at 320 us each, growing with how many tracks the previous
+  step left sounding. `ExtTransmitStep()` instead interleaves each track's note-off with
+  its own note-on and defers the note-offs of tracks that stop on this step until after
+  all the note-ons - releases are not time-critical, the notes are already sounding.
+  Note-offs are sent as note-on velocity 0 so running status carries the whole step under
+  a single status byte.
+- **Scheduling.** Draining only from the loop cost jitter rather than a steady offset: a
+  pass that repaints the LCD blocks for ~14 ms, and `needLcdUpdate` is set at end of
+  measure, so the worst delay landed on the bar's downbeat. `ServiceExtMidiNotesFromClock()`
+  transmits from `CountPPQN()` itself, but only after measuring that `Serial1`'s TX ring
+  has room for the step's worst-case burst - the original concern, that `HardwareSerial`
+  busy-waits on UDRE with interrupts disabled once the 64-byte ring fills, is respected
+  rather than discarded. A denser step than that stays queued and the loop drains it.
+- **Note-offs at the step boundary.** With releases interleaved into the step, every
+  active track cost 4 bytes there - its note-off then its note-on - so each extra track
+  pushed the next track's note-on 1.28 ms further behind the trigger. `extReleaseArmed`
+  moves the release to `EXT_RELEASE_LEAD` (2) PPQN ticks *before* the next step, using the
+  same boundary expression offset by the lead, so the boundary carries note-ons only at
+  2 bytes per track and the releases ride in dead time. `extPendingOff` is still set at
+  every step: if the early release could not get out - a very short shuffled gap, or a
+  burst the UART could not absorb - the step falls back to the interleaved ordering rather
+  than stranding a note.
+
+Running status is load-bearing for all of the above and must not be allowed to depend on
+the build. `MySettings` (`jjjjj_firmware.ino`) sets `UseRunningStatus` unconditionally,
+because it used to sit inside `#if MIDI_HAS_SYSEX` - a flag `features.h` leaves off and
+`platformio.ini` forces on. The `#else` branch built the instance from `DefaultSettings`,
+where running status is false, so every ext note cost 3 bytes instead of 2 and the
+Arduino IDE build documented above silently ran 50% more wire time than the PlatformIO
+one. `ServiceExtMidiNotesFromClock()` now budgets `2 * messages + 1` bytes on the
+strength of this, so it has to hold everywhere. That budget was `3 * messages`, which
+declined steps that would have fit and handed them to the loop, where an end-of-measure
+LCD repaint blocks ~14 ms - an order of magnitude more than the wire time it was
+protecting. The decline threshold moves from 10 tracks to 15.
+
+The MASTER MIDI clock byte is written straight to `UDR1` near the top of `CountPPQN()`,
+and every scale value is a multiple of 4, so `ppqn % 4 == 0` coincides with every
+unshuffled step boundary - the clock byte always precedes the step's ext notes. It costs
+nothing: roughly 253 us of step computation runs between that write and the trigger
+latch, and another ~195 us before the first note byte reaches `UDR1`, by which point the
+clock byte finished transmitting at 320 us. Do not "fix" this by moving the clock byte
+after the notes; it would delay it by the whole step compute on step ticks only while
+leaving intervening clock bytes on time, which is the worst shape of jitter for a slaved
+device and a 16x regression of the measured 0.027 ms.
+
+What remains is the wire itself. Under running status a step costs one status byte plus
+two per note-on, so the last note of an N-track step cannot arrive sooner than
+`(1 + 2N) * 320 us`; the 6-track measurement of 4.13 ms is within 30 us of that floor.
+`test_ext_latency.c` therefore budgets against that formula rather than a flat ceiling,
+so the bound stays meaningful at any density. Closing the rest would need sub-tick lead
+scheduling, and one PPQN tick is 5.2 ms at 120 BPM - too coarse to compensate with, and
+tempo-dependent besides.
+
+`extMidiBusy` serialises the two paths: the MIDI library's running-status state,
+`HardwareSerial`'s ring and `extTrackNoteOn[]` are all non-reentrant. It is claimed inside
+the same `ATOMIC_BLOCK` as the queue latch, because a step queued between latching and
+claiming would otherwise be transmitted by the clock path and land ahead of the older step.
+The loop claims it only when it actually has something to send, so an empty poll - the
+common case once the clock path is doing the work - never locks the clock out.
+
+`test_ext_latency.c` also bounds MASTER MIDI clock jitter (the clock byte is written
+straight to UDR1 behind a UDRE busy-wait in the same ISR, so a fuller ring could stall it;
+measured 0.027 ms) and asserts that a 16-track step still delivers every track through the
+loop fallback without stalling the sequencer.
 
 ## Code Heritage & Contributors
 
@@ -383,10 +582,12 @@ The codebase shows contributions from multiple developers:
 
 From code comments:
 - Start/Continue mode not fully implemented (Seq.ino:33)
-- External instrument note index handling needs revision (Clock.ino:172)
 - Pattern groups not saved to EEPROM (Seq.ino:548)
 - 9ms DIN start delay not implemented (Seq.ino:122)
-- Memory optimization needed (uses ~7KB for pattern bank)
+- Memory optimization needed (uses ~5.6KB for pattern bank)
+
+Resolved: the external instrument note index (`noteIndexCpt`) is gone along with the
+single-note sequencer it belonged to; the 16-track editor addresses steps directly.
 
 ## Performance Characteristics
 
@@ -400,11 +601,11 @@ From code comments:
 
 ```
 RAM (16KB total):
-- Pattern buffers:        ~5KB (pattern[2] + buffers)
-- Pattern bank cache:     ~7KB (patternBank[16])
+- Pattern buffers:        ~1.4KB (pattern[2] + bufferedPattern + tempPattern, 360 bytes each)
+- Pattern bank cache:     ~5.6KB (patternBank[16])
 - Track buffers:          ~2KB (track[2])
-- Global variables:       ~2KB
-Total:                    ~16KB (very tight!)
+- Global variables:       ~3KB
+Total:                    ~12.7KB of 16KB (still tight)
 
 EEPROM (4KB total):
 - Patterns (128):         ~57KB needed (doesn't fit!)

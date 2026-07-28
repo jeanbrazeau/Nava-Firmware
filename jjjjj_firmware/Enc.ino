@@ -17,6 +17,31 @@ void EncGet() {
       needLcdUpdate = TRUE;
     }
   }
+  /////////////////////////////////////SHUFFLE//////////////////////////////////////
+  // Holding SHUFFLE gives the encoder the shuffle amount, in every pattern mode. The
+  // step buttons already set shuffle and flam while it is held; the encoder was falling
+  // through to BPM, and inside EXT INST edit mode it was worse - it kept editing the
+  // track note, so the one control the held button implies was the one it did not touch.
+  else if (shufBtn.pressed && (curSeqMode == PTRN_STEP || curSeqMode == PTRN_TAP) && !seq.configMode) {
+    // shuffle indexes shuffle[type - 1], so 0 is not a legal value
+    int shuf = EncGet(pattern[ptrnBuffer].shuffle, 1);
+    pattern[ptrnBuffer].shuffle = constrain(shuf, 1, MAX_SHUF_TYPE);
+    // The same prevShuf the SHUFFLE+step handler tracks, so its incremental erase of the
+    // old LCD marker does not fire against a position the encoder has already moved past
+    if (pattern[ptrnBuffer].shuffle != prevShuf) {
+      prevShuf = pattern[ptrnBuffer].shuffle;
+      patternWasEdited = TRUE;
+      needLcdUpdate = TRUE;
+    }
+  }
+  ///////////////////////////////////EXT INST NOTE//////////////////////////////////
+  // Sets the wire MIDI note of the selected track. Holding TEMPO still yields the
+  // encoder to BPM, matching how every other PTRN_STEP page behaves.
+  else if (extInstEditMode && curSeqMode == PTRN_STEP && !seq.configMode && !tempoBtn.pressed) {
+    int note = EncGet(extTrackNote[currentExtTrack], 1);
+    note = constrain(note, 0, 127);
+    ExtSetTrackNote((byte)note);
+  }
   ///////////////////////////////////TRACK WRITE////////////////////////////////////
   else if (curSeqMode == TRACK_WRITE && !tempoBtn.pressed && !seq.configMode) {
     switch (curIndex) {
@@ -68,42 +93,6 @@ void EncGet() {
             break;
           case 3:  //track number
             //toDo
-            break;
-        }
-    }
-  }
-
-  ///////////////////////////////////KEYBOARD MODE////////////////////////////////////
-  else if (keyboardMode) {
-    switch (curIndex) {
-      //track position
-      case 0:  //external instrument note index
-        if (instBtn) {
-          noteIndex = EncGet(noteIndex, 10);
-        } else {
-          noteIndex = EncGet(noteIndex, 1);
-        }
-        noteIndex = constrain(noteIndex, 0, 99);
-        static unsigned int prevNoteIndex;
-        if (noteIndex != prevNoteIndex) {
-          prevNoteIndex = noteIndex;
-          needLcdUpdate = TRUE;
-          break;
-          case 1:  // [TR-909] External instrument encoder - not used in TR-909 mode
-            // TR-909 uses fixed chromatic notes (C2-D#3), no encoder editing
-            // Track and note selection handled in key.ino
-            break;
-          case 2:  // Unused in TR-909 style EXT INSTRUMENT implementation [SIZZLE FW]
-            // In the TR-909, this encoder function does nothing [SIZZLE FW]
-            break;
-          case 3:  //octave
-            keybOct = EncGet(keybOct, 1);
-            keybOct = constrain(keybOct, 0, 7);
-            static unsigned int prevKeybOct;
-            if (keybOct != prevKeybOct) {
-              prevKeybOct = keybOct;
-              needLcdUpdate = TRUE;
-            }
             break;
         }
     }

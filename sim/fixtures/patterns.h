@@ -33,10 +33,10 @@
 
 /* MIDI note constants for EXT_INST.
  * EXT_TRACK_NOTES[track] = 36+track (wire = note+12 = 48..63 = 0x30..0x3F).
- * MIDI_ACCENT_VELOCITY = 16 (pinned bug, DL-015). */
+ * An accented step sends MIDI_HIGH_VELOCITY + MIDI_ACCENT_VELOCITY = 111 + 16. */
 #define FX_EXT_WIRE_BASE    48u   /* 36 + 12 transpose */
 #define FX_EXT_WIRE(track)  ((uint8_t)(FX_EXT_WIRE_BASE + (track)))
-#define FX_MIDI_ACCENT_VEL  16u   /* pinned bug: quieter than expected */
+#define FX_MIDI_ACCENT_VEL  127u  /* accent adds on top of the nominal high velocity */
 
 /* Pattern fixture data structure (mirrors firmware's Pattern struct fields
  * needed to build EEPROM images and inject via I2C EEPROM seed). */
@@ -78,6 +78,20 @@ extern const fx_pattern_t FX_PTRN_FLAM;
 /* EXT_INST pattern: extTrack[0] and extTrack[3] active on steps 0,8;
  * EXT_INST velocity set to HIGH_VEL; accent on step 8 (pinned bug test). */
 extern const fx_pattern_t FX_PTRN_EXT;
+
+/* BD and ext tracks 0/3 on every step: lets a test measure, per step, the delay
+ * between the analog trigger CountPPQN() writes inline and the ext note-on the
+ * loop transmits. */
+extern const fx_pattern_t FX_PTRN_EXT_SYNC;
+
+/* All 16 ext tracks on every step: exceeds the UART TX ring, so the clock-side
+ * transmit must decline and the loop must still deliver every step. */
+extern const fx_pattern_t FX_PTRN_EXT_DENSE;
+
+/* Six ext tracks on every step - a realistic multi-track arrangement, and the case
+ * a single-track measurement hides: the sixth note-on is serialised behind the other
+ * five, so this is what the user actually hears as "the MIDI is late". */
+extern const fx_pattern_t FX_PTRN_EXT_BUSY;
 
 /* Two-pattern group (used in pattern-swap test):
  * FX_PTRN_GROUP_A: BD on all steps (produces non-zero trig word)

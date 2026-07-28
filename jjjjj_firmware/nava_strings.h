@@ -26,28 +26,6 @@ const char txt_INST13[] PROGMEM  ="EXT";
 const char txt_INST14[] PROGMEM  =" CH";
 const char txt_INST15[] PROGMEM  =" OH";
 
-const char txt_OCT0[] PROGMEM   ="-3";
-const char txt_OCT1[] PROGMEM   ="-2";
-const char txt_OCT2[] PROGMEM   ="-1";
-const char txt_OCT3[] PROGMEM   ="+0";
-const char txt_OCT4[] PROGMEM   ="+1";
-const char txt_OCT5[] PROGMEM   ="+2";
-const char txt_OCT6[] PROGMEM   ="+3";
-const char txt_OCT7[] PROGMEM   ="+4";
-
-const char txt_NOTE0[] PROGMEM   =" C";
-const char txt_NOTE1[] PROGMEM   ="C#";
-const char txt_NOTE2[] PROGMEM   =" D";
-const char txt_NOTE3[] PROGMEM   ="D#";
-const char txt_NOTE4[] PROGMEM   =" E";
-const char txt_NOTE5[] PROGMEM   =" F";
-const char txt_NOTE6[] PROGMEM   ="F#";
-const char txt_NOTE7[] PROGMEM   =" G";
-const char txt_NOTE8[] PROGMEM   ="G#";
-const char txt_NOTE9[] PROGMEM   =" A";
-const char txt_NOTE10[] PROGMEM   ="A#";
-const char txt_NOTE11[] PROGMEM   =" B";
-
 const char txt_SYNC0[] PROGMEM   ="MST";
 const char txt_SYNC1[] PROGMEM   ="SLV";
 const char txt_SYNC2[] PROGMEM   ="EXP";                                        // [zabox] [1.028] 
@@ -99,13 +77,11 @@ PROGMEM const char * const selectInstString[]={
   txt_INST8,txt_INST9,txt_INST10,txt_INST11,
   txt_INST12,txt_INST13,txt_INST14,txt_INST15};
 
-//Octaves names------------------------------------------------------
-PROGMEM const char * const nameOct[] = { 
- txt_OCT0,txt_OCT1,txt_OCT2,txt_OCT3,txt_OCT4,txt_OCT5,txt_OCT6,txt_OCT7 };
-
-//Notes names----------------------------------------------------
-PROGMEM const char * const nameNote[] = { 
-  txt_NOTE0,txt_NOTE1,txt_NOTE2,txt_NOTE3,txt_NOTE4,txt_NOTE5,txt_NOTE6,txt_NOTE7,txt_NOTE8,txt_NOTE9,txt_NOTE10,txt_NOTE11};
+//Note names-------------------------------------------------------
+// Fixed two-char cells rather than a pointer table: 24 bytes of PROGMEM against the
+// ~60 that 12 strings plus 12 pointers would take, and the index is arithmetic.
+// A trailing space marks a one-character name.
+const char noteNames[] PROGMEM = "C C#D D#E F F#G G#A A#B ";
 
 //Special character-----------------------------------------------
 byte font0[8] = {

@@ -177,8 +177,23 @@ uint64_t boot_wait_ready(nava_sim_t *ctx, uint64_t max_cycles) {
 }
 
 /* Anything arriving within this window of the previous trigger word is the
- * Timer2 restore write for that same step, not a new step. */
-#define ONSET_GAP_MIN (NAVA_TRIG_OFF_CYCLES + CYCLE_TOLERANCE * 16ULL)
+ * Timer2 restore write for that same step, not a new step.
+ *
+ * This is a classification threshold, not an assertion tolerance, so it wants to sit
+ * in the middle of a wide empty bracket rather than just clear of one edge.  It was
+ * NAVA_TRIG_OFF_CYCLES + CYCLE_TOLERANCE*16 = 32512, only ~500 cycles above the thing
+ * it excludes: the restore is observed at the TRIG_CS deassert that ends a 2-byte SPI
+ * burst, so its measured delta carries the Timer1 ISR's own length, and adding work to
+ * CountPPQN() pushed it to 32614 - past the threshold, where it was counted as a step
+ * onset and silently shifted every index after it.  That failure mode is invisible
+ * except as a nonsensical inter-onset delta.
+ *
+ * The bracket: above the restore interval (32000 plus ISR latency, order 1k cycles),
+ * below both the flam interval (320000, which the flam test must still see as an
+ * onset) and the shortest step period the suite runs (2000064 at 120 BPM / 1-16;
+ * 480000 at the firmware's fastest legal 250 BPM / 1-32).  4x the restore interval
+ * sits an order of magnitude clear on both sides. */
+#define ONSET_GAP_MIN (NAVA_TRIG_OFF_CYCLES * 4ULL)
 
 const sim_event_t *event_log_find_step_onset(const event_log_t *log,
                                               uint64_t from, int n) {

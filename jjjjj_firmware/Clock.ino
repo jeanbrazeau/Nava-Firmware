@@ -69,6 +69,26 @@ void CountPPQN() {
 
     if (ppqn % pattern[ptrnBuffer].scale == 0) stepChanged = TRUE;  //[oort]one: only used locally here, not needed, extend this if instead?
 
+    // Release the sounding ext notes a couple of ticks BEFORE the next step instead of
+    // at it. Held here, every active track costs 4 bytes at the step boundary (its
+    // note-off then its note-on) and MIDI is serial, so the last track of a 6-track step
+    // landed 8ms behind the analog trigger it should have hit with. Releasing early
+    // leaves the boundary carrying note-ons only - 2 bytes per track - and the releases
+    // ride in dead time where nothing is time-critical.
+    // Same boundary expression as the step test below, offset by the lead; shufPolarity
+    // already holds the value the NEXT boundary will use, having been flipped at the last
+    // step. Adding PPQN keeps the sum non-negative for small ppqn against a negative
+    // shuffle offset, and cannot shift the result because every scale divides PPQN.
+    // The two conditions can never coincide: they differ by EXT_RELEASE_LEAD, which is
+    // smaller than the smallest scale.
+    if (extReleaseArmed
+        && ((ppqn + PPQN + shuffle[(pattern[ptrnBuffer].shuffle) - 1][shufPolarity] + EXT_RELEASE_LEAD)
+            % pattern[ptrnBuffer].scale) == 0) {
+      extReleaseArmed = FALSE;
+      extPendingOff = TRUE;
+      ServiceExtMidiNotesFromClock();
+    }
+
     if (((ppqn + shuffle[(pattern[ptrnBuffer].shuffle) - 1][shufPolarity]) % pattern[ptrnBuffer].scale == 0) && stepChanged) {  //Each Step
       stepChanged = FALSE;                                                                                                      //flag that we already trig this step
       shufPolarity = !shufPolarity;
@@ -132,44 +152,72 @@ void CountPPQN() {
       }
 
       //Trig external instrument (TR-909 STYLE - polyphonic)---------
-      InitMidiNoteOff(); // Turn off any previously playing notes
-      boolean anyExtTriggered = FALSE;
+      // Only record what should sound; ServiceExtMidiNotes() transmits it from the
+      // main loop. Sending here costs up to 16 note-offs plus 16 note-ons = 96 bytes
+      // against Serial1's 64 byte TX buffer, and HardwareSerial busy-waits on UDRE
+      // with interrupts disabled, so a dense step blocks this function for ~30ms
+      // while a PPQN tick at 120 BPM is ~5.2ms - the MIDI clock and DIN sync
+      // generated a few lines above would collapse.
+      // A queued step that is overtaken before the loop drains it is coalesced away
+      // (SLAVE runs CountPPQN four times in a row from HandleClock): the older step's
+      // notes were about to be cut by this one anyway, and extPendingOff is sticky
+      // so the sounding notes still get their note-off.
+      // The ext layer reads its own position. extLength equals length unless LAST STEP
+      // was used inside EXT INST edit mode, in which case the MIDI tracks loop shorter
+      // than the kit and the two lanes phase against each other. Direction is
+      // deliberately not applied here: BACKWARD/PING_PONG/RANDOM are defined against
+      // pattern.length, and re-deriving them from a different length would make the ext
+      // lane disagree with the drums even when the two lengths match.
+      extCurStep = (pattern[ptrnBuffer].extLength == pattern[ptrnBuffer].length)
+                     ? curStep
+                     : extStepCount;
+
+      byte extVelocity = HIGH_VEL;
+      unsigned int extOnMask = 0;
       for (byte track = 0; track < 16; track++) {
-        if (bitRead(pattern[ptrnBuffer].extTrack[track], curStep)) {
-          anyExtTriggered = TRUE;
-
-          // Get velocity (shared across all tracks)
-          byte velocity = HIGH_VEL;
+        if (bitRead(pattern[ptrnBuffer].extTrack[track], extCurStep)) bitSet(extOnMask, track);
+      }
 #if MIDI_EXT_CHANNEL
-          if (pattern[ptrnBuffer].velocity[EXT_INST][curStep] > 0) {
-            velocity = pattern[ptrnBuffer].velocity[EXT_INST][curStep];
-            velocity = map(velocity, instVelLow[EXT_INST], instVelHigh[EXT_INST],
-                          MIDI_LOW_VELOCITY, MIDI_HIGH_VELOCITY);
-          }
-          if (bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) {
-            velocity = MIDI_ACCENT_VELOCITY;
-          }
-#endif
-
-          // Send note-on for this track
-          byte noteToSend = pgm_read_byte(&EXT_TRACK_NOTES[track]);
-#if MIDI_EXT_CHANNEL
-          MidiSendNoteOn(seq.EXTchannel, noteToSend, velocity);
-#else
-          MidiSendNoteOn(seq.TXchannel, noteToSend, velocity);
-#endif
-
-          extTrackNoteOn[track] = TRUE;  // Track for note-off
+      if (extOnMask) {
+        // Velocity is shared across all tracks of the step
+        // extCurStep: the EXT_INST velocity lane belongs to the ext layer and moves with
+        // it. TOTAL_ACC below stays on curStep - it accents the whole machine at that
+        // moment, so it has to line up with the kit rather than with the ext loop.
+        if (pattern[ptrnBuffer].velocity[EXT_INST][extCurStep] > 0) {
+          long scaled = map(pattern[ptrnBuffer].velocity[EXT_INST][extCurStep],
+                            instVelLow[EXT_INST], instVelHigh[EXT_INST],
+                            MIDI_LOW_VELOCITY, MIDI_HIGH_VELOCITY);
+          // A stored velocity outside the instVel table range maps past 127 and would
+          // wrap when the MIDI library masks to 7 bits, landing near the bottom instead
+          extVelocity = constrain(scaled, 1L, 127L);
+        }
+        if (bitRead(pattern[ptrnBuffer].inst[TOTAL_ACC], curStep)) {
+          // Accent sits on top of the nominal high velocity, as the drum path does
+          extVelocity = MIDI_HIGH_VELOCITY + MIDI_ACCENT_VELOCITY;
         }
       }
-
-      if (anyExtTriggered) {
-        midiNoteOnActive = TRUE;
-      }
+#endif
+      extPendingVel = extVelocity;
+      extPendingOn = extOnMask;
+      // Still set unconditionally: if the early release did not get out in time - a very
+      // short shuffled gap, or a burst the UART could not absorb - this is the safety net
+      // that keeps off-before-on ordering intact, degrading to the old behaviour for that
+      // step rather than stranding a note.
+      extPendingOff = TRUE;
+      extReleaseArmed = (extOnMask != 0);
+      // Send it here when the UART has room, so the note is not held back by whatever
+      // the loop is doing - an end-of-measure LCD repaint blocks it for ~14ms. Declines
+      // and leaves the step queued if transmitting could block; the loop still drains.
+      ServiceExtMidiNotesFromClock();
 
       //TRIG_HIGH;
       //ResetDoutTrig();
       stepCount++;
+      // Wraps on its own length, so a shorter ext loop phases against the kit rather
+      // than truncating the pattern. Guarded against a stored length of 0 from a bank
+      // that has not been through InitPattern() yet.
+      extStepCount++;
+      if (extStepCount > pattern[ptrnBuffer].extLength || extStepCount >= NBR_STEP) extStepCount = 0;
 
       //endMeasure
       //[oort] comment: This is executed at the last step of every bar.
@@ -185,7 +233,9 @@ void CountPPQN() {
         //[oort] addition
         if (nextPatternReady) {  //&& curSeqMode == PTRN_PLAY
           nextPatternReady = FALSE;
-          noteIndexCpt = 0; //[oort] also needed, the whole Externa Instr index count must be revised, it's a mess TO DO
+          // The incoming pattern brings its own extLength, so a phase carried over from
+          // the outgoing one would start the new ext loop at an arbitrary offset.
+          extStepCount = 0;
           ptrnBuffer = !ptrnBuffer;  //[oort] comment: switch between twin buffers
           prevPattern = curPattern;  //[oort] needed in tap mode
           curPattern = nextPattern;
