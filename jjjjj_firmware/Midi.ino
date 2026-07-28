@@ -144,9 +144,15 @@ void ServiceExtMidiNotesFromClock() {
         if (bitRead(extPendingOn, track)) messages++;
         if (extPendingOff && extTrackNoteOn[track]) messages++;
       }
-      // Budget 3 bytes per message: running status usually does better and never
-      // worse, so a fit predicted here is a fit in fact.
-      if ((int)messages * 3 <= Serial1.availableForWrite()) {
+      // Two bytes per message plus at most one status byte. Every ext message is a
+      // note-on on one channel - releases are note-on velocity 0 - and MySettings
+      // forces UseRunningStatus for every build, so the status byte is emitted once
+      // and then never again until a SysEx transfer resets it.
+      // Budgeting 3 bytes each was pessimistic in the wrong direction: it declined
+      // steps that would have fit, handing them to the loop where an end-of-measure
+      // LCD repaint blocks ~14ms - 10x the entire wire time of the step it was
+      // protecting. The cliff moves from 10 tracks to 15.
+      if ((int)messages * 2 + 1 <= Serial1.availableForWrite()) {
         noteOnMask = extPendingOn;
         velocity = extPendingVel;
         noteOffDue = extPendingOff;

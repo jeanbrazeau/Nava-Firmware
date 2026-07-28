@@ -33,20 +33,29 @@ void LcdUpdate();
 
 #if MIDI_HAS_SYSEX
 #include "Sysex.h"
+#endif
+
+// Running status must NOT depend on the SysEx build flag. features.h leaves
+// MIDI_HAS_SYSEX off while platformio.ini forces it on, and that flag used to select
+// between MySettings and MIDI_CREATE_INSTANCE's DefaultSettings, where
+// UseRunningStatus is false. With it false every external-instrument note costs 3
+// bytes instead of 2, adding 320us per track to the gap between an analog voice and
+// its MIDI note - so the two supported build paths silently disagreed about a
+// timing-critical setting, and the Arduino IDE build documented in CLAUDE.md got the
+// slow one. ServiceExtMidiNotesFromClock() now budgets on the assumption that this is
+// true, so it has to hold for every build.
 struct MySettings : public midi::DefaultSettings {
   //    static const long BaudRate = 31250;
-  static const unsigned SysExMaxSize = SYSEX_BUFFER_SIZE + 76;  // Accept SysEx messages up to 2176 bytes long.
   static const bool UseRunningStatus = true;
   static const bool HandleNullVelocityNoteOnAsNoteOff = true;
+#if MIDI_HAS_SYSEX
+  static const unsigned SysExMaxSize = SYSEX_BUFFER_SIZE + 76;  // Accept SysEx messages up to 2176 bytes long.
+#endif
 };
 
 //MIDI_CREATE_CUSTOM_INSTANCE(HardwareSerial, Serial1, MIDI, MySettings);  // This does NOT change the Sysex Settings !!!
 midi::SerialMIDI<HardwareSerial> Serial1MIDI(Serial1);
 midi::MidiInterface<midi::SerialMIDI<HardwareSerial>, MySettings> MIDI((midi::SerialMIDI<HardwareSerial> &)Serial1MIDI);
-
-#else
-MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
-#endif
 
 #if DEBUG
 #include "src/MemoryFree/MemoryFree.h"

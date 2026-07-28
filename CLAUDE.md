@@ -500,6 +500,28 @@ reported 1.27 ms while the hardware sounded 6 ms late. At 120 BPM:
   burst the UART could not absorb - the step falls back to the interleaved ordering rather
   than stranding a note.
 
+Running status is load-bearing for all of the above and must not be allowed to depend on
+the build. `MySettings` (`jjjjj_firmware.ino`) sets `UseRunningStatus` unconditionally,
+because it used to sit inside `#if MIDI_HAS_SYSEX` - a flag `features.h` leaves off and
+`platformio.ini` forces on. The `#else` branch built the instance from `DefaultSettings`,
+where running status is false, so every ext note cost 3 bytes instead of 2 and the
+Arduino IDE build documented above silently ran 50% more wire time than the PlatformIO
+one. `ServiceExtMidiNotesFromClock()` now budgets `2 * messages + 1` bytes on the
+strength of this, so it has to hold everywhere. That budget was `3 * messages`, which
+declined steps that would have fit and handed them to the loop, where an end-of-measure
+LCD repaint blocks ~14 ms - an order of magnitude more than the wire time it was
+protecting. The decline threshold moves from 10 tracks to 15.
+
+The MASTER MIDI clock byte is written straight to `UDR1` near the top of `CountPPQN()`,
+and every scale value is a multiple of 4, so `ppqn % 4 == 0` coincides with every
+unshuffled step boundary - the clock byte always precedes the step's ext notes. It costs
+nothing: roughly 253 us of step computation runs between that write and the trigger
+latch, and another ~195 us before the first note byte reaches `UDR1`, by which point the
+clock byte finished transmitting at 320 us. Do not "fix" this by moving the clock byte
+after the notes; it would delay it by the whole step compute on step ticks only while
+leaving intervening clock bytes on time, which is the worst shape of jitter for a slaved
+device and a 16x regression of the measured 0.027 ms.
+
 What remains is the wire itself. Under running status a step costs one status byte plus
 two per note-on, so the last note of an N-track step cannot arrive sooner than
 `(1 + 2N) * 320 us`; the 6-track measurement of 4.13 ms is within 30 us of that floor.
