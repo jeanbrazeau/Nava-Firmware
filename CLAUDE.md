@@ -25,8 +25,8 @@ Key hardware systems include:
 
 ## Repository Structure
 
-- `jjjjj_firmware/`: Main firmware directory containing Arduino code
-  - `jjjjj_firmware.ino`: Main entry point for the Arduino firmware
+- `downtown-solutions_firmware/`: Main firmware directory containing Arduino code
+  - `downtown-solutions_firmware.ino`: Main entry point for the Arduino firmware
   - Various `.ino` files for different functional components (Button, Clock, Dio, etc.)
   - `define.h`: Contains all definitions, constants, and global variables
   - `features.h`: Feature toggles and configuration options
@@ -45,7 +45,7 @@ Key hardware systems include:
 
 The firmware is developed using Arduino IDE. To compile and upload:
 
-1. Open the jjjjj_firmware.ino file in Arduino IDE 2.0.4 (recommended version)
+1. Open the downtown-solutions_firmware.ino file in Arduino IDE 2.0.4 (recommended version)
 2. Select the appropriate board settings:
    - Board: ATmega1284
    - Processor: ATmega1284 (16MHz)
@@ -121,10 +121,10 @@ the loop otherwise - see "Transmission timing" under the EXT_INST section.
 
 # Detailed Codebase Analysis
 
-## File Structure (jjjjj_firmware/)
+## File Structure (downtown-solutions_firmware/)
 
 ### Main Entry Point
-- **jjjjj_firmware.ino** (206 lines)
+- **downtown-solutions_firmware.ino** (206 lines)
   - Setup: Initializes I/O, LCD, MIDI, bootloader check, pattern/track loading
   - Loop: Expander mode, MIDI read, button/encoder polling, LED/LCD updates, sequencer configuration
 
@@ -586,7 +586,7 @@ reported 1.27 ms while the hardware sounded 6 ms late. At 120 BPM:
   than stranding a note.
 
 Running status is load-bearing for all of the above and must not be allowed to depend on
-the build. `MySettings` (`jjjjj_firmware.ino`) sets `UseRunningStatus` unconditionally,
+the build. `MySettings` (`downtown-solutions_firmware.ino`) sets `UseRunningStatus` unconditionally,
 because it used to sit inside `#if MIDI_HAS_SYSEX` - a flag `features.h` leaves off and
 `platformio.ini` forces on. The `#else` branch built the instance from `DefaultSettings`,
 where running status is false, so every ext note cost 3 bytes instead of 2 and the

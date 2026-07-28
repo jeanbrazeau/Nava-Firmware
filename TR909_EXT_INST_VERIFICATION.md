@@ -1,7 +1,7 @@
 # TR-909 External Instrument Feature Verification Report
 
 **Date:** 2026-07-26 (supersedes the 2025-12-26 revision)
-**Firmware:** Nava Oortone (jjjjj_firmware)
+**Firmware:** Nava Oortone (downtown-solutions_firmware)
 **Feature:** TR-909 Style Multi-Track External Instrument Sequencer
 
 ## Executive Summary
@@ -71,7 +71,7 @@ than a note name, because the name for a given number depends on the octave conv
 
 **Threading model**
 `CountPPQN()` records a step into the queue and transmits nothing (Clock.ino:167-169).
-`ServiceExtMidiNotes()` (Midi.ino:51) drains it from `loop()` right after `MIDI.read()` (jjjjj_firmware.ino:167),
+`ServiceExtMidiNotes()` (Midi.ino:51) drains it from `loop()` right after `MIDI.read()` (downtown-solutions_firmware.ino:167),
 so under SLAVE sync — where the MIDI parser drives `CountPPQN()` — a queued step goes out with
 no added delay. The queue is latched and cleared inside one `ATOMIC_BLOCK`; transmission
 happens outside it.
@@ -206,4 +206,4 @@ checks above should be run first.
 ---
 
 **Report revised:** 2026-07-26
-**Firmware Version:** Nava Oortone (jjjjj_firmware)
+**Firmware Version:** Nava Oortone (downtown-solutions_firmware)

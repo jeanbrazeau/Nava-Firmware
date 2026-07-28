@@ -100,8 +100,8 @@
           },
           {
             "id": "DL-006",
-            "decision": "Use/rebuild the existing firmware.elf via `pio run -e nava_sysex` through the src->jjjjj_firmware symlink; do NOT run migrate_to_platformio.sh.",
-            "reasoning": "ELF present and valid (64,192 bytes, built today). The src symlink resolves the custom SPI/WireN/MemoryFree libs without lib_deps. Migration is unnecessary and risks breaking a working build. A rebuild is still required because the working tree has dirty jjjjj_firmware/ edits that may diverge from the cached ELF.",
+            "decision": "Use/rebuild the existing firmware.elf via `pio run -e nava_sysex` through the src->downtown-solutions_firmware symlink; do NOT run migrate_to_platformio.sh.",
+            "reasoning": "ELF present and valid (64,192 bytes, built today). The src symlink resolves the custom SPI/WireN/MemoryFree libs without lib_deps. Migration is unnecessary and risks breaking a working build. A rebuild is still required because the working tree has dirty downtown-solutions_firmware/ edits that may diverge from the cached ELF.",
             "refs": []
           },
           {
@@ -127,7 +127,7 @@
           {
             "id": "DL-010",
             "decision": "Gate all system-mutating actions on execution-time user consent: `brew install libelf`, `git submodule update --init`, and any `git commit` of sim/, .gitmodules, or simavr.version. Submodule init is a consent-gated pre-step performed outside setup_simavr.sh, not embedded in it.",
-            "reasoning": "The repo has unrelated dirty jjjjj_firmware/ edits; committing must not entangle them. Network fetch and package install mutate the host. setup_simavr.sh must not silently trigger an unauthorized `git submodule update --init` on invocation; it should assume the submodule is already populated. Consent policy per environment rules and Open Q2.",
+            "reasoning": "The repo has unrelated dirty downtown-solutions_firmware/ edits; committing must not entangle them. Network fetch and package install mutate the host. setup_simavr.sh must not silently trigger an unauthorized `git submodule update --init` on invocation; it should assume the submodule is already populated. Consent policy per environment rules and Open Q2.",
             "refs": [
               "Open Q2"
             ]
@@ -225,7 +225,7 @@
           {
             "id": "C-007",
             "type": "MUST-NOT",
-            "text": "MUST NOT commit sim/, .gitmodules, or simavr.version, run brew install, or init the submodule without explicit user consent; MUST NOT entangle the unrelated dirty jjjjj_firmware/ edits into any sim commit; setup_simavr.sh MUST NOT embed an unconditional `git submodule update --init`."
+            "text": "MUST NOT commit sim/, .gitmodules, or simavr.version, run brew install, or init the submodule without explicit user consent; MUST NOT entangle the unrelated dirty downtown-solutions_firmware/ edits into any sim commit; setup_simavr.sh MUST NOT embed an unconditional `git submodule update --init`."
           },
           {
             "id": "C-008",
@@ -235,7 +235,7 @@
           {
             "id": "C-009",
             "type": "SHOULD",
-            "text": "The firmware ELF SHOULD be rebuilt via `pio run -e nava_sysex` (not reused blindly) because the working tree has dirty jjjjj_firmware/ edits that may diverge from the cached 64KB ELF."
+            "text": "The firmware ELF SHOULD be rebuilt via `pio run -e nava_sysex` (not reused blindly) because the working tree has dirty downtown-solutions_firmware/ edits that may diverge from the cached 64KB ELF."
           }
         ],
         "risks": [
@@ -390,7 +390,7 @@
             {
               "id": "CI-010",
               "file": "/Users/admin/offline/Nava-Firmware/sim/scripts/build_firmware.sh",
-              "behavior": "Confirm the script rebuilds via `pio run -e nava_sysex` through the src->jjjjj_firmware symlink and fails loudly if the ELF is missing/empty. Add a `strings` probe to print the ELF mmcu hint, satisfying the acceptance criterion without enforcing a specific string (since registry name and mmcu are independent).",
+              "behavior": "Confirm the script rebuilds via `pio run -e nava_sysex` through the src->downtown-solutions_firmware symlink and fails loudly if the ELF is missing/empty. Add a `strings` probe to print the ELF mmcu hint, satisfying the acceptance criterion without enforcing a specific string (since registry name and mmcu are independent).",
               "decision_refs": [
                 "DL-006",
                 "C-009"
@@ -653,17 +653,17 @@
             "/Users/admin/offline/Nava-Firmware/.gitmodules",
             "/Users/admin/offline/Nava-Firmware/sim/ (staged)"
           ],
-          "requirements": "ONLY on explicit user consent, commit the sim scaffold, .gitmodules, and the repinned simavr.version on a branch, cleanly separated from the unrelated dirty jjjjj_firmware/ edits.",
+          "requirements": "ONLY on explicit user consent, commit the sim scaffold, .gitmodules, and the repinned simavr.version on a branch, cleanly separated from the unrelated dirty downtown-solutions_firmware/ edits.",
           "acceptance_criteria": [
             "No commit occurs without an explicit user instruction (default state: leave untracked).",
-            "If committed: a dedicated branch, staging only sim/, .gitmodules, and simavr.version — never the dirty jjjjj_firmware/*.ino edits.",
+            "If committed: a dedicated branch, staging only sim/, .gitmodules, and simavr.version — never the dirty downtown-solutions_firmware/*.ino edits.",
             "Commit message ends with the required Co-Authored-By trailer."
           ],
           "code_intents": [
             {
               "id": "CI-050",
               "file": "/Users/admin/offline/Nava-Firmware/.gitmodules",
-              "behavior": "If and only if the user consents to committing, ensure the submodule stanza (sim/simavr -> github.com/buserror/simavr.git) is staged alongside sim/ and simavr.version. Otherwise take no git action. Never stage jjjjj_firmware/ changes.",
+              "behavior": "If and only if the user consents to committing, ensure the submodule stanza (sim/simavr -> github.com/buserror/simavr.git) is staged alongside sim/ and simavr.version. Otherwise take no git action. Never stage downtown-solutions_firmware/ changes.",
               "decision_refs": [
                 "DL-010",
                 "C-007"
@@ -678,7 +678,7 @@
               "file": "/Users/admin/offline/Nava-Firmware/.gitmodules",
               "diff": "--- /dev/null\n+++ b/.gitmodules\n@@ -0,0 +1,3 @@\n+[submodule \"sim/simavr\"]\n+\tpath = sim/simavr\n+\turl = https://github.com/buserror/simavr.git\n",
               "doc_diff": "",
-              "comments": "CONSENT-GATED: this diff is provided for reference only. Do NOT apply unless the user explicitly instructs a commit. The stanza registers the sim/simavr submodule against the upstream repo at the pinned hash recorded in sim/simavr.version. Staged alongside this file must be sim/ (all harness, tests, fixtures, scripts, Makefile, README) and sim/simavr.version — never the dirty jjjjj_firmware/*.ino edits. git add must be specific: `git add .gitmodules sim/ sim/simavr.version` with explicit exclusion of jjjjj_firmware/."
+              "comments": "CONSENT-GATED: this diff is provided for reference only. Do NOT apply unless the user explicitly instructs a commit. The stanza registers the sim/simavr submodule against the upstream repo at the pinned hash recorded in sim/simavr.version. Staged alongside this file must be sim/ (all harness, tests, fixtures, scripts, Makefile, README) and sim/simavr.version — never the dirty downtown-solutions_firmware/*.ino edits. git add must be specific: `git add .gitmodules sim/ sim/simavr.version` with explicit exclusion of downtown-solutions_firmware/."
             }
           ]
         }
@@ -815,7 +815,7 @@
       "attempt": 1,
       "lastToolName": "Bash",
       "lastToolSummary": "grep -n \"MidiSendNoteOn\\|MidiSendNoteOff\\|EXT_TRACK_NOTES\\|…",
-      "promptPreview": "SCOUT — firmware pin/peripheral cartographer\n\nInvestigate and report (file:line, dense):\nExtract the ground-truth hardware interface the harness must emulate, from the real firmware. Read /Users/admin/offline/Nava-Firmware/jjjjj_firmware/define.h fully for: SPI pin/port assignments, shift-register chain order (dinSr[0..4] input, LED/trigger output word), MCP4822 DAC control (CS pin, channel/gain c…",
+      "promptPreview": "SCOUT — firmware pin/peripheral cartographer\n\nInvestigate and report (file:line, dense):\nExtract the ground-truth hardware interface the harness must emulate, from the real firmware. Read /Users/admin/offline/Nava-Firmware/downtown-solutions_firmware/define.h fully for: SPI pin/port assignments, shift-register chain order (dinSr[0..4] input, LED/trigger output word), MCP4822 DAC control (CS pin, channel/gain c…",
       "lastProgressAt": 1785007143873,
       "tokens": 65529,
       "toolCalls": 20,
@@ -920,7 +920,7 @@
       "tokens": 36947,
       "toolCalls": 11,
       "durationMs": 254073,
-      "resultPreview": "I have sufficient grounding. Key environment findings: ELF present with mmcu `atmega1284p` (harness passes `\"atmega1284\"` to `avr_make_mcu_by_name` — a likely mismatch), simavr submodule empty (0 files), libelf NOT installed (keg-only path needed), brew/pio/arm64 all confirmed, `src -> jjjjj_firmware` symlink intact, version file holds the fabricated pin. Emitting the plan.\n\n```json\n{\n  \"overview\"…"
+      "resultPreview": "I have sufficient grounding. Key environment findings: ELF present with mmcu `atmega1284p` (harness passes `\"atmega1284\"` to `avr_make_mcu_by_name` — a likely mismatch), simavr submodule empty (0 files), libelf NOT installed (keg-only path needed), brew/pio/arm64 all confirmed, `src -> downtown-solutions_firmware` symlink intact, version file holds the fabricated pin. Emitting the plan.\n\n```json\n{\n  \"overview\"…"
     },
     {
       "type": "workflow_phase",
