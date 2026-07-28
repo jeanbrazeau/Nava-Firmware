@@ -161,7 +161,10 @@ void setup() {
   lcd.setCursor(0, 0);
   lcd.print("downtown");  //[oort] 16 characters
   lcd.setCursor(0, 1);
-  lcd.print("  solutions 0.91b ");
+  // Exactly 16 characters, like the line above it. The old string was 18 - two leading
+  // spaces and a trailing one - so "solutions" sat a column right of its intended indent
+  // and the last two characters were written into off-screen DDRAM.
+  lcd.print(" solutions 0.91b");
   delay(2000);
   LcdUpdate();  // [1.028] if started in expader mode
 }

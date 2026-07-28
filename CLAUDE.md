@@ -192,7 +192,7 @@ the loop otherwise - see "Transmission timing" under the EXT_INST section.
 
 ## Data Structures Deep Dive
 
-### Pattern Structure (360 bytes each)
+### Pattern Structure (393 bytes each)
 ```cpp
 struct Pattern {
   byte length;              // 0-15 (actual step count - 1)
@@ -205,6 +205,8 @@ struct Pattern {
   byte velocity[16][16];    // Velocity per instrument per step
                            // Bit 7 = flam flag, bits 0-6 = velocity value
   unsigned int extTrack[16];// 16-bit word per external track (each bit = step on/off)
+  unsigned int extAccent[16];// Second velocity level, per step per track (bit set = high)
+  byte extLength;           // Last step of the ext layer, independent of `length`
   byte groupPos;            // Position in pattern group/chain
   byte groupLength;         // Length of pattern group/chain
   byte totalAcc;            // Total accent track
@@ -213,7 +215,7 @@ struct Pattern {
 
 ### Memory Management Strategy
 - **pattern[2]**: Twin buffers - edit one (`!ptrnBuffer`) while playing other (`ptrnBuffer`)
-- **patternBank[16]**: Current bank cached in RAM (16 patterns × 360 bytes = 5.6KB)
+- **patternBank[16]**: Current bank cached in RAM (16 patterns × 393 bytes = 6.3KB)
 - **editedPatterns[16]**: Boolean flags to track which patterns need EEPROM save
 - **bufferedPattern**: Copy/paste buffer for pattern operations
 - **tempPattern**: Temporary buffer for EEPROM read/write operations
@@ -241,10 +243,12 @@ struct SeqConfig {
   unsigned int bpm;        // Current tempo
   unsigned int defaultBpm; // EEPROM stored tempo
   byte dir;                // Sequencer direction
-  byte configPage;         // Current config page (0-4)
+  byte configPage;         // Current config page (0-MAX_CONF_PAGE)
   boolean configMode;      // In config mode flag
   boolean setupNeedSaved;  // Config needs EEPROM save
   boolean muteModeHH;      // Hi-hat mute mode (link CH/OH)
+  byte extVelLow;          // Ext instrument velocity, single tap (default 63)
+  byte extVelHigh;         // Ext instrument velocity, double tap (default 111)
 };
 ```
 
@@ -408,10 +412,17 @@ The step buttons swap roles with the transport (`selectingTrack` in `ExtInstUpda
   step entry is the point of holding the transport open, and a sustained audition would
   collide with the note the sequencer is already sounding
 
-Programming toggles the step in `pattern[ptrnBuffer].extTrack[currentExtTrack]` and
-auditions for 50ms when adding. The audition is issued before the bit is set, because
-`ExtPreviewOn()` declines a preview the running sequencer would collide with and setting
-the bit first would make every addition look like a collision.
+Programming cycles the step through three states, the same cycle `InstValueGet()` gives
+the drum instruments: off -> `seq.extVelLow` -> `seq.extVelHigh` -> off. The pair is
+(`extTrack` bit, `extAccent` bit), and the accent bit is cleared on the way out so a step
+re-entered later starts at the low level, as a drum step does. Each press auditions for
+50ms at the level it just wrote, so the two are told apart by ear while programming. The
+audition is issued before the bit is set, because `ExtPreviewOn()` declines a preview the
+running sequencer would collide with and setting the bit first would make every addition
+look like a collision.
+
+The step LEDs carry the level the way the drum lane does: accented steps are lit on every
+pass, unaccented ones on one pass in four, so the panel reads at a glance.
 
 The encoder sets the selected track's note via `ExtSetTrackNote()`, which auditions the
 new pitch and moves an open sustained preview to it. Holding TEMPO yields the encoder
@@ -428,6 +439,50 @@ already moved past.
 
 Previews are owned by `ExtPreviewOn`/`ExtPreviewOff`/`ExtPreviewCheck` in key.ino so
 that a preview is never left sounding and never held open by `delay()`.
+
+### Velocity levels
+Each ext step carries one of two MIDI velocities, chosen per track by
+`pattern.extAccent[track]` - a 16-bit word per track, parallel to `extTrack`. Per track
+rather than per step: each ext track is an instrument in its own right, so accenting one
+must not raise every other track firing on the same step. That costs 32 bytes per pattern
+across the bank cache and the four buffers (~640 bytes of RAM); the per-step alternative
+would have cost nothing and been unable to express the case.
+
+The two levels are `seq.extVelLow` and `seq.extVelHigh`, set on the ext velocity config
+page (below) and defaulting to `MIDI_LOW_VELOCITY` (63) and `MIDI_HIGH_VELOCITY` (111).
+TOTAL_ACC adds `MIDI_ACCENT_VELOCITY` on top of whichever level the track already has,
+clamped to 127 - it lifts the step rather than flattening the dynamics inside it.
+
+`extAccent` persists in the 32 bytes the stored pattern format already reserved as padding
+after `extTrack`, so `PTRN_SIZE` is unchanged. It is stored INVERTED: a pattern written
+before this existed has zeros there, and those patterns played at the high level - the only
+level the ext lane had - so the complement decodes them as fully accented. Storing the mask
+directly would have silently halved the velocity of every existing ext track. Nothing
+distinguishes "never written" from a legal all-zero mask otherwise, and no signature byte
+would fit in the 32 bytes.
+
+`velocity[EXT_INST][16]`, the shared per-step lane the ext layer used to read, is no longer
+read by playback. `InitPattern()` still writes it at the high value so a build predating
+this change plays a pattern saved by this one as it did before.
+
+### Config page: ext instrument velocities
+SHIFT+TEMPO cycles the config pages; the ext velocity page is the last one
+(`CONF_PAGE_EXT_VEL`, 5 with `MIDI_HAS_SYSEX` and 4 without). It shows
+`low hi  ext vel` with the two levels below, the encoder button moves between the two
+fields, and the encoder sets each in 1..127. The floor is 1, not 0: a note-on with
+velocity 0 is a note-off on the wire, so a level of 0 would silence the lane rather than
+make it quiet. The two are not ordered against each other - inverting them is a legitimate
+way to make the second press the softer of the pair.
+
+The page is appended rather than inserted so the sysex and bootloader handlers, which test
+their page number literally, keep the numbers they were written against. `MAX_CONF_PAGE`
+is now derived from it, and the page walk in `Seq.ino` is a single increment-and-wrap
+rather than an if-chain duplicated in both `#if` branches.
+
+The pair lives in `seq` and persists in the setup EEPROM record (bytes 8-9 of a 64-byte
+block with 8 used). No signature is needed to spot a record written before they existed:
+those bytes read 0 or 0xFF, neither of which is a legal level, and both fall back to the
+compiled-in defaults.
 
 ### Output Enable (GUIDE)
 GUIDE latches sequenced external MIDI output on and off, replacing the metronome it used
@@ -477,8 +532,11 @@ accents the whole machine at that moment, so it has to line up with the kit rath
 with the ext loop.
 
 ### Playback
-`CountPPQN()` records the step into a queue: a track bitmask, the shared velocity and a
-sticky note-off request (`extPendingOn`, `extPendingVel`, `extPendingOff`). If a step is
+`CountPPQN()` records the step into a queue: a track bitmask, an accent mask naming the
+tracks that take the high level, the two velocities and a sticky note-off request
+(`extPendingOn`, `extPendingAcc`, `extPendingVel`, `extPendingVelAcc`, `extPendingOff`).
+The accent is queued as a mask rather than 16 per-track velocities because a step only ever
+carries the two levels the editor can program; `ExtTransmitStep()` picks per track. If a step is
 overtaken before the queue is drained the newer step wins, which is what the four
 consecutive `CountPPQN()` calls per incoming MIDI clock can produce. `InitMidiNoteOff()`
 discards a queued but untransmitted step before silencing what is sounding, so stop and
@@ -601,11 +659,11 @@ single-note sequencer it belonged to; the 16-track editor addresses steps direct
 
 ```
 RAM (16KB total):
-- Pattern buffers:        ~1.4KB (pattern[2] + bufferedPattern + tempPattern, 360 bytes each)
-- Pattern bank cache:     ~5.6KB (patternBank[16])
+- Pattern buffers:        ~1.5KB (pattern[2] + bufferedPattern + tempPattern, 393 bytes each)
+- Pattern bank cache:     ~6.3KB (patternBank[16])
 - Track buffers:          ~2KB (track[2])
 - Global variables:       ~3KB
-Total:                    ~12.7KB of 16KB (still tight)
+Total:                    ~13.5KB of 16KB (82%, measured by the PlatformIO build)
 
 EEPROM (4KB total):
 - Patterns (128):         ~57KB needed (doesn't fit!)

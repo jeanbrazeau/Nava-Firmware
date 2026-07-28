@@ -116,7 +116,9 @@ void SetLedsExpander() {
 
   if (seq.configMode) {
     if (flagLedIntensity >= 8) {
-      stepLeds = ~(1 << MAX_CONF_PAGE) & 0xF;
+      // One LED per available page. The old form masked to 0xF, which silently stopped
+      // counting once there were more than four pages.
+      stepLeds = (1 << MAX_CONF_PAGE) - 1;
       flagLedIntensity = 0;
     } else {
       stepLeds = (1 << (seq.configPage - 1));

@@ -104,9 +104,19 @@ void SavePattern(byte patternNbr)
     Wire.write((byte)(lowbyte));
     Wire.write((byte)(highbyte));
   }
-  // Pad to 64-byte page
-  for (byte j = 0; j < 32; j++) {
-    Wire.write((byte)(0));
+  // [TR-909 STYLE] Velocity levels go in the 32 bytes this page already reserved as
+  // padding, so PTRN_SIZE is unchanged and no stored pattern needs migrating.
+  //
+  // Stored INVERTED. Every pattern written before this existed - and every slot of an
+  // EEPROM that InitEEprom() zeroed - has zeros here, and the level those patterns
+  // played at was the high one, the only level the ext lane had. Storing the accent mask
+  // directly would decode all of them as unaccented and quietly halve the velocity of
+  // every existing ext track; storing its complement decodes them as accented, which is
+  // what they sounded like. No signature byte needed, and none would fit.
+  for (byte i = 0; i < 16; i++) {
+    unsigned int stored = ~pattern[ptrnBuffer].extAccent[i];
+    Wire.write((byte)(stored & 0xFF));
+    Wire.write((byte)((stored >> 8) & 0xFF));
   }
   Wire.endTransmission();
   delay(DELAY_WR);
@@ -171,9 +181,13 @@ void LoadPattern(byte patternNbr)
     pattern[!ptrnBuffer].extTrack[i] = (unsigned int)((Wire.read() & 0xFF) |
                                                        ((Wire.read() << 8) & 0xFF00));
   }
-  // Skip padding
-  for (byte j = 0; j < 32; j++) {
-    Wire.read();
+  // [TR-909 STYLE] Velocity levels, stored inverted in what used to be padding - see
+  // SavePattern(): zeros mean a pattern written before this existed, which played at the
+  // high level throughout.
+  for (byte i = 0; i < 16; i++) {
+    unsigned int stored = (unsigned int)((Wire.read() & 0xFF) |
+                                          ((Wire.read() << 8) & 0xFF00));
+    pattern[!ptrnBuffer].extAccent[i] = ~stored;
   }
 
   // Skip second 64-byte page (compatibility)
@@ -236,9 +250,11 @@ void LoadTempPattern(byte patternNbr)
     tempPattern.extTrack[i] = (unsigned int)((Wire.read() & 0xFF) |
                                               ((Wire.read() << 8) & 0xFF00));
   }
-  // Skip padding
-  for (byte j = 0; j < 32; j++) {
-    Wire.read();
+  // [TR-909 STYLE] Velocity levels, stored inverted - see SavePattern()
+  for (byte i = 0; i < 16; i++) {
+    unsigned int stored = (unsigned int)((Wire.read() & 0xFF) |
+                                          ((Wire.read() << 8) & 0xFF00));
+    tempPattern.extAccent[i] = ~stored;
   }
 
   // Skip second 64-byte page (compatibility)
@@ -319,7 +335,11 @@ void SaveSeqSetup()
 #endif
 #if CONFIG_BOOTMODE
   Wire.write((byte)(seq.BootMode)); // [Neuromancer]
-#endif    
+#endif
+  // [TR-909 STYLE] Ext instrument velocity levels, appended to the setup record. The
+  // block is 64 bytes with 8 used, so this needs no new allocation.
+  Wire.write((byte)(seq.extVelLow));
+  Wire.write((byte)(seq.extVelHigh));
   Wire.endTransmission();//end page transmission
   delay(DELAY_WR);//delay between each write page
 }
@@ -381,7 +401,18 @@ void LoadSeqSetup()
 #if CONFIG_BOOTMODE
   unsigned int bootmode = (Wire.read() & 0xFF);
   seq.BootMode = (SeqMode)constrain(bootmode, 0 ,4);
-#endif   
+#endif
+  // [TR-909 STYLE] Ext velocity levels. No signature needed to spot a setup record
+  // written before they existed: those bytes are 0 (InitEEprom zeroes the device) or
+  // 0xFF (never written), and neither is a legal level - a note-on with velocity 0 is a
+  // note-off, and 0xFF is outside the 7-bit range. Either falls back to the pair the
+  // firmware used before the levels were adjustable.
+  byte storedExtVelLow = (Wire.read() & 0xFF);
+  byte storedExtVelHigh = (Wire.read() & 0xFF);
+  seq.extVelLow = (storedExtVelLow >= 1 && storedExtVelLow <= MAX_VEL)
+                    ? storedExtVelLow : MIDI_LOW_VELOCITY;
+  seq.extVelHigh = (storedExtVelHigh >= 1 && storedExtVelHigh <= MAX_VEL)
+                     ? storedExtVelHigh : MIDI_HIGH_VELOCITY;
 }
 
 

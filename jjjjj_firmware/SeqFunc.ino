@@ -104,7 +104,10 @@ void InitPattern(Pattern* bufferToSet) {
     bufferToSet->velocity[RIDE][stp] = instVelHigh[RIDE];                                              //RIDE
     bufferToSet->velocity[TOTAL_ACC][stp] = HIGH_VEL;                                                  //TOTAL_ACC
     bufferToSet->velocity[TRIG_OUT][stp] = HIGH_VEL;                                                   //TRIG_OUT
-    bufferToSet->velocity[EXT_INST][stp] = instVelHigh[EXT_INST];                                      //EXT_INST, must sit inside the instVel range the MIDI map expects
+    // EXT_INST: no longer read by playback - the ext lane takes its two levels from
+    // extAccent[] per track. Still written at the high value so that a build predating
+    // that change, reading a pattern this one saved, plays the ext tracks as before.
+    bufferToSet->velocity[EXT_INST][stp] = instVelHigh[EXT_INST];
   }
   if (group.length) {
     prevShuf = bufferToSet->shuffle;
@@ -225,9 +228,10 @@ void CopyPatternToBuffer(byte patternNum) {
   bufferedPattern.flam = pattern[ptrnBuffer].flam;
   bufferedPattern.totalAcc = pattern[ptrnBuffer].totalAcc;
 
-  // [TR-909 STYLE] Copy external tracks
+  // [TR-909 STYLE] Copy external tracks with their velocity levels
   for (byte i = 0; i < 16; i++) {
     bufferedPattern.extTrack[i] = pattern[ptrnBuffer].extTrack[i];
+    bufferedPattern.extAccent[i] = pattern[ptrnBuffer].extAccent[i];
   }
 
   for (byte i = 0; i < NBR_INST; i++) {  //loop as many instrument for a page
@@ -253,9 +257,12 @@ void PasteBufferToPattern(byte patternNum) {
   pattern[ptrnBuffer].flam = bufferedPattern.flam;
   pattern[ptrnBuffer].totalAcc = bufferedPattern.totalAcc;
 
-  // [TR-909 STYLE] Paste external tracks
+  // [TR-909 STYLE] Paste external tracks with their velocity levels. Unlike extLength
+  // no guard is needed: every bit pattern is a legal accent mask, and its bits are read
+  // only where the extTrack bit pasted alongside it is set.
   for (byte i = 0; i < 16; i++) {
     pattern[ptrnBuffer].extTrack[i] = bufferedPattern.extTrack[i];
+    pattern[ptrnBuffer].extAccent[i] = bufferedPattern.extAccent[i];
   }
 
   for (byte i = 0; i < NBR_INST; i++) {  //loop as many instrument for a page

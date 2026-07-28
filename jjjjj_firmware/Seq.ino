@@ -18,6 +18,10 @@ void SeqParameter() {
   if (encBtn.justPressed) {
     curIndex++;
     if (curIndex >= MAX_CUR_POS) curIndex = 0;
+    // [TR-909 STYLE] The ext velocity page has two fields; without this the cursor
+    // walked into two empty columns where the encoder edited nothing.
+    if (seq.configMode && seq.configPage == CONF_PAGE_EXT_VEL
+        && curIndex >= MAX_CUR_POS_EXT_VEL) curIndex = 0;
 #if MIDI_HAS_SYSEX
     // Limit encoder positions for Sysex
     if (seq.configMode && seq.configPage == 3) {
@@ -167,26 +171,11 @@ void SeqParameter() {
         ExitExtInstEditMode();
         seq.configPage = 1; // Start at page 1
       } else {
-        // Already in config mode, cycle to next page
-#if MIDI_HAS_SYSEX
-        if (seq.configPage == 1) {
-          seq.configPage = 2; // Go to page 2
-        } else if (seq.configPage == 2) {
-          seq.configPage = 3; // Go to sysex page when MIDI_HAS_SYSEX is defined
-        } else if (seq.configPage == 3) {
-          seq.configPage = 4; // Go to bootloader page (page 4)
-        } else if (seq.configPage == 4) {
-          seq.configPage = 1; // Wrap back to page 1
-        }
-#else
-        if (seq.configPage == 1) {
-          seq.configPage = 2; // Go to page 2
-        } else if (seq.configPage == 2) {
-          seq.configPage = 3; // Go to bootloader page (page 3)
-        } else if (seq.configPage == 3) {
-          seq.configPage = 1; // Wrap back to page 1
-        }
-#endif
+        // Already in config mode, cycle to the next page and wrap. The page order is
+        // fixed by the numbering in define.h, so adding a page needs no change here -
+        // the if-chain this replaces had to be edited in both #if branches.
+        seq.configPage++;
+        if (seq.configPage > MAX_CONF_PAGE) seq.configPage = 1;
       }
 
       curIndex = 0;
@@ -410,6 +399,9 @@ void SeqParameter() {
     // reads - so it muted an instrument that drives no circuit and left the track intact.
     if (extInstEditMode && clearBtn.pressed && curSeqMode == PTRN_STEP && isRunning) {
       bitClear(pattern[ptrnBuffer].extTrack[currentExtTrack], extCurStep);
+      // Cleared with the step, so re-entering it starts at the low level - the drum
+      // branch below resets its velocity to instVelLow for the same reason.
+      bitClear(pattern[ptrnBuffer].extAccent[currentExtTrack], extCurStep);
       patternWasEdited = TRUE;
     }
     else if (clearBtn.pressed && curSeqMode != PTRN_TAP && isRunning) {
@@ -432,6 +424,7 @@ void SeqParameter() {
     // take the kit with it while the user is looking at a single MIDI lane.
     if (extInstEditMode && shiftBtn && clearBtn.justPressed && !isRunning && curSeqMode == PTRN_STEP) {
       pattern[ptrnBuffer].extTrack[currentExtTrack] = 0;
+      pattern[ptrnBuffer].extAccent[currentExtTrack] = 0;
       patternWasEdited = TRUE;
       needLcdUpdate = TRUE;
     }
@@ -455,6 +448,7 @@ void SeqParameter() {
       // [TR-909 STYLE] Clear all external tracks
       for (byte t = 0; t < 16; t++) {
         pattern[ptrnBuffer].extTrack[t] = 0;
+        pattern[ptrnBuffer].extAccent[t] = 0;
       }
       pattern[ptrnBuffer].shuffle = DEFAULT_SHUF;
       pattern[ptrnBuffer].flam = DEFAULT_FLAM;  // [1.028] flam

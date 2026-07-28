@@ -33,7 +33,14 @@ void fx_pattern_to_eeprom(const fx_pattern_t *p, uint8_t *dst) {
         d[64 + i * 2 + 0] = (uint8_t)(p->extTrack[i] & 0xFF);
         d[64 + i * 2 + 1] = (uint8_t)((p->extTrack[i] >> 8) & 0xFF);
     }
-    /* [96..127] = 32 bytes padding (zeroed) */
+    /* [96..127]: extAccent[16], stored INVERTED — SavePattern writes ~extAccent so that
+     * a pattern predating the second velocity level (all zeros here) decodes as fully
+     * accented, which is the single level the ext lane used to play at. */
+    for (int i = 0; i < 16; i++) {
+        uint16_t stored = (uint16_t)~p->extAccent[i];
+        d[96 + i * 2 + 0] = (uint8_t)(stored & 0xFF);
+        d[96 + i * 2 + 1] = (uint8_t)((stored >> 8) & 0xFF);
+    }
     /* [128..191] = second compat page (zeroed) */
 
     /* [192..447]: velocity[16][16] — 256 bytes in instrument-major order */
@@ -152,10 +159,40 @@ const fx_pattern_t FX_PTRN_EXT = {
         /* extTrack[3]: steps 0 and 8 */
         [3] = (1u<<0)|(1u<<8),
     },
+    /* Fully accented, which is also what a pattern saved before the second velocity
+     * level existed decodes to: ~0xFFFF = 0x0000, so this fixture serializes to a
+     * byte-identical image and doubles as the backward-compatibility case. */
+    .extAccent = {
+        [0] = 0xFFFFu,
+        [3] = 0xFFFFu,
+    },
     .velocity = {
-        /* EXT_INST velocity = instVelHigh[EXT_INST]=50 for step 0;
-         * step 8 will use MIDI_ACCENT_VELOCITY=16 due to TOTAL_ACC bit. */
+        /* The EXT_INST velocity lane is no longer read by playback (the level comes
+         * from extAccent now); kept populated because SavePattern still writes it. */
         [FX_EXT_INST] = {50,0,0,0, 0,0,0,0, 50,0,0,0, 0,0,0,0},
+    },
+};
+
+/* Two velocity levels on the same step across two tracks, which is the property a
+ * shared per-step velocity could not express:
+ *   step 0 - track 0 accented (111), track 3 unaccented (63)
+ *   step 8 - track 0 unaccented (63)
+ * No TOTAL_ACC anywhere, so the two levels are observed unmodified. */
+const fx_pattern_t FX_PTRN_EXT_LEVELS = {
+    .length  = 15,
+    .scale   = FX_SCALE_16,
+    .shuffle = 1,
+    .flam    = 0,
+    .inst    = {
+        /* EXT_INST = 13: required so Clock.ino's EXT trigger code fires */
+        [FX_EXT_INST]  = (1u<<0)|(1u<<8),
+    },
+    .extTrack = {
+        [0] = (1u<<0)|(1u<<8),
+        [3] = (1u<<0),
+    },
+    .extAccent = {
+        [0] = (1u<<0),   /* track 0 loud on step 0, soft on step 8 */
     },
 };
 

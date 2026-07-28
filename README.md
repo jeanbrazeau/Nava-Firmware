@@ -17,6 +17,11 @@ The version found here is called Nava Oortone (0Tone) and draws heavily on the p
 * Button logic improvements with less unexpected results
 * Working metronome
 * Improved External Instruments (midi note sequencer)
+* External Instrument steps have two velocity levels, programmed like the analog voices:
+  press a step once for the soft level, again for the loud one, a third time to clear.
+  Each of the 16 MIDI tracks keeps its own levels, so one track can accent where another
+  does not. The two MIDI velocities are set on the last config page (SHIFT+TEMPO to it,
+  encoder button to move between the fields), and default to 63 and 111.
 
 ## Flashing firmware over MIDI SysEx
 
@@ -46,11 +51,12 @@ either way, but its position moves:
 
 | Build | Pages | BOOTLOADER page | SHIFT+TEMPO presses |
 |---|---|---|---|
-| PlatformIO (`platformio.ini` sets `-DMIDI_HAS_SYSEX=1`) | 1, 2, 3 = SysEx dump, 4 | **4** | 4 |
-| Arduino IDE (`features.h` leaves `MIDI_HAS_SYSEX` commented out) | 1, 2, 3 | **3** | 3 |
+| PlatformIO (`platformio.ini` sets `-DMIDI_HAS_SYSEX=1`) | 1, 2, 3 = SysEx dump, 4, 5 = ext velocity | **4** | 4 |
+| Arduino IDE (`features.h` leaves `MIDI_HAS_SYSEX` commented out) | 1, 2, 3, 4 = ext velocity | **3** | 3 |
 
-Pressing SHIFT + TEMPO once more from the last page wraps back to page 1, so if you
-overshoot, keep going rather than starting over.
+BOOTLOADER is no longer the last page - the ext instrument velocity page sits after it -
+so one press past BOOTLOADER lands on `low hi  ext vel`, and the next wraps back to page
+1. If you overshoot, keep going rather than starting over.
 
 ### Building and sending
 

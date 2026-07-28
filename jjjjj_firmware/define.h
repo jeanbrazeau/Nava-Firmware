@@ -74,11 +74,17 @@ byte lcdVal = 0; //[oort] for traces
 
 //LCD
 #define MAX_CUR_POS 4
+// Config pages, in the order TEMPO cycles them: 1 and 2 are the sequencer setup, then
+// sysex (when built), then the bootloader entry, then the ext instrument velocities.
+// The ext page is appended rather than inserted so the sysex and bootloader handlers,
+// which test their page number literally, keep the numbers they were written against.
 #if MIDI_HAS_SYSEX
-#define MAX_CONF_PAGE 4  // Add an extra page for bootloader when MIDI_HAS_SYSEX is defined
+#define CONF_PAGE_EXT_VEL 5
 #else
-#define MAX_CONF_PAGE 3  // Add bootloader page
+#define CONF_PAGE_EXT_VEL 4
 #endif
+#define MAX_CONF_PAGE CONF_PAGE_EXT_VEL
+#define MAX_CUR_POS_EXT_VEL 2  // the ext velocity page has two fields, not four
 
 //Utility
 #define TOGGLE 0
@@ -352,6 +358,13 @@ struct SeqConfig {
   boolean configMode;
   boolean setupNeedSaved;
   boolean muteModeHH;  // [zabox]  HH mute mode
+  // [TR-909 STYLE] The two MIDI velocities an ext step can be programmed at: one press
+  // sends extVelLow, a second press extVelHigh. Global rather than per pattern, like the
+  // note map - they describe how the external synth is driven, not what the pattern
+  // plays. Seeded from MIDI_LOW_VELOCITY/MIDI_HIGH_VELOCITY by LoadSeqSetup(), which is
+  // where every field of this struct gets its value; `seq` itself is BSS.
+  byte extVelLow;
+  byte extVelHigh;
 } seq;
 
 volatile byte ppqn = 0;
@@ -416,6 +429,16 @@ struct Pattern {
   unsigned int step[NBR_STEP];
   byte velocity[NBR_INST][NBR_STEP];
   unsigned int extTrack[16];  // [TR-909 STYLE] 16 tracks × 16-bit word = 32 bytes (saves 97 bytes per pattern)
+  // Second velocity level, one bit per step per track, parallel to extTrack. Set means
+  // the step transmits MIDI_HIGH_VELOCITY, clear means MIDI_LOW_VELOCITY - the same two
+  // levels the drum lane gets from instVelHigh/instVelLow, reached by the same gesture
+  // (press once for the low level, again for the high one). Meaningless where the
+  // extTrack bit is clear.
+  // Per track rather than per step: each ext track is an instrument in its own right, so
+  // accenting one must not raise every other track that fires on the same step. That
+  // costs 32 bytes per pattern across the bank cache and the four buffers; the shared
+  // alternative would have cost nothing and been wrong.
+  unsigned int extAccent[16];
   // Last step of the external-instrument layer, independent of `length`. LAST STEP
   // inside EXT INST edit mode sets this rather than the sequencer's own length, so the
   // ext tracks can loop shorter than the kit. Equal to `length` by default, where the
@@ -520,7 +543,11 @@ byte extSoundingNote[16] = {0};               // [TR-909 STYLE] Note held open p
 byte extInstPrevInst = BD;                    // [TR-909 STYLE] Instrument selected before entering edit mode, restored on exit
 boolean extNotesNeedSaved = FALSE;            // [TR-909 STYLE] extTrackNote changed; written to EEPROM once, on mode exit
 unsigned int volatile extPendingOn = 0;       // [TR-909 STYLE] Tracks the clock wants sounding, drained by ServiceExtMidiNotes
-byte volatile extPendingVel = 0;              // [TR-909 STYLE] Velocity that goes with extPendingOn
+// Which of those tracks take the accented level. Queued as a mask rather than as 16
+// velocities: the step only ever carries two values, and the transmitter picks per track.
+unsigned int volatile extPendingAcc = 0;      // [TR-909 STYLE] Subset of extPendingOn transmitting at extPendingVelAcc
+byte volatile extPendingVel = 0;              // [TR-909 STYLE] Velocity for the unaccented tracks of extPendingOn
+byte volatile extPendingVelAcc = 0;           // [TR-909 STYLE] Velocity for the tracks named by extPendingAcc
 boolean volatile extPendingOff = FALSE;       // [TR-909 STYLE] Sticky request to silence the previous step before the queued one starts
 boolean volatile extReleaseArmed = FALSE;     // [TR-909 STYLE] A step is sounding and its note-offs have not been queued yet
 // How many PPQN ticks before the next step the sounding notes are released. Two ticks
@@ -570,6 +597,9 @@ const char *letterUpConfPage2[MAX_CUR_POS] = {  // [zabox] N to M for mute mode
   "P", "M", "E", "M"
 };
 const char *letterUpConfPage3[2]{ "T", "S" };
+// [TR-909 STYLE] Ext velocity page: the marker capitalises the field it sits on, and the
+// two words differ, so "Low hi" and "low Hi" read unambiguously.
+const char *letterUpConfPageExtVel[MAX_CUR_POS_EXT_VEL]{ "L", "H" };
 
 //MIDI-----------------------------------------------
 volatile boolean midiNoteOnActive = FALSE;
