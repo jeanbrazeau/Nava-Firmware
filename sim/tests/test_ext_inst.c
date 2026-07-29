@@ -650,6 +650,48 @@ static void test_ext_last_step_scoped_to_ext_layer(nava_sim_t *ctx) {
     }
 }
 
+/* Holding LAST STEP in ext edit mode lights the ext layer's last step.
+ *
+ * The step LEDs otherwise show the selected track's content, so the assertion is exact
+ * equality with a single bit rather than "bit 3 is lit": FX_PTRN_EXT has track 0 on steps
+ * 0 and 8, and the default extLength is 15, so the three candidate displays (0x0008,
+ * 0x0101, 0x8000) are mutually exclusive and a wrong one cannot pass.
+ *
+ * Sampled with the transport stopped. Running, the playhead flash would XOR into the word
+ * on some passes, and this display deliberately suppresses it - but a test that had to
+ * tolerate the flash could not assert equality at all. */
+static void test_ext_last_step_led_shows_ext_length(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    enter_ext_edit(ctx);
+
+    fp_press_button(ctx, FP_BTN_LASTSTEP);
+    fp_press_step(ctx, 3);              /* step button 4 -> ext last step index 3 */
+    fp_release_step(ctx, 3);
+    fp_settle(ctx);
+    /* Still holding LAST STEP: this is the display under test. Clear the log first so
+     * fp_step_leds() reads a write made under the hold, not one from before it. */
+    event_log_clear(&ctx->log);
+    nava_sim_run_cycles(ctx, 4000000ULL);
+    uint16_t held = fp_step_leds(ctx);
+    fp_release_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+
+    if (held != (uint16_t)(1u << 3)) {
+        test_fail("ext/last_step_led/shows_ext_length",
+                  "step LEDs under LAST STEP = 0x%04X, expected 0x0008 (ext last step 3; "
+                  "0x0101 = track content, 0x8000 = unedited 16-step length)", held);
+    }
+
+    /* Releasing must hand the LEDs back to the track, or the display would be stuck. */
+    event_log_clear(&ctx->log);
+    nava_sim_run_cycles(ctx, 4000000ULL);
+    uint16_t released = fp_step_leds(ctx);
+    if (released == (uint16_t)(1u << 3)) {
+        test_fail("ext/last_step_led/released",
+                  "step LEDs still 0x%04X after LAST STEP was released", released);
+    }
+}
+
 /* CLEAR inside ext edit mode clears the selected ext track, not the analog instrument.
  *
  * The old behaviour cleared inst[EXT_INST] - a word the ext playback path never reads -
@@ -866,6 +908,8 @@ int main(void) {
                       test_ext_encoder_sets_track_note, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_last_step_scoped_to_ext_layer",
                       test_ext_last_step_scoped_to_ext_layer, &FX_PTRN_EXT, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_last_step_led_shows_ext_length",
+                      test_ext_last_step_led_shows_ext_length, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_clear_scoped_to_ext_track",
                       test_ext_clear_scoped_to_ext_track, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_shuffle_button_owns_encoder",
