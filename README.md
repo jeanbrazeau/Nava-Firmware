@@ -64,10 +64,12 @@ so one press past BOOTLOADER lands on `low hi  ext vel`, and the next wraps back
 [tools/README.md](tools/README.md) for the full reference.
 
 ```bash
-pip install -e tools
+uv tool install "git+https://github.com/jeanbrazeau/Nava-Firmware#subdirectory=tools[tui]"
 nava build                                                   # compile, emit the .syx
 nava flash .pio/build/nava_sysex/firmware.syx --out NAVA-909
 ```
+
+(`pip install -e "tools[tui]"` works too, from a clone.)
 
 `nava build` wraps `pio run -e nava_sysex`; the build also writes the `.syx` on its own
 as a post-action. With the Arduino IDE, compile there and convert the `.hex`:

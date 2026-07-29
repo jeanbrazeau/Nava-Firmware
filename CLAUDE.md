@@ -71,10 +71,19 @@ A PlatformIO build emits the `.syx` itself as a post-action (`convert_to_sysex.p
 For an Arduino IDE build, convert the `.hex`:
 
 ```bash
-pip install -e tools
-nava hex2syx path_to_hex_file.hex -o output.syx
-nava flash output.syx --out NAVA-909
+uv sync --project tools        # or: pip install -e "tools[tui]"
+uv run --project tools nava hex2syx path_to_hex_file.hex -o output.syx
+uv run --project tools nava flash output.syx --out NAVA-909
 ```
+
+`tools/uv.lock` is committed, so `uv sync` reproduces the environment exactly.
+`nava` is also installable standalone with
+`uv tool install "git+<repo>#subdirectory=tools[tui]"`.
+
+Note for packaging changes: `nava/tui/app.tcss` is package DATA, not a module, and
+needs the `[tool.setuptools.package-data]` entry. Without it the wheel installs a
+TUI that dies on startup looking for its stylesheet - and an editable install never
+reveals this, because the file is still sitting in the source tree.
 
 The tools are Python 3. The original Python 2 scripts are gone; `nava`'s encoder is
 pinned to their output by a test that reproduces the released `Nava0tone_0.90b.syx`
