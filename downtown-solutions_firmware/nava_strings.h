@@ -47,7 +47,7 @@ const char txt_SYSEX1[] PROGMEM = "Pattern";
 const char txt_SYSEX2[] PROGMEM = "Track";
 const char txt_SYSEX3[] PROGMEM = "Config";
 const char txt_SYSEX4[] PROGMEM = "Full";
-PROGMEM const char * const nameSysex[]= { txt_SYSEX0, txt_SYSEX1, txt_SYSEX2, txt_SYSEX3, txt_SYSEX3 };
+PROGMEM const char * const nameSysex[]= { txt_SYSEX0, txt_SYSEX1, txt_SYSEX2, txt_SYSEX3, txt_SYSEX4 };
 #endif
 
 const char txt_MUTE0[] PROGMEM   ="C/O";                                        // [zabox] HH mute mode

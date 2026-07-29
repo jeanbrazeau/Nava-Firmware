@@ -131,7 +131,7 @@ void SeqConfiguration()
   } else {
     if ( seq.SysExMode == true )
     {
-      seq.SysExMode = false;
+      DisableSysexMode();  // reloads the bank if a host wrote to EEPROM
       SetSeqSync();
     }
   }

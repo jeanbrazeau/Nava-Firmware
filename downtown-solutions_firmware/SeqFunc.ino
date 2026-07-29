@@ -328,6 +328,25 @@ void ShiftRightPattern() {
   }
 }
 
+//[oort] write every edited pattern of the current bank back to EEprom
+//
+// Split out of SeqParameter()'s ENTER handler so the SysEx path can reach it:
+// a host is about to read or write EEPROM directly, and patternBank[] is the
+// authority until this runs.
+void FlushPatternBank() {
+  for (byte i = 0; i < NBR_PATTERN; i++) {
+    if (editedPatterns[i]) {
+      memcpy(&pattern[ptrnBuffer], &patternBank[i], sizeof(Pattern));
+      SavePattern(curBank * NBR_PATTERN + i);  //save to EE-prom, only implemented for specific buffer
+      editedPatterns[i] = FALSE;
+    }
+  }
+  patternBankNeedsSave = FALSE;  //[oort] not 100% certain on this placement
+
+  //[oort] restore buffer (room for improvements here)
+  memcpy(&pattern[ptrnBuffer], &patternBank[curPattern - curBank * NBR_PATTERN], sizeof(Pattern));
+}
+
 //[oort] the patterns in this bank are loaded into local RAM using tempPattern
 void LoadPatternBank(byte bankNmbr) {
   if (bankNmbr > MAX_BANK) bankNmbr = MAX_BANK; //[oort] rudimentary check

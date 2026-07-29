@@ -34,10 +34,23 @@ Key hardware systems include:
     - `MemoryFree/`: Memory management utilities
     - `SPI/`: SPI communication library
     - `WireN/`: I2C communication library (custom)
-- `tools/`: Python utilities for firmware deployment
-  - `hex2sysex/`: Converts compiled hex files to MIDI SysEx format
-  - `hexfile/`: Utilities for working with hex files
-  - `midi/`: MIDI file manipulation libraries
+- `tools/`: the `nava` CLI and TUI (Python 3) - see `tools/README.md`
+  - `nava/bootloader.py`: firmware `.hex` -> bootloader `.syx` (nibblized pages)
+  - `nava/protocol.py`: the pattern/track/setup dump protocol, mirroring `Sysex.h`
+  - `nava/records.py`: decodes the EEPROM records a dump carries. The ONLY place
+    in the tool that knows the pattern layout; the transfer path keeps records
+    opaque so a backup survives firmware revisions that fill in their padding
+  - `nava/render.py`: the step grid, shared by `nava show` and the TUI
+  - `nava/transfer.py`: the backup/restore/flash loops, shared by both front ends
+    so their retry and acknowledge behaviour cannot drift
+  - `nava/midiio.py`: port discovery, retries, ACK handling
+  - `nava/library.py`: reads `.syx` files and tells a firmware image from a backup
+  - `nava/cli.py`: `build`, `hex2syx`, `flash`, `backup`, `restore`, `inspect`,
+    `show`, `ports`, `tui`
+  - `nava/tui/`: the Textual interface. Every MIDI operation runs in a worker
+    thread - mido and the transfer loops are synchronous, and a 20-second flash
+    would otherwise freeze the interface
+  - `tests/`: runs without hardware; `fakenava.py` models the device
 
 ## Development Commands
 
@@ -54,14 +67,37 @@ The firmware is developed using Arduino IDE. To compile and upload:
 
 ### Converting Firmware to SysEx for Upload
 
-After compiling, to convert the .hex file to SysEx format for uploading to Nava:
+A PlatformIO build emits the `.syx` itself as a post-action (`convert_to_sysex.py`).
+For an Arduino IDE build, convert the `.hex`:
 
 ```bash
-cd /Users/admin/offline/Nava-Firmware
-python tools/hex2sysex/hex2sysex.py --syx --output_file output.syx path_to_hex_file.hex
+uv sync --project tools        # or: pip install -e "tools[tui]"
+uv run --project tools nava hex2syx path_to_hex_file.hex -o output.syx
+uv run --project tools nava flash output.syx --out NAVA-909
 ```
 
-Note: This repository uses Python 2.7.x for the conversion tools.
+`tools/uv.lock` is committed, so `uv sync` reproduces the environment exactly.
+`nava` is also installable standalone with
+`uv tool install "git+<repo>#subdirectory=tools[tui]"`.
+
+Note for packaging changes: `nava/tui/app.tcss` is package DATA, not a module, and
+needs the `[tool.setuptools.package-data]` entry. Without it the wheel installs a
+TUI that dies on startup looking for its stylesheet - and an editable install never
+reveals this, because the file is still sitting in the source tree.
+
+The tools are Python 3. The original Python 2 scripts are gone; `nava`'s encoder is
+pinned to their output by a test that reproduces the released `Nava0tone_0.90b.syx`
+byte for byte.
+
+On Apple Silicon the AVR toolchain is x86-only (PlatformIO publishes no arm64
+build, and neither does Arduino), so a build needs Rosetta:
+`softwareupdate --install-rosetta --agree-to-license`.
+
+### Backing up patterns
+
+`nava backup` / `nava restore` read and write patterns, tracks and the setup record
+over SysEx while the unit sits on the SysEx config page. See the EXT/SysEx notes
+below and `tools/README.md` for the protocol.
 
 ## Key Components
 
@@ -633,6 +669,61 @@ straight to UDR1 behind a UDRE busy-wait in the same ISR, so a fuller ring could
 measured 0.027 ms) and asserts that a 16-track step still delivers every track through the
 loop fallback without stalling the sequencer.
 
+## SysEx pattern transfer
+
+`Sysex.h` has defined the command set since the code was imported, but
+`HandleSystemExclusive()` and `MidiSendSysex()` were empty stubs, so nothing could
+ever be read off the machine. Both are implemented now, with `tools/nava` as the
+host counterpart.
+
+Messages are `F0 7D 07 1A <cmd> <param> <packed payload> <checksum> F7`. The
+bootloader's `7D 08` (see the flashing section) is a different family, so a firmware
+page cannot be mistaken for a pattern dump. Payloads are the EEPROM records verbatim
+- 448 bytes for a pattern, 1024 for a track, 64 for the setup block - which is what
+lets a backup round-trip through a firmware revision that adds fields inside the
+padding those records already reserve.
+
+Payloads are 7-in-8 packed (`sysex_pack.h`), not nibblized like the bootloader's.
+Nibblizing would double a 1KB track record and push the largest message past what
+the MIDI library can reassemble in the RAM left on this board. The checksum covers
+the RAW bytes, so mis-unpacking fails instead of storing garbage. `sysex_pack.h`
+carries no Arduino dependency precisely so the host test suite can compile it
+natively and check it against `tools/nava/protocol.py` in both directions.
+
+Neither direction buffers a whole record. A dump streams out of EEPROM 56 bytes at
+a time (a multiple of 7, so a chunk boundary is never mid-group) straight to the
+UART; an incoming record is checksummed by indexing the packed bytes in place, then
+written a page at a time. The checksum is verified before *any* page is written -
+a rejected transfer leaves the stored pattern intact rather than half-replaced.
+
+`SysexResetRunningStatus()` runs after every message. Writing to the UART directly
+bypasses the MIDI library's running-status bookkeeping while the `F0..F7` clears the
+receiver's, and the two disagreeing would cost the next note-on its status byte.
+`MIDI.sendSysEx(0, NULL, true)` emits no bytes and invalidates the stored status.
+
+**The bank cache is the subtle part.** `patternBank[]` is authoritative over EEPROM
+until ENTER or a bank change, so `EnableSysexMode()` flushes pending edits via
+`FlushPatternBank()` and `DisableSysexMode()` reloads the bank if a host wrote
+anything. Without the flush a dump reports stale patterns; without the reload a
+restore is silently overwritten the next time the cache is saved.
+
+**Draining the UART is load-bearing.** The MIDI library parses one byte per
+`read()` (`Use1ByteParsing`, inherited from `DefaultSettings`) and the loop calls
+`read()` once per pass - about 220 bytes/s against the 3125 bytes/s a host sends.
+The 64-byte UART ring overran and every restore was lost before the handler saw a
+complete message. `loop()` now drains the ring while `seq.SysExMode` is set; that
+is the only time a burst this dense arrives, and the sequencer is stopped there.
+`sim/tests/test_sysex.c` is what caught this, and pins it.
+
+A dump arrives on the wire with `0xF8` clock bytes sprinkled through it: Timer1 runs
+whether or not the sequencer is started, so a MASTER-sync unit clocks continuously.
+Real-time bytes are legal anywhere, including between two data bytes of a SysEx
+message, and any receiver has to strip them - `sim/tests/test_sysex.c` does, and so
+does rtmidi under the CLI.
+
+`MAX_CONF_PAGE`-numbered page 3 is the only place the handler is connected, which is
+also why requests are ignored elsewhere. Off that page nothing responds at all.
+
 ## Code Heritage & Contributors
 
 The codebase shows contributions from multiple developers:
@@ -652,6 +743,10 @@ From code comments:
 
 Resolved: the external instrument note index (`noteIndexCpt`) is gone along with the
 single-note sequencer it belonged to; the 16-track editor addresses steps directly.
+
+Resolved: `HandleSystemExclusive()` and `MidiSendSysex()` are no longer stubs - see
+the SysEx section above. Pattern backup needs a PlatformIO build; the Arduino IDE
+build leaves `MIDI_HAS_SYSEX` off in `features.h` and compiles no SysEx support.
 
 ## Performance Characteristics
 

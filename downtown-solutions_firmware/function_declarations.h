@@ -9,6 +9,7 @@ void TimerSetFrequency();
 // Sequencer functions
 void InitSeq();
 void LoadPatternBank(byte bankNmbr);
+void FlushPatternBank();
 void InitPattern(Pattern* pattern);
 void SetHHPattern(Pattern* pattern);
 void InstToStepWord(Pattern* pattern);
@@ -39,6 +40,23 @@ void MidiSendNoteOff(byte channel, byte note);
 void SendAllNoteOff();
 void SetSeqSync();
 void Metronome(boolean state);
+
+// SysEx pattern/track transfer
+#if MIDI_HAS_SYSEX
+void HandleSystemExclusive(byte* array, unsigned size);
+void MidiSendSysex(byte dumpType, byte param);
+void EnableSysexMode();
+void DisableSysexMode();
+void ConnectMidiSysex();
+void DisconnectMidiSysex();
+void SysexSendRecord(byte cmd, byte param);
+void SysexSendAck(byte status);
+void SysexResetRunningStatus();
+#endif
+
+// EEPROM block access
+void EEpromReadBlock(unsigned long address, byte* buf, byte count);
+void EEpromWriteBlock(unsigned long address, const byte* buf, byte count);
 
 // Digital I/O functions
 void SetDoutTrig(unsigned int value);

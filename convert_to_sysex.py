@@ -1,18 +1,40 @@
-Import("env")  # SCon
+"""PlatformIO post-action: turn the built .hex into a bootloader .syx.
+
+Calls tools/nava in process rather than shelling out to the old Python 2
+hex2sysex.py, which cannot run on a current interpreter - the build used to
+report "SysEx conversion failed" and carry on to a successful-looking finish
+with no .syx produced.
+"""
+
 import os
+import sys
+
+Import("env")  # SCons
+
+# SCons exec()s this script, so __file__ is not defined here - the project
+# directory has to come from the build environment.
+sys.path.insert(0, os.path.join(env.subst("$PROJECT_DIR"), "tools"))
+
+from nava import bootloader, ihex  # noqa: E402 - needs the path set above
+
 
 def generate_sysex(source, target, env):
     hex_file = str(target[0])
-    syx_file = hex_file.replace('.hex', '.syx')
+    syx_file = hex_file[: -len(".hex")] + ".syx" if hex_file.endswith(".hex") else hex_file + ".syx"
 
-    # Call existing conversion script
-    cmd = 'python tools/hex2sysex/hex2sysex.py --syx --output_file {} {}'.format(syx_file, hex_file)
-    print("\nConverting to SysEx: {}".format(cmd))
-    result = os.system(cmd)
+    try:
+        image = ihex.load_file(hex_file)
+        stream = bootloader.encode_firmware(image)
+        with open(syx_file, "wb") as handle:
+            handle.write(stream)
+    except (OSError, ValueError, ihex.HexFileError) as exc:
+        # Fail the build. A missing .syx that goes unnoticed until the unit is
+        # already in bootloader mode is the worse outcome.
+        raise SystemExit("SysEx conversion failed: {}".format(exc))
 
-    if result == 0:
-        print("SysEx file created: {}\n".format(syx_file))
-    else:
-        print("SysEx conversion failed\n")
+    pages = len(stream.split(b"\xf7")) - 2  # minus the reset message and the tail
+    print("\nSysEx file created: {} ({} bytes of flash in {} pages)\n".format(
+        syx_file, len(image), pages))
+
 
 env.AddPostAction("$BUILD_DIR/${PROGNAME}.hex", generate_sysex)

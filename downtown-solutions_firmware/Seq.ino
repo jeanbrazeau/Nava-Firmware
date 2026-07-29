@@ -1125,19 +1125,8 @@ void SeqParameter() {
 
   //[oort] save entire pattern bank from RAMbuffer to EEprom
   if (patternBankNeedsSave && enterBtn.justPressed && !instBtn) {
-
-    for (int i = 0; i < NBR_PATTERN; i++) {
-      if (editedPatterns[i]) {
-        memcpy(&pattern[ptrnBuffer], &patternBank[i], sizeof(Pattern));
-        SavePattern(curBank * NBR_PATTERN + i);    //save to EE-prom, only implemented for specific buffer - call using pointer to buffer instead?
-        editedPatterns[i] = FALSE;
-      }
-    }
-    patternBankNeedsSave = FALSE;  //[oort] not 100% certain on this placement
+    FlushPatternBank();
     LcdPrintSaved();  //[oort] not visible
-
-    //[oort] restore buffer (room for improvements here)
-    memcpy(&pattern[ptrnBuffer], &patternBank[curPattern - curBank * NBR_PATTERN], sizeof(Pattern));
   }
 
   if (selectedPatternChanged) {

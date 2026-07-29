@@ -33,6 +33,7 @@ void LcdUpdate();
 
 #if MIDI_HAS_SYSEX
 #include "Sysex.h"
+#include "sysex_pack.h"
 #endif
 
 // Running status must NOT depend on the SysEx build flag. features.h leaves
@@ -176,6 +177,23 @@ void loop() {
   SetTrigPeriod(TRIG_LENGTH);
   InitMidiRealTime();
   MIDI.read();
+#if MIDI_HAS_SYSEX
+  // A single read() parses ONE byte (Use1ByteParsing, inherited from the MIDI
+  // library's DefaultSettings), so the loop consumes about 220 bytes/s. A host
+  // restoring a pattern sends 520 bytes at the full 3125 bytes/s, which overruns
+  // the 64-byte UART ring long before the handler ever sees a complete message -
+  // the dump is simply lost and the host times out waiting for an ACK.
+  //
+  // Draining is scoped to SysEx mode because that is the only time a burst this
+  // dense arrives, and there the sequencer is stopped and nothing else needs the
+  // loop. The guard bounds the pass rather than the wire: the drain consumes far
+  // faster than 31250 baud delivers, so it always ends, and if read() ever failed
+  // to consume, the loop still makes progress instead of hanging the panel.
+  if (seq.SysExMode) {
+    byte drained = 0;
+    while (Serial1.available() && ++drained) MIDI.read();
+  }
+#endif
   ServiceExtMidiNotes();  // right after MIDI.read: under SLAVE sync CountPPQN runs inside it, so the queued step goes out with no added delay
   //SetMux();//!!!! if SetMUX() loop there is noise on HT out and a less noise on HH noise too !!!!
   ButtonGet();

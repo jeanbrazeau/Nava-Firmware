@@ -309,28 +309,269 @@ void DisconnectMidiHandleRealTime() {
 }
 
 #if MIDI_HAS_SYSEX
-// [SYSEX] Handle incoming system exclusive messages
-void HandleSystemExclusive(byte* array, unsigned size) {
-  // TODO: Full sysex implementation for firmware transfer via bootloader
-  // This is a stub to allow compilation - full implementation required for bootloader functionality
-  (void)array;  // Suppress unused parameter warning
-  (void)size;
+//-------------------------------------------------
+// [SYSEX] Pattern, track and setup transfer.
+//
+// Records are the EEPROM images from EEprom.ino sent verbatim, 7-in-8 packed
+// (Sysex.h). Both directions stream: a dump is read out of EEPROM 56 bytes at a
+// time and pushed straight to the UART, and an incoming record is unpacked into
+// one page at a time. Nothing here allocates a record-sized buffer, because a
+// track record is 1KB against about 2.5KB of free RAM.
+//
+// The host counterpart is tools/nava (`nava backup` / `nava restore`), and
+// tools/tests/fakenava.py models this side of the exchange.
+//-------------------------------------------------
+
+// 8 packed groups. A multiple of 7 so a chunk boundary is never mid-group, and
+// well inside WireN's BUFFER_LENGTH of 66.
+#define SYSEX_CHUNK 56
+
+boolean sysexWroteEEprom = FALSE;  // a record was stored; the bank cache is stale
+
+// The MIDI library remembers the running status it last transmitted. Writing to
+// the UART directly bypasses that bookkeeping, while the F0..F7 just sent has
+// cleared the *receiver's* - so the two must be resynchronised or the next
+// note-on would go out without its status byte and be read as the wrong message.
+// sendSysEx() with a zero-length body and "boundaries already included" emits no
+// bytes and invalidates the stored status, which is exactly the reset needed.
+void SysexResetRunningStatus() {
+  MIDI.sendSysEx(0, NULL, true);
 }
 
-// [SYSEX] Send system exclusive message
+unsigned int SysexRecordSize(byte cmd) {
+  if (cmd == NAVA_PTRN_DMP || cmd == NAVA_PTRN_REQ) return SYSEX_PTRN_BYTES;
+  if (cmd == NAVA_TRACK_DMP || cmd == NAVA_TRACK_REQ) return SYSEX_TRACK_BYTES;
+  return SYSEX_CONFIG_BYTES;
+}
+
+unsigned long SysexRecordAddress(byte cmd, byte param) {
+  if (cmd == NAVA_PTRN_DMP || cmd == NAVA_PTRN_REQ)
+    return (unsigned long)(PTRN_OFFSET + (unsigned long)param * PTRN_SIZE);
+  if (cmd == NAVA_TRACK_DMP || cmd == NAVA_TRACK_REQ)
+    return (unsigned long)(TRACK_OFFSET + (unsigned long)param * TRACK_SIZE);
+  return (unsigned long)(OFFSET_SETUP);
+}
+
+boolean SysexParamValid(byte cmd, byte param) {
+  switch (cmd) {
+    case NAVA_PTRN_DMP:
+    case NAVA_PTRN_REQ:   return param < MAX_PTRN;
+    case NAVA_TRACK_DMP:
+    case NAVA_TRACK_REQ:  return param < MAX_TRACK;
+    case NAVA_BANK_REQ:   return param <= MAX_BANK;
+    default:              return param == 0;
+  }
+}
+
+// One packed group: a byte of the high bits, then the 7 stripped bytes.
+void SysexTxGroup(const byte* group, byte count) {
+  Serial1.write(SysexPackMsbs(group, count));
+  for (byte i = 0; i < count; i++) Serial1.write((byte)(group[i] & 0x7F));
+}
+
+// Stream one EEPROM record out as a complete F0..F7 dump.
+void SysexSendRecord(byte cmd, byte param) {
+  unsigned long address = SysexRecordAddress(cmd, param);
+  unsigned int count = SysexRecordSize(cmd);
+  byte buf[SYSEX_CHUNK];
+  byte group[7];
+  byte inGroup = 0;
+  byte sum = 0;
+
+  Serial1.write((byte)START_OF_SYSEX);
+  Serial1.write((byte)SYSEX_MANUFACTURER);
+  Serial1.write((byte)SYSEX_DEVID_1);
+  Serial1.write((byte)SYSEX_DEVID_2);
+  Serial1.write(cmd);
+  Serial1.write(param);
+
+  unsigned int done = 0;
+  while (done < count) {
+    byte chunk = (count - done > SYSEX_CHUNK) ? SYSEX_CHUNK : (byte)(count - done);
+    EEpromReadBlock(address + done, buf, chunk);
+    for (byte i = 0; i < chunk; i++) {
+      sum += buf[i];
+      group[inGroup++] = buf[i];
+      if (inGroup == 7) {
+        SysexTxGroup(group, 7);
+        inGroup = 0;
+      }
+    }
+    done += chunk;
+  }
+  // A record whose length is not a multiple of 7 leaves a short final group -
+  // the track (1024) and setup (64) records both do.
+  if (inGroup) SysexTxGroup(group, inGroup);
+
+  Serial1.write((byte)(sum & 0x7F));
+  Serial1.write((byte)END_OF_SYSEX);
+  SysexResetRunningStatus();
+}
+
+void SysexSendAck(byte status) {
+  Serial1.write((byte)START_OF_SYSEX);
+  Serial1.write((byte)SYSEX_MANUFACTURER);
+  Serial1.write((byte)SYSEX_DEVID_1);
+  Serial1.write((byte)SYSEX_DEVID_2);
+  Serial1.write((byte)NAVA_ACK);
+  Serial1.write(status);
+  Serial1.write((byte)0);  // checksum of an empty payload
+  Serial1.write((byte)END_OF_SYSEX);
+  SysexResetRunningStatus();
+}
+
+// Verify an incoming record and commit it to EEPROM, then acknowledge.
+void SysexStoreRecord(byte cmd, byte param, const byte* packed,
+                      unsigned int packedLen, byte wantSum) {
+  unsigned int count = SysexRecordSize(cmd);
+  if (SysexUnpackedLen(packedLen) != count) {
+    SysexSendAck(NAVA_ACK_BAD_LENGTH);
+    return;
+  }
+
+  // Checksummed before anything is written. A record that fails midway would
+  // otherwise leave half of the old pattern and half of the new one in EEPROM,
+  // which is worse than the write not happening and nothing says it occurred.
+  byte sum = 0;
+  for (unsigned int i = 0; i < count; i++) sum += SysexUnpackByteAt(packed, i);
+  if ((byte)(sum & 0x7F) != wantSum) {
+    SysexSendAck(NAVA_ACK_BAD_CHECKSUM);
+    return;
+  }
+
+  unsigned long address = SysexRecordAddress(cmd, param);
+  byte page[MAX_PAGE_SIZE];
+  unsigned int done = 0;
+  while (done < count) {
+    byte chunk = (count - done > MAX_PAGE_SIZE) ? (byte)MAX_PAGE_SIZE : (byte)(count - done);
+    for (byte i = 0; i < chunk; i++) page[i] = SysexUnpackByteAt(packed, done + i);
+    EEpromWriteBlock(address + done, page, chunk);
+    done += chunk;
+  }
+
+  sysexWroteEEprom = TRUE;
+  SysexSendAck(NAVA_ACK_OK);
+}
+
+// [SYSEX] Handle incoming system exclusive messages
+void HandleSystemExclusive(byte* array, unsigned size) {
+  // A message too long for the library's buffer arrives as fragments, the first
+  // ending in F0 and the rest starting with F7. Demanding both boundaries drops
+  // those instead of decoding a fragment as if it were a record.
+  if (size < HEADERSIZE + 2) return;
+  if (array[0] != (byte)START_OF_SYSEX || array[size - 1] != END_OF_SYSEX) return;
+  if (array[1] != SYSEX_MANUFACTURER) return;
+  if (array[2] != SYSEX_DEVID_1 || array[3] != SYSEX_DEVID_2) return;
+
+  byte cmd = array[4];
+  byte param = array[5];
+
+  // Never answer our own reply. On a rig with MIDI thru or a loopback the ACK we
+  // just sent comes back at us, and answering it - with a bad-parameter ACK, which
+  // would come back too - is an exchange that never ends and drowns the port.
+  if (cmd == NAVA_ACK) return;
+
+  // EEPROM reads and writes block for milliseconds at a time and the sequencer
+  // is driven from an ISR that reads the same pages, so nothing here runs while
+  // it is playing. Reaching this state needs the config page, which cannot be
+  // opened while running, but a host that got a request in first is answered
+  // rather than left waiting for a reply that never comes.
+  if (isRunning) {
+    SysexSendAck(NAVA_ACK_BUSY);
+    return;
+  }
+
+  if (!SysexParamValid(cmd, param)) {
+    SysexSendAck(NAVA_ACK_BAD_PARAM);
+    return;
+  }
+
+  switch (cmd) {
+    case NAVA_PTRN_REQ:
+      SysexSendRecord(NAVA_PTRN_DMP, param);
+      break;
+
+    case NAVA_TRACK_REQ:
+      SysexSendRecord(NAVA_TRACK_DMP, param);
+      break;
+
+    case NAVA_CONFIG_REQ:
+      SysexSendRecord(NAVA_CONFIG_DMP, 0);
+      break;
+
+    case NAVA_BANK_REQ:
+      for (byte i = 0; i < NBR_PATTERN; i++) {
+        SysexSendRecord(NAVA_PTRN_DMP, (byte)(param * NBR_PATTERN + i));
+      }
+      break;
+
+    case NAVA_FULL_REQ:
+      for (byte i = 0; i < MAX_PTRN; i++) SysexSendRecord(NAVA_PTRN_DMP, i);
+      for (byte i = 0; i < MAX_TRACK; i++) SysexSendRecord(NAVA_TRACK_DMP, i);
+      SysexSendRecord(NAVA_CONFIG_DMP, 0);
+      break;
+
+    case NAVA_PTRN_DMP:
+    case NAVA_TRACK_DMP:
+    case NAVA_CONFIG_DMP:
+      // size - HEADERSIZE - 2 drops the checksum byte and the F7.
+      SysexStoreRecord(cmd, param, array + HEADERSIZE,
+                       (unsigned int)(size - HEADERSIZE - 2), array[size - 2]);
+      break;
+
+    default:
+      SysexSendAck(NAVA_ACK_BAD_PARAM);
+      break;
+  }
+}
+
+// [SYSEX] Send system exclusive message - the config page's ENTER action.
+// dumpType follows nameSysex[] in nava_strings.h: 0 bank, 1 pattern, 2 track,
+// 3 config.
 void MidiSendSysex(byte dumpType, byte param) {
-  // TODO: Full sysex implementation for firmware transfer
-  // This is a stub to allow compilation - full implementation required for bootloader functionality
-  (void)dumpType;  // Suppress unused parameter warning
-  (void)param;
+  switch (dumpType) {
+    case 0:
+      for (byte i = 0; i < NBR_PATTERN; i++) {
+        SysexSendRecord(NAVA_PTRN_DMP, (byte)(param * NBR_PATTERN + i));
+      }
+      break;
+    case 1:
+      if (param < MAX_PTRN) SysexSendRecord(NAVA_PTRN_DMP, param);
+      break;
+    case 2:
+      if (param < MAX_TRACK) SysexSendRecord(NAVA_TRACK_DMP, param);
+      break;
+    default:
+      SysexSendRecord(NAVA_CONFIG_DMP, 0);
+      break;
+  }
 }
 
 // [SYSEX] Enable sysex mode
 void EnableSysexMode() {
-  // TODO: Full sysex mode implementation
-  // This is a stub to allow compilation - full implementation required for bootloader functionality
+  // Pending edits live in patternBank[] and are only written on ENTER or a bank
+  // change. Flushing them here makes EEPROM authoritative before a host reads or
+  // writes it: otherwise a dump would report stale patterns, and a restore would
+  // be silently overwritten the next time the cache was saved.
+  FlushPatternBank();
+  sysexWroteEEprom = FALSE;
   seq.SysExMode = TRUE;
   ConnectMidiSysex();
+}
+
+// [SYSEX] Leave sysex mode, making anything a host wrote visible.
+void DisableSysexMode() {
+  seq.SysExMode = FALSE;
+  DisconnectMidiSysex();
+  // Reload so restored patterns take effect without a power cycle; the cache
+  // still holds what EEPROM had on the way in.
+  if (sysexWroteEEprom) {
+    sysexWroteEEprom = FALSE;
+    LoadPatternBank(curBank);
+    memcpy(&pattern[ptrnBuffer], &patternBank[curPattern - curBank * NBR_PATTERN],
+           sizeof(Pattern));
+    needLcdUpdate = TRUE;
+  }
 }
 
 void ConnectMidiSysex() {
