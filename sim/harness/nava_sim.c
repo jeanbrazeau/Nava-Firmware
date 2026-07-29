@@ -220,6 +220,21 @@ void nava_sim_seed_eeprom(nava_sim_t *ctx,
 }
 
 /* ---------------------------------------------------------------------------
+ * nava_sim_read_eeprom
+ * Reads the I2C EEPROM backing store directly, without going through the
+ * firmware.  The SysEx restore test needs this: reading a record back through
+ * the protocol would share SysexRecordAddress() with the write that produced it,
+ * so a record stored at the wrong address would still read back correctly and
+ * the test would pass on a corrupted EEPROM.
+ * --------------------------------------------------------------------------- */
+void nava_sim_read_eeprom(const nava_sim_t *ctx, size_t offset,
+                           uint8_t *buf, size_t length) {
+    assert(ctx && ctx->eeprom);
+    assert(offset + length <= ctx->eeprom->size);
+    memcpy(buf, ctx->eeprom->data + offset, length);
+}
+
+/* ---------------------------------------------------------------------------
  * nava_sim_run_cycles — CI-012
  * Steps the AVR one instruction at a time until avr->cycle advances by n.
  * Surfaces CPU halt/crash as a return value of 0 rather than hanging.

@@ -11,7 +11,9 @@ import sys
 
 Import("env")  # SCons
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
+# SCons exec()s this script, so __file__ is not defined here - the project
+# directory has to come from the build environment.
+sys.path.insert(0, os.path.join(env.subst("$PROJECT_DIR"), "tools"))
 
 from nava import bootloader, ihex  # noqa: E402 - needs the path set above
 

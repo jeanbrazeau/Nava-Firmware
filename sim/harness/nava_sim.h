@@ -64,6 +64,12 @@ void nava_sim_destroy(nava_sim_t *ctx);
 void nava_sim_seed_eeprom(nava_sim_t *ctx,
                            const uint8_t *image, size_t length);
 
+/* Read the I2C EEPROM backing store directly, bypassing the firmware.
+ * Lets a test check where a record actually landed rather than trusting the
+ * firmware's own addressing to verify itself. */
+void nava_sim_read_eeprom(const nava_sim_t *ctx, size_t offset,
+                           uint8_t *buf, size_t length);
+
 /* Step the AVR for exactly n cycles.
  * Returns the final avr->cycle value, or 0 if the CPU halts/crashes. */
 uint64_t nava_sim_run_cycles(nava_sim_t *ctx, uint64_t n);
