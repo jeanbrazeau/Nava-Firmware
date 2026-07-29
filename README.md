@@ -69,7 +69,8 @@ nava build                                                   # compile, emit the
 nava flash .pio/build/nava_sysex/firmware.syx --out NAVA-909
 ```
 
-(`pip install -e "tools[tui]"` works too, from a clone.)
+The bare URL takes the default branch; add `@BRANCH` to install from an unmerged
+one. `pip install -e "tools[tui]"` works too, from a clone.
 
 `nava build` wraps `pio run -e nava_sysex`; the build also writes the `.syx` on its own
 as a post-action. With the Arduino IDE, compile there and convert the `.hex`:
