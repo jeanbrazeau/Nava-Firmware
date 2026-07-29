@@ -40,3 +40,7 @@ downtown-solutions_firmware/*.lst
 
 #Platform IO
 /.pio
+#Python tooling
+.venv/
+__pycache__/
+*.egg-info/
