@@ -521,6 +521,12 @@ ext loop, so the bias is what keeps the full 0-15 range usable. `bufferedPattern
 until something is copied into it, so `PasteBufferToPattern()` range-checks rather than
 copying blind.
 
+Holding LAST STEP lights that step and only that step, steady, in place of the selected
+track's content - the same takeover SHUFFLE performs for its own two values, so the value
+being edited is visible while it is being set. The playhead flash is suppressed under the
+hold: the display is a single bit, and XORing a moving second bit into it would make the
+end of the loop ambiguous exactly when the transport is running.
+
 `extStepCount` tracks the ext layer's position and wraps on `extLength`, so a shorter ext
 length loops the MIDI tracks against the kit instead of truncating the pattern. When the
 two lengths are equal - the default, and what every pattern loads as - `extCurStep` is

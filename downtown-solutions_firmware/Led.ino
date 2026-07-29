@@ -117,28 +117,37 @@ void SetLeds()
   
   // [TR-909 STYLE] Special handling for EXT INST edit mode
   if (extInstEditMode && curInst == EXT_INST && curSeqMode == PTRN_STEP) {
-    // Show steps for currently selected track, at the two brightnesses the drum lane
-    // uses for its own two velocity levels: accented steps are lit on every pass, the
-    // rest only on one pass in four, so the level is read off the panel at a glance.
-    unsigned int extStepsOn = pattern[ptrnBuffer].extTrack[currentExtTrack];
-    unsigned int extStepsAcc = extStepsOn & pattern[ptrnBuffer].extAccent[currentExtTrack];
-    if (flagLedIntensity >= 3) {  //[oort] Sandor uses 8 instead of 3
-      stepLeds = extStepsOn;
-      flagLedIntensity = 0;
+    // [TR-909 STYLE] LAST STEP takes the step LEDs over to show where the ext layer
+    // currently ends, the way SHUFFLE takes them over for its own two values. Held, it is
+    // the value being edited that has to be visible - lit steady, with no playhead flash
+    // and no track content underneath to read it against.
+    if (lastStepBtn.pressed) {
+      stepLeds = (unsigned int)1 << pattern[ptrnBuffer].extLength;
     }
     else {
-      stepLeds = extStepsAcc;
-      flagLedIntensity++;
-    }
+      // Show steps for currently selected track, at the two brightnesses the drum lane
+      // uses for its own two velocity levels: accented steps are lit on every pass, the
+      // rest only on one pass in four, so the level is read off the panel at a glance.
+      unsigned int extStepsOn = pattern[ptrnBuffer].extTrack[currentExtTrack];
+      unsigned int extStepsAcc = extStepsOn & pattern[ptrnBuffer].extAccent[currentExtTrack];
+      if (flagLedIntensity >= 3) {  //[oort] Sandor uses 8 instead of 3
+        stepLeds = extStepsOn;
+        flagLedIntensity = 0;
+      }
+      else {
+        stepLeds = extStepsAcc;
+        flagLedIntensity++;
+      }
 
-    // Flash current step when running
-    if (isRunning) {
-      stepLeds ^= (blinkFast << curStep);
-    }
+      // Flash current step when running
+      if (isRunning) {
+        stepLeds ^= (blinkFast << curStep);
+      }
 
-    // Flash all LEDs when INST held (track select mode)
-    if (instBtn && blinkFast) {
-      stepLeds = 0xFFFF;
+      // Flash all LEDs when INST held (track select mode)
+      if (instBtn && blinkFast) {
+        stepLeds = 0xFFFF;
+      }
     }
   } else {
     // Normal mode handling with switch statement
