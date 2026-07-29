@@ -98,9 +98,14 @@ Patterns, tracks and the setup record can be read off the unit and written back,
 firmware update no longer risks the contents of the EEPROM.
 
 ```bash
+nava tui                                                     # or drive it interactively
 nava backup --out NAVA-909 --in NAVA-909 -o nava-backup.syx
 nava restore nava-backup.syx --out NAVA-909 --in NAVA-909
 ```
+
+`nava tui` browses backups as decoded step grids, picks the MIDI ports, and runs
+dumps, restores and firmware flashes behind confirmation prompts. `nava show
+backup.syx C3` prints a single pattern without opening the interface.
 
 Stop the sequencer and press **SHIFT + TEMPO** to the SysEx page (`type / select`)
 first - that is where the firmware listens. Entering that page flushes pending edits to

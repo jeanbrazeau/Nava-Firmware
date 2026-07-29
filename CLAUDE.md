@@ -34,11 +34,22 @@ Key hardware systems include:
     - `MemoryFree/`: Memory management utilities
     - `SPI/`: SPI communication library
     - `WireN/`: I2C communication library (custom)
-- `tools/`: the `nava` CLI (Python 3) - see `tools/README.md`
+- `tools/`: the `nava` CLI and TUI (Python 3) - see `tools/README.md`
   - `nava/bootloader.py`: firmware `.hex` -> bootloader `.syx` (nibblized pages)
   - `nava/protocol.py`: the pattern/track/setup dump protocol, mirroring `Sysex.h`
+  - `nava/records.py`: decodes the EEPROM records a dump carries. The ONLY place
+    in the tool that knows the pattern layout; the transfer path keeps records
+    opaque so a backup survives firmware revisions that fill in their padding
+  - `nava/render.py`: the step grid, shared by `nava show` and the TUI
+  - `nava/transfer.py`: the backup/restore/flash loops, shared by both front ends
+    so their retry and acknowledge behaviour cannot drift
   - `nava/midiio.py`: port discovery, retries, ACK handling
-  - `nava/cli.py`: `build`, `hex2syx`, `flash`, `backup`, `restore`, `inspect`, `ports`
+  - `nava/library.py`: reads `.syx` files and tells a firmware image from a backup
+  - `nava/cli.py`: `build`, `hex2syx`, `flash`, `backup`, `restore`, `inspect`,
+    `show`, `ports`, `tui`
+  - `nava/tui/`: the Textual interface. Every MIDI operation runs in a worker
+    thread - mido and the transfer loops are synchronous, and a 20-second flash
+    would otherwise freeze the interface
   - `tests/`: runs without hardware; `fakenava.py` models the device
 
 ## Development Commands
