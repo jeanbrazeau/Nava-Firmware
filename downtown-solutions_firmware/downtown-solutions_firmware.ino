@@ -33,6 +33,7 @@ void LcdUpdate();
 
 #if MIDI_HAS_SYSEX
 #include "Sysex.h"
+#include "sysex_pack.h"
 #endif
 
 // Running status must NOT depend on the SysEx build flag. features.h leaves

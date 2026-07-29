@@ -9,6 +9,7 @@
 #define SYSEX_DEVID_1 0x07
 #define SYSEX_DEVID_2 0x1A
 
+// F0 + manufacturer + two device bytes + command + parameter.
 #define HEADERSIZE      6
 // Sysex Commands:
 #define NAVA_BANK_DMP   0x00
@@ -18,7 +19,7 @@
 #define NAVA_LEVELS_DMP 0x04
 #define NAVA_FULL_DMP   0x05
 
-// Request command's 
+// Request command's
 #define NAVA_BANK_REQ   0x40
 #define NAVA_PTRN_REQ   0x41
 #define NAVA_TRACK_REQ  0x42
@@ -28,20 +29,41 @@
 #define NAVA_FBANK_REQ  0x46
 #define NAVA_FTRACK_REQ 0x47
 #define NAVA_ACK        0x48
-#define BANK_PARTS      8  // Must be one of 4,8 or 16.
 
-#define SYSEX_PTRN_SIZE   564
-#define SYSEX_BANK_SIZE   1076 // 1076 //2100
-#define SYSEX_TRACK_SIZE  1186
-#define SYSEX_CONFIG_SIZE 89
-#define SYSEX_BUFFER_SIZE SYSEX_TRACK_SIZE // 2100 when using 4 BANK_PARTS      
-/*struct SysexPortSettings
-{
-    static const bool UseRunningStatus = true;
-    static const bool HandleNullVelocityNoteOnAsNoteOff = true;
-    static const bool Use1ByteParsing = true;
-    static const unsigned SysExMaxSize = 128;
-    static const bool UseSenderActiveSensing = false;
-    static const bool UseReceiverActiveSensing = false;
-    static const uint16_t SenderActiveSensingPeriodicity = 0;
-};*/
+// ACK parameter: how the last incoming message was handled. The host retries on
+// anything but OK, so these have to separate "lost in transit" from "the device
+// will never accept this" - see request_dump() in tools/nava/midiio.py.
+#define NAVA_ACK_OK           0
+#define NAVA_ACK_BAD_CHECKSUM 1
+#define NAVA_ACK_BAD_LENGTH   2
+#define NAVA_ACK_BAD_PARAM    3
+#define NAVA_ACK_BUSY         4
+
+// Payload records are the EEPROM images from EEprom.ino, dumped verbatim. A
+// backup then round-trips through any firmware revision that adds fields inside
+// the padding those records already reserve, without this file knowing about it.
+#define SYSEX_PTRN_BYTES   448  // PTRN_SIZE
+#define SYSEX_TRACK_BYTES  1024 // TRACK_SIZE
+#define SYSEX_CONFIG_BYTES 64   // SETUP_SIZE
+
+// Payload bytes are 7-in-8 packed: 7 raw bytes become 8 MIDI data bytes, the
+// first carrying their high bits. Nibblization - what the bootloader uses - would
+// have doubled the 1KB track record and pushed the largest message well past what
+// the MIDI library can reassemble in the RAM this board has left.
+#define SYSEX_PACKED(raw)   (((raw) / 7) * 8 + ((raw) % 7 ? (raw) % 7 + 1 : 0))
+#define SYSEX_MSG_SIZE(raw) (HEADERSIZE + SYSEX_PACKED(raw) + 2)  // + checksum + F7
+
+#define SYSEX_PTRN_SIZE   SYSEX_MSG_SIZE(SYSEX_PTRN_BYTES)   // 520
+#define SYSEX_TRACK_SIZE  SYSEX_MSG_SIZE(SYSEX_TRACK_BYTES)  // 1179
+#define SYSEX_CONFIG_SIZE SYSEX_MSG_SIZE(SYSEX_CONFIG_BYTES) // 82
+
+// The largest message that must arrive whole. The MIDI library reserves this much
+// RAM for reassembly and splits anything longer into fragments, so it is sized to
+// the track record - the largest thing a host ever sends this device.
+#ifndef SYSEX_BUFFER_SIZE
+#define SYSEX_BUFFER_SIZE SYSEX_TRACK_SIZE
+#endif
+
+// A bank is dumped as its 16 pattern messages rather than one large one, so the
+// buffer above is set by the track record alone and BANK_PARTS-style chunking is
+// not needed.

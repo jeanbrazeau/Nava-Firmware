@@ -60,42 +60,61 @@ so one press past BOOTLOADER lands on `low hi  ext vel`, and the next wraps back
 
 ### Building and sending
 
-With PlatformIO:
+`tools/` provides a `nava` command that does the whole job - see
+[tools/README.md](tools/README.md) for the full reference.
 
 ```bash
-pio run -e nava_sysex
-# produces .pio/build/nava_sysex/firmware.syx
+pip install -e tools
+nava build                                                   # compile, emit the .syx
+nava flash .pio/build/nava_sysex/firmware.syx --out NAVA-909
 ```
 
-With the Arduino IDE, compile and then convert the `.hex` yourself (Python 2.7):
+`nava build` wraps `pio run -e nava_sysex`; the build also writes the `.syx` on its own
+as a post-action. With the Arduino IDE, compile there and convert the `.hex`:
 
 ```bash
-python tools/hex2sysex/hex2sysex.py --syx --output_file output.syx path_to_hex_file.hex
+nava hex2syx path_to_hex_file.hex -o output.syx
 ```
 
-Send the file with any SysEx-capable utility. A slow inter-message delay is deliberate -
-the bootloader writes a flash page per message and will drop data if pushed faster:
-
-```bash
-navasyx --dest <n> --delay-ms 250 .pio/build/nava_sysex/firmware.syx
-```
+The 250 ms default between pages is deliberate - the bootloader writes a flash page per
+message and will drop data if pushed faster.
 
 ### Finding the right MIDI port
 
-`navasyx --list` enumerates destinations, but do not trust the names alone if your
-interface has several similarly labelled ports (a Mio can easily present both
-`909/MPC` and `NAVA-909`). Resolve it by name rather than hardcoding an index, because
-indices shift whenever a USB device is added or removed:
-
-```bash
-navasyx --dest "$(navasyx --list | awk -F': ' '$2 ~ /NAVA-909/ {print $1; exit}')" \
-        --delay-ms 250 .pio/build/nava_sysex/firmware.syx
-```
+`nava ports` enumerates them, but do not trust the names alone if your interface has
+several similarly labelled ports (a Mio can easily present both `909/MPC` and
+`NAVA-909`). Give `--out` a distinctive substring rather than an index, because indices
+shift whenever a USB device is added or removed; an ambiguous match is refused rather
+than guessed at.
 
 To confirm which port is physically the Nava, listen instead of guessing: press PLAY
 with the unit in MASTER sync and watch for MIDI clock, which it emits 24 times a quarter
 note. If it is slaved to an external clock it generates none - latch GUIDE and program a
 few EXT INST steps, and watch for note-ons instead.
+
+## Backing up patterns over MIDI SysEx
+
+Patterns, tracks and the setup record can be read off the unit and written back, so a
+firmware update no longer risks the contents of the EEPROM.
+
+```bash
+nava backup --out NAVA-909 --in NAVA-909 -o nava-backup.syx
+nava restore nava-backup.syx --out NAVA-909 --in NAVA-909
+```
+
+Stop the sequencer and press **SHIFT + TEMPO** to the SysEx page (`type / select`)
+first - that is where the firmware listens. Entering that page flushes pending edits to
+EEPROM and leaving it reloads the current bank, so a restore takes effect without a
+power cycle. The same page still dumps a single bank, pattern, track or the config from
+the panel with ENTER, which is what the encoder selects there.
+
+Backups are plain `.syx` files of dump messages: `nava inspect` describes one, and any
+SysEx utility can replay it. Each item is checksummed and acknowledged, and the unit
+verifies a record before writing any of it, so a corrupted transfer leaves the stored
+pattern intact rather than half-replaced.
+
+This needs a PlatformIO build; the Arduino IDE build leaves `MIDI_HAS_SYSEX` off in
+`features.h` and compiles no SysEx support at all.
 
 ## For developers
 I am not an expert on embedded systems and have almost completely kept my hands off code related to triggering, timing and hardware related details. I also believe these sections work pretty well. Mainly this take on the firmware tries to improve button logic and how programmed patterns are handled by the memory while also trying to avoid the drawbacks of slow EE-prom reading and writing. I have developed by uploading the firmware to Nava via sysex. This is a slow process, with no debugging options but it's easy to get started. I have no intentions of making a big re write at this time and have tried to follow the main design already implemented by others, although sometimes it's pretty strange stuff. :-D

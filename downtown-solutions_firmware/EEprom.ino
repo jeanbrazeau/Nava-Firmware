@@ -586,8 +586,44 @@ void WireBeginTX(unsigned long address)
   Wire.write((byte)(address & 0xFF));
 }
 
+// [SYSEX] Read a block of up to 64 bytes into buf.
+//
+// Kept to a single I2C transaction: the SysEx dump path streams a whole record
+// through this and a per-byte EEpromByteRead() would add an address phase to
+// every one of a track's 1024 bytes. Callers keep a block inside one record, and
+// every record is aligned and sized in multiples of MAX_PAGE_SIZE, so a block
+// can never straddle the 64KB line where the chip's hardware address changes.
+void EEpromReadBlock(unsigned long address, byte* buf, byte count)
+{
+  WireBeginTX(address);
+  Wire.endTransmission();
+
+  byte hardwareAddress;
+  if (address > 65535) hardwareAddress = HRDW_ADDRESS_UP;
+  else hardwareAddress = HRDW_ADDRESS;
+
+  Wire.requestFrom(hardwareAddress, (unsigned long)(count));
+  for (byte i = 0; i < count; i++) {
+    buf[i] = Wire.available() ? (Wire.read() & 0xFF) : 0;
+  }
+}
+
+// [SYSEX] Write a block of up to MAX_PAGE_SIZE bytes into one EEPROM page.
+//
+// The chip wraps within a 64-byte page instead of carrying into the next one, so
+// `address` must be page aligned. Every record the SysEx path writes starts on a
+// page boundary and is a whole number of pages long, which is what makes that
+// safe to assert rather than handle.
+void EEpromWriteBlock(unsigned long address, const byte* buf, byte count)
+{
+  WireBeginTX(address);
+  for (byte i = 0; i < count; i++) Wire.write(buf[i]);
+  Wire.endTransmission();
+  delay(DELAY_WR);
+}
+
 // Helper function to write a single byte to EEPROM
-void EEpromByte(unsigned long address, byte data) 
+void EEpromByte(unsigned long address, byte data)
 {
   WireBeginTX(address);
   Wire.write(data);
