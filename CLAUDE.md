@@ -45,6 +45,14 @@ Key hardware systems include:
     so their retry and acknowledge behaviour cannot drift
   - `nava/midiio.py`: port discovery, retries, ACK handling
   - `nava/library.py`: reads `.syx` files and tells a firmware image from a backup
+  - `nava/building.py`: PlatformIO build + `.hex` -> `.syx`, shared by `nava build`
+    and the TUI. `checkout_root()` reports None rather than raising when there is no
+    `platformio.ini` beside the package, which is every installed copy - the front
+    ends use it to say why building is unavailable before anything is pressed
+  - `nava/releases.py`: firmware published on the GitHub releases page, over stdlib
+    urllib (a dependency here would land in front of `nava flash` for everyone).
+    Downloads via `.part` + rename, so an interrupted fetch cannot leave a truncated
+    image that flashes as if it were whole
   - `nava/cli.py`: `build`, `hex2syx`, `flash`, `backup`, `restore`, `inspect`,
     `show`, `ports`, `tui`
   - `nava/tui/`: the Textual interface. Every MIDI operation runs in a worker
