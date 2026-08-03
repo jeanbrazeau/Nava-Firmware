@@ -140,9 +140,21 @@ static void test_boot_fill_animation(nava_sim_t *ctx) {
     }
 
     /* The fill is a prelude, not the end state: the splash must follow it. */
-    if (!lcd_await(ctx, 1, "solutions", BOOT_CYCLES))
+    if (!lcd_await(ctx, 1, "solutions", BOOT_CYCLES)) {
         test_fail("ui/bootfill", "splash never replaced the fill (row 1: \"%s\")",
                   fp_lcd_line(ctx, 1));
+        return;
+    }
+
+    /* The two words are one name stacked over two rows, so they must start in
+     * the same column. Row 1 is indented by the leading space that keeps
+     * " solutions " + version inside 16 columns; row 0 has to match it. */
+    const char *row0 = strstr(fp_lcd_line(ctx, 0), "downtown");
+    const char *row1 = strstr(fp_lcd_line(ctx, 1), "solutions");
+    if (!row0 || row0 - fp_lcd_line(ctx, 0) != row1 - fp_lcd_line(ctx, 1))
+        test_fail("ui/bootfill",
+                  "splash words misaligned (\"%s\" / \"%s\")",
+                  fp_lcd_line(ctx, 0), fp_lcd_line(ctx, 1));
 }
 
 static void test_boot_screen(nava_sim_t *ctx) {

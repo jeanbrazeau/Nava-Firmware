@@ -156,8 +156,12 @@ void setup() {
   LcdBootAnimation();
 
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("downtown");  //[oort] 16 characters
+  // Column 1, not 0: the line below is " solutions " + the version, and that
+  // leading space is what keeps the version inside the 16 columns. Printing
+  // "downtown" at column 0 hung its d one character to the left of the s under
+  // it, so the two words of the name did not line up.
+  lcd.setCursor(1, 0);
+  lcd.print("downtown");
   lcd.setCursor(0, 1);
   // Printed from FIRMWARE_VERSION rather than spelled out, so the panel cannot
   // disagree with the tag a release was published under. version.h keeps the
