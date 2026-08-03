@@ -17,6 +17,7 @@
 //#include <Wire.h>                // [zabox] [1.028] (wire.h/twi.h 130 byte buffer length)
 #include <util/atomic.h>
 #include "features.h"
+#include "version.h"
 #include "define.h"
 #include "nava_strings.h"
 //#include "src/MIDI/MIDI.h". //[oort] Unknown why a local midi.h was used in https://github.com/BenZonneveld/Nava-2021-Firmware
@@ -162,10 +163,10 @@ void setup() {
   lcd.setCursor(0, 0);
   lcd.print("downtown");  //[oort] 16 characters
   lcd.setCursor(0, 1);
-  // Exactly 16 characters, like the line above it. The old string was 18 - two leading
-  // spaces and a trailing one - so "solutions" sat a column right of its intended indent
-  // and the last two characters were written into off-screen DDRAM.
-  lcd.print(" solutions 0.91b");
+  // Printed from FIRMWARE_VERSION rather than spelled out, so the panel cannot
+  // disagree with the tag a release was published under. version.h keeps the
+  // whole line inside the 16 columns.
+  lcd.print(" solutions " FIRMWARE_VERSION);
   delay(2000);
   LcdUpdate();  // [1.028] if started in expader mode
 }

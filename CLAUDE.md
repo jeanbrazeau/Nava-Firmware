@@ -53,8 +53,11 @@ Key hardware systems include:
     urllib (a dependency here would land in front of `nava flash` for everyone).
     Downloads via `.part` + rename, so an interrupted fetch cannot leave a truncated
     image that flashes as if it were whole
+  - `nava/publish.py`: cuts a release - rewrites `FIRMWARE_VERSION`, commits, tags
+    and pushes. Builds nothing itself; the tag is what starts CI. All guard, no
+    improvisation: a tag other people flash from cannot be re-cut
   - `nava/cli.py`: `build`, `hex2syx`, `flash`, `backup`, `restore`, `inspect`,
-    `show`, `ports`, `tui`
+    `show`, `ports`, `release`, `tui`
   - `nava/tui/`: the Textual interface. Every MIDI operation runs in a worker
     thread - mido and the transfer loops are synchronous, and a 20-second flash
     would otherwise freeze the interface
@@ -100,6 +103,30 @@ byte for byte.
 On Apple Silicon the AVR toolchain is x86-only (PlatformIO publishes no arm64
 build, and neither does Arduino), so a build needs Rosetta:
 `softwareupdate --install-rosetta --agree-to-license`.
+
+### Releasing
+
+`downtown-solutions_firmware/version.h` is the only place the version is written
+down. The splash prints `FIRMWARE_VERSION`, `nava release X.Y` rewrites it, and
+`.github/workflows/release.yml` refuses to publish a tag that disagrees with it -
+the panel is the only version a user in front of the machine can read, so a
+release whose number differs from the splash is worse than no release. The header
+also fails to compile if the version is too long for the 16-column splash line.
+
+```bash
+uv run --project tools nava release 0.92 --dry-run
+uv run --project tools nava release 0.92
+```
+
+Pushing the tag is the whole trigger: CI builds with PlatformIO, decodes the
+resulting `.syx` to prove it is a valid bootloader image before publishing, and
+attaches it to a new release as `nava-<tag>.syx`. Building on a runner rather
+than a laptop is what makes the artifact traceable to a commit and a log instead
+of to someone's working tree. `nava tui` then downloads it from the Firmware tab.
+
+The stale `.github/workflows/main.yml` (Windows, arduino-cli, named for Nava2021)
+is untouched and unrelated; it is `workflow_dispatch` only and builds nothing on
+its own.
 
 ### Backing up patterns
 

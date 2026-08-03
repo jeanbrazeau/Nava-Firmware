@@ -1,0 +1,132 @@
+# Publish a firmware release when a version tag is pushed.
+#
+# `nava release 0.92` bumps version.h, commits, tags and pushes; everything from
+# there happens here. Building on a runner rather than on a laptop is what makes
+# the published .syx traceable: the artifact people flash came from this commit,
+# compiled by this log, not from whatever was in someone's working tree.
+#
+# The version guard is the reason this exists at all. A release tagged 0.92 whose
+# firmware prints 0.91b on the panel is worse than no release, because the splash
+# is the only version a user standing in front of the machine can read.
+
+name: Release firmware
+
+on:
+  push:
+    # Version tags only - pushing any other tag must not publish anything.
+    # These are globs, not regexes: GitHub does not accept `+` here, and a
+    # pattern written as a regex silently matches nothing at all.
+    tags:
+      - "[0-9]*.[0-9]*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Notes are generated from the log since the previous tag, which needs
+          # more than the tagged commit itself.
+          fetch-depth: 0
+
+      - name: Check the tag against the firmware version
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^#define FIRMWARE_VERSION "\(.*\)"/\1/p' \
+            downtown-solutions_firmware/version.h)
+          echo "version.h says: $version"
+          echo "tag is:         $GITHUB_REF_NAME"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match FIRMWARE_VERSION $version."
+            echo "The unit would show $version after being flashed from a release called $GITHUB_REF_NAME."
+            echo "Use \`nava release $GITHUB_REF_NAME\`, which bumps version.h and tags in one step."
+            exit 1
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Build
+        run: pio run -e nava_sysex
+
+      - name: Name and verify the image
+        id: image
+        run: |
+          set -euo pipefail
+          asset="nava-${GITHUB_REF_NAME}.syx"
+          cp .pio/build/nava_sysex/firmware.syx "$asset"
+          # Decode it back before publishing: the post-build conversion is the
+          # one step between a good compile and an image that bricks a unit, and
+          # nothing downstream would notice a malformed one until someone flashed it.
+          # python3 rather than python: setup-python provides both, and python3 is
+          # the name that also works when running these steps by hand locally.
+          python3 - "$asset" <<'PY'
+          import sys
+          sys.path.insert(0, "tools")
+          from nava import bootloader
+          with open(sys.argv[1], "rb") as handle:
+              image = bootloader.decode_firmware(handle.read())
+          print(f"{sys.argv[1]}: decodes to {len(image)} bytes of flash")
+          PY
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Write the release notes
+        env:
+          ASSET: ${{ steps.image.outputs.asset }}
+        run: |
+          set -euo pipefail
+          # Quoted heredoc: the notes are full of backticks and ${...} that the
+          # shell would otherwise eat. Placeholders are substituted afterwards.
+          cat > notes.tmpl <<'EOF'
+          Firmware for the Nava (ATmega1284p @ 16 MHz). The panel shows `__TAG__` on boot.
+
+          ## Flashing
+
+          ```bash
+          uv tool install "git+https://github.com/__REPO__#subdirectory=tools[tui]"
+          nava tui        # Firmware tab -> Download (latest) -> Inspect -> Flash
+          ```
+
+          Or from the command line, with the unit already in bootloader mode - stop the
+          sequencer, hold SHIFT and press TEMPO to the `BOOTLOADER` page, press the encoder:
+
+          ```bash
+          nava flash __ASSET__ --out NAVA-909
+          ```
+
+          Back up your patterns first with `nava backup`. Flashing does not erase them,
+          but a failed recovery might.
+          EOF
+          # Substituting into a second file rather than `sed -i`: in-place editing
+          # needs an argument to -i on BSD sed and rejects one on GNU, so a line
+          # that works on the runner cannot be run by hand on a Mac.
+          sed "s|__TAG__|${GITHUB_REF_NAME}|g; s|__REPO__|${GITHUB_REPOSITORY}|g; s|__ASSET__|${ASSET}|g" \
+            notes.tmpl > notes.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ steps.image.outputs.asset }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Nava $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --generate-notes \
+            "$ASSET"
