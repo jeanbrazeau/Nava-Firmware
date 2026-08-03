@@ -129,4 +129,10 @@ const char *nava_lcd_get_line(const nava_lcd_ctx_t *ctx, int row) {
     return ctx->screen[row];
 }
 
+const uint8_t *nava_lcd_get_raw(const nava_lcd_ctx_t *ctx, int row) {
+    static const uint8_t row_base[LCD_ROWS] = { 0x00, 0x40 };
+    if (row < 0 || row >= LCD_ROWS) return NULL;
+    return &ctx->part.vram[row_base[row]];
+}
+
 int nava_lcd_is_active(const nava_lcd_ctx_t *ctx) { return ctx->active; }

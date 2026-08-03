@@ -495,3 +495,120 @@ void  LcdPrintTM2Adjust()
   lcd.setCursor(0,1);
   lcd.print("TP1 is +5V...");
 }
+
+
+//-------------------------------------------------
+//              Power-on fill animation
+//-------------------------------------------------
+// Lights the panel one dot at a time, in random order, until all 32 cells are
+// solid, then hands the screen to the version splash.
+//
+// The panel is 32 cells of 5x8 dots - 1280 of them - but an HD44780 holds only
+// EIGHT programmable glyphs, so at most eight cells can show a partly filled
+// pattern at any moment. The animation is therefore a sliding window:
+//
+// 1. shuffle the 32 cell positions, so the fill order differs every power-up
+// 2. hand each free CGRAM slot to the next cell in that order, and print that
+//    slot's character code into the cell
+// 3. each frame, light one random dark dot of one random growing cell
+// 4. when a cell's 40 dots are all lit, overprint it with 0xFF - the ROM's
+//    all-dots-on block - and hand its slot to the next cell
+// 5. restore font0..font5, which the animation borrowed
+//
+// Step 3 costs two byte transfers and nothing else: a cell displaying a CGRAM
+// code re-renders live as that glyph is rewritten, so once the code is in DDRAM
+// the dots are painted by touching CGRAM alone. Only the ONE row that changed is
+// written, rather than the whole glyph as lcd.createChar() would.
+//
+// Step 4's ordering is load-bearing. A finished cell must be switched to 0xFF
+// BEFORE its slot is handed on, or it would keep tracking the glyph and empty
+// itself out again as the next cell starts filling.
+#define BOOT_ANIM_CELLS    32   // 16 columns x 2 rows
+#define BOOT_ANIM_SLOTS     8   // programmable glyphs on an HD44780
+#define BOOT_ANIM_DOTS     40   // 5 columns x 8 rows per cell
+#define BOOT_ANIM_FREE    255   // slot owns no cell
+// The fill is paced by the panel itself and nothing else: LiquidCrystal spends
+// ~0.9ms on the two byte transfers a dot costs, which puts the whole 1280-dot
+// fill at ~1.3s - already the right length to read as filling up. Measured
+// against the simulator, which boots to a live front panel in 46.9M cycles
+// without the animation and 68M with it.
+// Hold the full screen briefly so the completed state registers as the point of
+// the animation, instead of being wiped the instant the last dot lands.
+#define BOOT_ANIM_HOLD_MS 150
+
+void LcdBootAnimation()
+{
+  byte order[BOOT_ANIM_CELLS];          // cell positions, shuffled
+  byte slotCell[BOOT_ANIM_SLOTS];       // cell each slot is filling, or BOOT_ANIM_FREE
+  byte slotDots[BOOT_ANIM_SLOTS][8];    // that cell's glyph, one byte per dot row
+  byte slotLeft[BOOT_ANIM_SLOTS];       // dots still dark in it
+  byte growing[BOOT_ANIM_SLOTS];        // slots in use, compacted for the random pick
+
+  // random() replays the same sequence every power-up unless it is seeded, and
+  // every code path ahead of this one is fixed, so micros() alone would not vary
+  // either. The accent input is an analog pin whose low bits dither; XOR so a
+  // quiet pin still leaves the timer's contribution.
+  randomSeed(micros() ^ ((unsigned long)analogRead(TRIG2_PIN) << 8));
+
+  for (byte i = 0; i < BOOT_ANIM_CELLS; i++) order[i] = i;
+  for (byte i = BOOT_ANIM_CELLS - 1; i > 0; i--) {   // Fisher-Yates
+    byte j = random(i + 1);
+    byte swap = order[i];
+    order[i] = order[j];
+    order[j] = swap;
+  }
+  for (byte s = 0; s < BOOT_ANIM_SLOTS; s++) slotCell[s] = BOOT_ANIM_FREE;
+
+  lcd.clear();
+
+  byte next = 0;    // next entry of order[] to start
+  byte done = 0;    // cells fully lit
+
+  while (done < BOOT_ANIM_CELLS) {
+    // Start cells in any free slot
+    byte count = 0;
+    for (byte s = 0; s < BOOT_ANIM_SLOTS; s++) {
+      if (slotCell[s] == BOOT_ANIM_FREE && next < BOOT_ANIM_CELLS) {
+        byte cell = order[next++];
+        memset(slotDots[s], 0, 8);
+        lcd.createChar(s, slotDots[s]);   // blank it: the slot still holds the last cell's dots
+        lcd.setCursor(cell & 15, cell >> 4);
+        lcd.write(s);
+        slotCell[s] = cell;
+        slotLeft[s] = BOOT_ANIM_DOTS;
+      }
+      if (slotCell[s] != BOOT_ANIM_FREE) growing[count++] = s;
+    }
+
+    // Light one dark dot of one growing cell. The dot is picked at random and
+    // then probed forward to the next dark one, which needs no per-cell list of
+    // what is left - the glyph bytes already record it.
+    byte s = growing[random(count)];
+    byte dot = random(BOOT_ANIM_DOTS);
+    while (slotDots[s][dot / 5] & (0x10 >> (dot % 5))) {
+      if (++dot == BOOT_ANIM_DOTS) dot = 0;
+    }
+    byte row = dot / 5;
+    slotDots[s][row] |= 0x10 >> (dot % 5);   // bit 4 is the leftmost dot column
+    lcd.command(LCD_SETCGRAMADDR | (s << 3) | row);
+    lcd.write(slotDots[s][row]);
+
+    if (--slotLeft[s] == 0) {
+      lcd.setCursor(slotCell[s] & 15, slotCell[s] >> 4);
+      lcd.write((byte)0xFF);               // ROM block, so the slot is free again
+      slotCell[s] = BOOT_ANIM_FREE;
+      done++;
+    }
+  }
+
+  delay(BOOT_ANIM_HOLD_MS);
+
+  // Slots 6 and 7 keep whatever the animation left in them; nothing prints those
+  // codes, and the first six are what the interface draws with.
+  lcd.createChar(0, font0);
+  lcd.createChar(1, font1);
+  lcd.createChar(2, font2);
+  lcd.createChar(3, font3);
+  lcd.createChar(4, font4);
+  lcd.createChar(5, font5);
+}

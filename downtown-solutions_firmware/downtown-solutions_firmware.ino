@@ -159,6 +159,12 @@ void setup() {
 
   //-----------------------------------------------
 
+  // Fill the panel dot by dot before the version splash. It runs here, at the
+  // end of setup, rather than beside lcd.begin(): every boot key combo above
+  // puts up its own screen and none of them reach this point, so the animation
+  // cannot delay a unit held into EEPROM init, TM2 adjust or the bootloader.
+  LcdBootAnimation();
+
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("downtown");  //[oort] 16 characters

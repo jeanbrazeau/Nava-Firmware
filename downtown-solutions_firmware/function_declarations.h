@@ -26,6 +26,7 @@ void ExtPreviewOff();
 void ExtPreviewCheck();
 void ExtSetTrackNote(byte note);
 byte LcdPrintNoteName(byte note);
+void LcdBootAnimation();
 void SaveExtTrackNotes();
 void LoadExtTrackNotes();
 void MidiSendExtNoteOn(byte note, byte velocity);
