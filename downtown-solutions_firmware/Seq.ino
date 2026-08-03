@@ -24,7 +24,7 @@ void SeqParameter() {
         && curIndex >= MAX_CUR_POS_EXT_VEL) curIndex = 0;
 #if MIDI_HAS_SYSEX
     // Limit encoder positions for Sysex
-    if (seq.configMode && seq.configPage == 3) {
+    if (seq.configMode && seq.configPage == CONF_PAGE_SYSEX) {
       if (sysExDump < SYSEX_MAXPARAM && curIndex > 1) curIndex = 0;
       if (sysExDump >= SYSEX_MAXPARAM && curIndex > 0) curIndex = 0;
     }
@@ -169,18 +169,18 @@ void SeqParameter() {
         // First press - enter config mode
         seq.configMode = TRUE;
         ExitExtInstEditMode();
-        seq.configPage = 1; // Start at page 1
+        seq.configPage = CONF_PAGE_SYNC; // Start at the first page
       } else {
         // Already in config mode, cycle to the next page and wrap. The page order is
         // fixed by the numbering in define.h, so adding a page needs no change here -
         // the if-chain this replaces had to be edited in both #if branches.
         seq.configPage++;
-        if (seq.configPage > MAX_CONF_PAGE) seq.configPage = 1;
+        if (seq.configPage > MAX_CONF_PAGE) seq.configPage = CONF_PAGE_SYNC;
       }
 
       curIndex = 0;
 #if MIDI_HAS_SYSEX
-      if (seq.configPage == 3) seq.setupNeedSaved = FALSE;  //only if sysex
+      if (seq.configPage == CONF_PAGE_SYSEX) seq.setupNeedSaved = FALSE;  //only if sysex
 #endif
 
       // No debug display, just update the LCD immediately

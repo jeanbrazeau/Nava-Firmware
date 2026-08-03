@@ -44,11 +44,11 @@
 #define FX_MIDI_LOW_VEL       63u
 #define FX_MIDI_LOW_ACC_VEL   79u  /* unaccented track on a TOTAL_ACC step */
 
-/* Config page carrying the two ext velocity levels, counted in TEMPO presses from
- * outside config mode.  Matches CONF_PAGE_EXT_VEL (define.h) for a MIDI_HAS_SYSEX
- * build, which is what platformio.ini produces: 1 setup, 2 setup, 3 sysex, 4
- * bootloader, 5 ext velocity. */
-#define FX_CONF_PAGE_EXT_VEL   5
+/* Config pages, counted in TEMPO presses from outside config mode.  These mirror
+ * define.h for a MIDI_HAS_SYSEX build, which is what platformio.ini produces:
+ * 1 setup, 2 setup, 3 ext velocity, 4 sysex, 5 bootloader. */
+#define FX_CONF_PAGE_EXT_VEL   3
+#define FX_CONF_PAGE_SYSEX     4
 
 /* Pattern fixture data structure (mirrors firmware's Pattern struct fields
  * needed to build EEPROM images and inject via I2C EEPROM seed). */
