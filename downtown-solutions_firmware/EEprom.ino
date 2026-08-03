@@ -19,9 +19,24 @@
 //Setup size:
 //  -OFFSET_SETUP = TRACK_OFFSET + (TRACK_SIZE * MAX_TRACK) = 73728;
 //
-// Bootloader flag address - at the very end of EEPROM  
-#define BOOTLOADER_FLAG_ADDR 0x3FF
-#define BOOTLOADER_FLAG_VALUE 0xB0
+// REMOVED: the bootloader flag, which lived at 0x3FF and was described as being "at the
+// very end of EEPROM". It was not. This is a 131072-byte external I2C part and patterns
+// start at offset 0 with PTRN_SIZE 448, so byte 1023 is pattern index 2, record offset
+// 127 - the high byte of the INVERTED extAccent[15] written at PTRN_SETUP_OFFSET+96..127,
+// i.e. the accent mask of external track 16 in pattern A3. A user whose accents there
+// encoded to 0xB0 made the unit boot into bootloader mode instead of the sequencer, and
+// CheckBootloaderFlag() then wrote 0 over that byte on its way out - which decodes as
+// fully accented - so the next power cycle played that track at the wrong level with no
+// visible cause. 0x3FF is the last address of a 1024-byte internal EEPROM, i.e. an
+// ATmega328P; this firmware has never targeted that part and has never used the AVR
+// internal EEPROM at all.
+//
+// The mechanism is deleted rather than relocated because it could not do anything useful:
+// its only writer, SetBootloaderFlag(), sat after four unconditional jumps in
+// EnterBootloaderMode() and was unreachable, so the boot-time check had no true positives
+// - only that false one. A reset-surviving handoff, if one is ever wanted for a watchdog
+// entry path, belongs in a __attribute__((section(".noinit"))) magic word: SRAM survives a
+// watchdog reset, it costs no write cycle, and it structurally cannot alias stored data.
 //  -SETUP_SIZE = 64 bytes  only 4 bytes used NOW...
 //
 //
@@ -645,19 +660,5 @@ byte EEpromByteRead(unsigned long address)
   return Wire.read() & 0xFF;
 }
 
-// Set bootloader flag in EEPROM
-void SetBootloaderFlag() 
-{
-  EEpromByte(BOOTLOADER_FLAG_ADDR, BOOTLOADER_FLAG_VALUE);
-}
-
-// Check bootloader flag in EEPROM
-byte CheckBootloaderFlag() 
-{
-  byte flag = EEpromByteRead(BOOTLOADER_FLAG_ADDR);
-  // Clear the flag after reading it
-  if (flag == BOOTLOADER_FLAG_VALUE) {
-    EEpromByte(BOOTLOADER_FLAG_ADDR, 0);
-  }
-  return flag == BOOTLOADER_FLAG_VALUE;
-}
+// SetBootloaderFlag()/CheckBootloaderFlag() are gone; see the note near the top of this
+// file where BOOTLOADER_FLAG_ADDR used to be defined.

@@ -46,3 +46,6 @@ __pycache__/
 *.egg-info/
 tools/build/
 tools/dist/
+
+# Editor leftovers; a tracked SeqConf.ino.tmp once shadowed a stale page-number literal
+*.ino.tmp
