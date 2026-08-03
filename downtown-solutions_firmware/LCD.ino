@@ -500,49 +500,56 @@ void  LcdPrintTM2Adjust()
 //-------------------------------------------------
 //              Power-on fill animation
 //-------------------------------------------------
-// Lights the panel one dot at a time, in random order, until all 32 cells are
-// solid, then hands the screen to the version splash.
+// Dissolves the panel in from blank to fully lit: dots appear scattered across
+// all 32 cells at once, in random order, and the version splash follows.
 //
-// The panel is 32 cells of 5x8 dots - 1280 of them - but an HD44780 holds only
-// EIGHT programmable glyphs, so at most eight cells can show a partly filled
-// pattern at any moment. The animation is therefore a sliding window:
+// The panel is 32 cells of 5x8 dots - 1280 of them - and the whole design turns
+// on one hardware fact: an HD44780 can display at most EIGHT distinct
+// programmable glyphs at any instant. Whatever the animation does, no more than
+// eight *different* partly filled patterns can be on screen at one time. That
+// leaves two shapes, and only one of them dissolves the whole panel:
 //
-// 1. shuffle the 32 cell positions, so the fill order differs every power-up
-// 2. hand each free CGRAM slot to the next cell in that order, and print that
-//    slot's character code into the cell
-// 3. each frame, light one random dark dot of one random growing cell
-// 4. when a cell's 40 dots are all lit, overprint it with 0xFF - the ROM's
-//    all-dots-on block - and hand its slot to the next cell
-// 5. restore font0..font5, which the animation borrowed
+//   - eight cells each own a slot and fill dot by dot, unique patterns, but only
+//     ever eight cells in motion - the panel fills in clumps of eight
+//   - every cell shares ONE ladder of eight increasing fill levels, and each
+//     cell walks the ladder on its own schedule - all 32 cells can be mid-fill
 //
-// Step 3 costs two byte transfers and nothing else: a cell displaying a CGRAM
-// code re-renders live as that glyph is rewritten, so once the code is in DDRAM
-// the dots are painted by touching CGRAM alone. Only the ONE row that changed is
-// written, rather than the whole glyph as lcd.createChar() would.
+// This is the second. The ladder is built from a random permutation of the 40
+// dot positions, reshuffled every power-up, so the dots a level adds are
+// scattered inside the cell rather than sweeping across it. The cost of sharing
+// is that two cells sitting at the same level are identical; with nine density
+// levels distributed at random over the panel that reads as a dissolve, and no
+// arrangement of eight glyphs can do better.
 //
-// Step 4's ordering is load-bearing. A finished cell must be switched to 0xFF
-// BEFORE its slot is handed on, or it would keep tracking the glyph and empty
-// itself out again as the next cell starts filling.
+// 1. shuffle the 40 dot positions
+// 2. upload the ladder: glyph L lights the first LEVEL_DOTS(L) of that order,
+//    so each glyph is the one before it plus a few more dots
+// 3. each frame, bump one random cell that is not yet full to its next level,
+//    which is a single character write - the glyphs never change again
+// 4. a cell past the top of the ladder is written as 0xFF, the ROM's
+//    all-dots-on block, and drops out of the pick
+// 5. restore font0..font5, which the ladder borrowed
 #define BOOT_ANIM_CELLS    32   // 16 columns x 2 rows
-#define BOOT_ANIM_SLOTS     8   // programmable glyphs on an HD44780
 #define BOOT_ANIM_DOTS     40   // 5 columns x 8 rows per cell
-#define BOOT_ANIM_FREE    255   // slot owns no cell
-// The fill is paced by the panel itself and nothing else: LiquidCrystal spends
-// ~0.9ms on the two byte transfers a dot costs, which puts the whole 1280-dot
-// fill at ~1.3s - already the right length to read as filling up. Measured
-// against the simulator, which boots to a live front panel in 46.9M cycles
-// without the animation and 68M with it.
+#define BOOT_ANIM_LEVELS    8   // programmable glyphs on an HD44780
+// Dots lit at ladder level 1..BOOT_ANIM_LEVELS. Level BOOT_ANIM_LEVELS+1 is the
+// ROM block, so the divisor counts that final step too and the last glyph stops
+// short of a full cell - otherwise the step onto the block would be invisible.
+#define BOOT_ANIM_LEVEL_DOTS(l) (((word)BOOT_ANIM_DOTS * (l)) / (BOOT_ANIM_LEVELS + 1))
+// Paces the dissolve at ~1.3s. Unlike a dot-at-a-time fill, a level bump is one
+// character write (~0.9ms), and 288 of them would be over in a quarter second -
+// too quick to read as anything but a flicker.
+#define BOOT_ANIM_FRAME_US 3000
 // Hold the full screen briefly so the completed state registers as the point of
 // the animation, instead of being wiped the instant the last dot lands.
 #define BOOT_ANIM_HOLD_MS 150
 
 void LcdBootAnimation()
 {
-  byte order[BOOT_ANIM_CELLS];          // cell positions, shuffled
-  byte slotCell[BOOT_ANIM_SLOTS];       // cell each slot is filling, or BOOT_ANIM_FREE
-  byte slotDots[BOOT_ANIM_SLOTS][8];    // that cell's glyph, one byte per dot row
-  byte slotLeft[BOOT_ANIM_SLOTS];       // dots still dark in it
-  byte growing[BOOT_ANIM_SLOTS];        // slots in use, compacted for the random pick
+  byte dotOrder[BOOT_ANIM_DOTS];   // dot positions, shuffled: the order every cell fills in
+  byte glyph[8];                   // ladder level under construction, one byte per dot row
+  byte pending[BOOT_ANIM_CELLS];   // cells not yet full, compacted for the random pick
+  byte level[BOOT_ANIM_CELLS];     // ladder level each cell is showing
 
   // random() replays the same sequence every power-up unless it is seeded, and
   // every code path ahead of this one is fixed, so micros() alone would not vary
@@ -550,61 +557,56 @@ void LcdBootAnimation()
   // quiet pin still leaves the timer's contribution.
   randomSeed(micros() ^ ((unsigned long)analogRead(TRIG2_PIN) << 8));
 
-  for (byte i = 0; i < BOOT_ANIM_CELLS; i++) order[i] = i;
-  for (byte i = BOOT_ANIM_CELLS - 1; i > 0; i--) {   // Fisher-Yates
+  for (byte i = 0; i < BOOT_ANIM_DOTS; i++) dotOrder[i] = i;
+  for (byte i = BOOT_ANIM_DOTS - 1; i > 0; i--) {   // Fisher-Yates
     byte j = random(i + 1);
-    byte swap = order[i];
-    order[i] = order[j];
-    order[j] = swap;
+    byte swap = dotOrder[i];
+    dotOrder[i] = dotOrder[j];
+    dotOrder[j] = swap;
   }
-  for (byte s = 0; s < BOOT_ANIM_SLOTS; s++) slotCell[s] = BOOT_ANIM_FREE;
+
+  // Build the ladder once. Each level keeps the dots of the level below and adds
+  // the next few from the shuffled order, so a cell climbing it only ever gains
+  // dots - it must never appear to lose one.
+  memset(glyph, 0, sizeof(glyph));
+  byte lit = 0;
+  for (byte l = 1; l <= BOOT_ANIM_LEVELS; l++) {
+    while (lit < BOOT_ANIM_LEVEL_DOTS(l)) {
+      byte dot = dotOrder[lit++];
+      glyph[dot / 5] |= 0x10 >> (dot % 5);   // bit 4 is the leftmost dot column
+    }
+    lcd.createChar(l - 1, glyph);
+  }
 
   lcd.clear();
 
-  byte next = 0;    // next entry of order[] to start
-  byte done = 0;    // cells fully lit
+  for (byte i = 0; i < BOOT_ANIM_CELLS; i++) {
+    pending[i] = i;
+    level[i] = 0;
+  }
 
-  while (done < BOOT_ANIM_CELLS) {
-    // Start cells in any free slot
-    byte count = 0;
-    for (byte s = 0; s < BOOT_ANIM_SLOTS; s++) {
-      if (slotCell[s] == BOOT_ANIM_FREE && next < BOOT_ANIM_CELLS) {
-        byte cell = order[next++];
-        memset(slotDots[s], 0, 8);
-        lcd.createChar(s, slotDots[s]);   // blank it: the slot still holds the last cell's dots
-        lcd.setCursor(cell & 15, cell >> 4);
-        lcd.write(s);
-        slotCell[s] = cell;
-        slotLeft[s] = BOOT_ANIM_DOTS;
-      }
-      if (slotCell[s] != BOOT_ANIM_FREE) growing[count++] = s;
+  byte count = BOOT_ANIM_CELLS;
+  while (count) {
+    byte idx = random(count);
+    byte cell = pending[idx];
+    byte lvl = ++level[cell];
+
+    lcd.setCursor(cell & 15, cell >> 4);
+    if (lvl > BOOT_ANIM_LEVELS) {
+      lcd.write((byte)0xFF);
+      pending[idx] = pending[--count];   // swap the tail down: the pick stays O(1)
+    }
+    else {
+      lcd.write((byte)(lvl - 1));        // ladder level L lives in glyph L-1
     }
 
-    // Light one dark dot of one growing cell. The dot is picked at random and
-    // then probed forward to the next dark one, which needs no per-cell list of
-    // what is left - the glyph bytes already record it.
-    byte s = growing[random(count)];
-    byte dot = random(BOOT_ANIM_DOTS);
-    while (slotDots[s][dot / 5] & (0x10 >> (dot % 5))) {
-      if (++dot == BOOT_ANIM_DOTS) dot = 0;
-    }
-    byte row = dot / 5;
-    slotDots[s][row] |= 0x10 >> (dot % 5);   // bit 4 is the leftmost dot column
-    lcd.command(LCD_SETCGRAMADDR | (s << 3) | row);
-    lcd.write(slotDots[s][row]);
-
-    if (--slotLeft[s] == 0) {
-      lcd.setCursor(slotCell[s] & 15, slotCell[s] >> 4);
-      lcd.write((byte)0xFF);               // ROM block, so the slot is free again
-      slotCell[s] = BOOT_ANIM_FREE;
-      done++;
-    }
+    delayMicroseconds(BOOT_ANIM_FRAME_US);
   }
 
   delay(BOOT_ANIM_HOLD_MS);
 
-  // Slots 6 and 7 keep whatever the animation left in them; nothing prints those
-  // codes, and the first six are what the interface draws with.
+  // Slots 6 and 7 keep the two top ladder levels; nothing prints those codes,
+  // and the first six are what the interface draws with.
   lcd.createChar(0, font0);
   lcd.createChar(1, font1);
   lcd.createChar(2, font2);

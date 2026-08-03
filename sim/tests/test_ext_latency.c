@@ -18,9 +18,9 @@
 
 #include <stdio.h>
 
-/* Boot budget: ~6 s simulated at 16 MHz. Boot itself measures ~4.25 s (68M
- * cycles): the panel fill animation is ~1.3 s of it, then the 2 s version splash,
- * and the panel is not scanned until both are done. */
+/* Boot budget: ~6 s simulated at 16 MHz. Boot itself measures ~4.2 s (67M
+ * cycles): the panel dissolve animation is ~1.26 s of it, then the 2 s version
+ * splash, and the panel is not scanned until both are done. */
 #define BOOT_CYCLES   96000000ULL
 #define STEP_CYCLES   (NAVA_PPQN_PERIOD_CYCLES * 24ULL)   /* 2000064 @120bpm */
 #define BAR_CYCLES    (16ULL * STEP_CYCLES)
