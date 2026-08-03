@@ -61,6 +61,20 @@ static bool tap_await(nava_sim_t *ctx, fp_button_t btn, const char *label,
     return true;
 }
 
+/* Idle, tap a step button, then wait for the config page it should select. */
+static bool step_await(nava_sim_t *ctx, int step_0based, const char *label,
+                       const char *want) {
+    nava_sim_run_cycles(ctx, IDLE_GAP);
+    fp_press_step(ctx, step_0based);
+    fp_release_step(ctx, step_0based);
+    if (!lcd_await(ctx, 0, want, UI_TIMEOUT)) {
+        test_fail(label, "LCD row 0 never showed \"%s\" (last: \"%s\")",
+                  want, fp_lcd_line(ctx, 0));
+        return false;
+    }
+    return true;
+}
+
 /* Run until `led` reaches `want_on`, or the budget runs out.
  * LED writes and LCD redraws are on independent cadences, so a mode LED can
  * still be stale at the moment its new screen first appears. */
@@ -177,6 +191,73 @@ static void test_tempo_tracks_encoder(nava_sim_t *ctx) {
     printf("# ui/tempo: %d -> %d (CW) -> %d (CCW)\n", base, up, down);
 }
 
+/* Config mode lights step LEDs 1..MAX_CONF_PAGE to advertise the pages; those same
+ * step buttons select the page directly, alongside the SHIFT+TEMPO cycle.  Page
+ * markers are the row-0 headers, in the define.h order: 1 "bpm", 2 "mte",
+ * 3 "ext vel", 4 "ype" (sysex), 5 "BOOTLOADER".  The first character of each header
+ * is the blinking cursor letter, uppercased in place, so the markers deliberately
+ * start past column 0. */
+static void test_config_page_step_buttons(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    nava_sim_run_cycles(ctx, IDLE_GAP);
+
+    char before[64];
+    snprintf(before, sizeof before, "%s", fp_lcd_line(ctx, 1));
+
+    /* SHIFT has to stay down across the tap: TEMPO alone leaves config mode. */
+    nava_sim_run_cycles(ctx, IDLE_GAP);
+    fp_press_button(ctx, FP_BTN_SHIFT);
+    fp_press_button(ctx, FP_BTN_TEMPO);
+    fp_release_button(ctx, FP_BTN_TEMPO);
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    if (!lcd_await(ctx, 0, "bpm", UI_TIMEOUT)) {
+        test_fail("ui/config/enter", "config page 1 never appeared (row0=\"%s\")",
+                  fp_lcd_line(ctx, 0));
+        return;
+    }
+
+    /* Jump around the pages out of cycle order - that is the whole point of the
+     * binding.  The sysex page is included because selecting it enables SysEx mode,
+     * which flushes the pattern bank; the step route has to reach that the same way
+     * the TEMPO route does. */
+    if (!step_await(ctx, 4, "ui/config/step5", "BOOTLOADER")) return;
+    if (!step_await(ctx, 1, "ui/config/step2", "mte")) return;
+    if (!step_await(ctx, 3, "ui/config/step4", "ype")) return;
+    if (!step_await(ctx, 2, "ui/config/step3", "ext vel")) return;
+    if (!step_await(ctx, 0, "ui/config/step1", "bpm")) return;
+
+    /* Buttons past the last page are dark, and must not wrap onto a page the user
+     * did not aim at. */
+    nava_sim_run_cycles(ctx, IDLE_GAP);
+    fp_press_step(ctx, 15);
+    fp_release_step(ctx, 15);
+    nava_sim_run_cycles(ctx, UI_TIMEOUT / 4);
+    if (!strstr(fp_lcd_line(ctx, 0), "bpm"))
+        test_fail("ui/config/step16", "step 16 moved off page 1 (row0=\"%s\")",
+                  fp_lcd_line(ctx, 0));
+
+    /* Leaving restores the edit screen.  Row 1 opens with bank, pattern and length,
+     * and in PTRN_STEP a step press selects a pattern - so this is what catches the
+     * page presses leaking through to the sequencer underneath.  Only that prefix is
+     * compared: TEMPO is momentary and the tempo readout it paints into the tail of
+     * the row outlives the release by a redraw. */
+    nava_sim_run_cycles(ctx, IDLE_GAP);
+    fp_press_button(ctx, FP_BTN_TEMPO);
+    fp_release_button(ctx, FP_BTN_TEMPO);
+    if (!lcd_await(ctx, 0, "ptr", UI_TIMEOUT)) {
+        test_fail("ui/config/exit", "edit screen never returned (row0=\"%s\")",
+                  fp_lcd_line(ctx, 0));
+        return;
+    }
+    if (strncmp(fp_lcd_line(ctx, 1), before, 8) != 0)
+        test_fail("ui/config/no_side_effect",
+                  "config page presses changed bank/pattern/length: \"%.8s\" -> \"%.8s\"",
+                  before, fp_lcd_line(ctx, 1));
+
+    printf("# ui/config: pages selected by step buttons, row1 \"%.8s\" unchanged\n",
+           before);
+}
+
 int main(void) {
     TEST_WITH_PATTERN("ui_boot_screen",
                       test_boot_screen, &FX_PTRN_BASIC, 2, 1);
@@ -186,6 +267,8 @@ int main(void) {
                       test_play_stop_leds, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ui_tempo_display_tracks_encoder",
                       test_tempo_tracks_encoder, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ui_config_page_step_buttons",
+                      test_config_page_step_buttons, &FX_PTRN_BASIC, 2, 1);
 
     return test_run_all(NAVA_ELF_PATH);
 }

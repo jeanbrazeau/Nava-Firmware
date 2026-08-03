@@ -15,13 +15,16 @@ The version found here is called Nava Oortone (0Tone) and draws heavily on the p
 * Better Working pattern chains (groups) that can be programmed on the fly
 * Groups can not be saved since it complicates things without any benefits
 * Button logic improvements with less unexpected results
+* Config pages are selectable from the lit step buttons, not only by cycling SHIFT+TEMPO:
+  config mode lights one step button per page, and pressing it goes straight there
 * Working metronome
 * Improved External Instruments (midi note sequencer)
 * External Instrument steps have two velocity levels, programmed like the analog voices:
   press a step once for the soft level, again for the loud one, a third time to clear.
   Each of the 16 MIDI tracks keeps its own levels, so one track can accent where another
-  does not. The two MIDI velocities are set on config page 3 (SHIFT+TEMPO three times,
-  encoder button to move between the fields), and default to 63 and 111.
+  does not. The two MIDI velocities are set on config page 3 (step button 3 in config
+  mode, or SHIFT+TEMPO three times; encoder button moves between the fields), and
+  default to 63 and 111.
 
 ## Flashing firmware over MIDI SysEx
 
@@ -34,7 +37,9 @@ sequence exactly right.
 1. **Stop the sequencer.** Config mode cannot be entered while it is running, and it
    closes itself if you start playback (`Seq.ino`).
 2. Hold **SHIFT** and press **TEMPO**. This opens config page 1.
-3. Keep pressing **SHIFT + TEMPO** to step through the pages until the display reads:
+3. Press the **last step button** (5 on a PlatformIO build, 4 on an Arduino IDE one),
+   or keep pressing **SHIFT + TEMPO** to step through the pages, until the display
+   reads:
 
    ```
      BOOTLOADER
@@ -46,11 +51,13 @@ sequence exactly right.
 5. Send the `.syx` file. The screen stays as it is; the panel is no longer running the
    firmware, so it will not react until the transfer finishes and the unit restarts.
 
-**BOOTLOADER is the last page**, so you can also just hold SHIFT and keep pressing TEMPO
-until it appears - one more press wraps back to page 1. Which number it carries depends
-on how the firmware was built:
+**In config mode the lit step buttons select the page.** Config mode blinks one step
+LED per available page, and pressing that step button goes straight there - so the table
+below doubles as the step-button map. SHIFT + TEMPO still cycles forward and wraps back
+to page 1 past the last one. Which number BOOTLOADER carries depends on how the firmware
+was built:
 
-| Build | Pages | BOOTLOADER page | SHIFT+TEMPO presses |
+| Build | Pages | BOOTLOADER page | Step button / SHIFT+TEMPO presses |
 |---|---|---|---|
 | PlatformIO (`platformio.ini` sets `-DMIDI_HAS_SYSEX=1`) | 1, 2, 3 = ext velocity, 4 = SysEx dump, 5 | **5** | 5 |
 | Arduino IDE (`features.h` leaves `MIDI_HAS_SYSEX` commented out) | 1, 2, 3 = ext velocity, 4 | **4** | 4 |

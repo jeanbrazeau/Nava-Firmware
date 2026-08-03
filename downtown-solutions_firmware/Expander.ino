@@ -177,6 +177,7 @@ void SeqConfigurationExpander() {
 
     ButtonGet();
     EncGet();
+    ConfigPageButtons();   // step buttons 1..MAX_CONF_PAGE select the page here too
 
     if (encBtn.justPressed) {
       curIndex++;

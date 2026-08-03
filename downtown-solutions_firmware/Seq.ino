@@ -14,6 +14,10 @@ void SeqParameter() {
   if (curSeqMode != MUTE) muteBtn.counter = 0;
   if (!seq.configMode) seq.configPage = 0;
 
+  // Step buttons as direct config page selection. Runs before the mode handlers so the
+  // page is current for whatever they paint this pass.
+  ConfigPageButtons();
+
   //-------------------Encoder button---------------------------
   if (encBtn.justPressed) {
     curIndex++;
@@ -169,23 +173,13 @@ void SeqParameter() {
         // First press - enter config mode
         seq.configMode = TRUE;
         ExitExtInstEditMode();
-        seq.configPage = CONF_PAGE_SYNC; // Start at the first page
+        SetConfigPage(CONF_PAGE_SYNC); // Start at the first page
       } else {
         // Already in config mode, cycle to the next page and wrap. The page order is
         // fixed by the numbering in define.h, so adding a page needs no change here -
         // the if-chain this replaces had to be edited in both #if branches.
-        seq.configPage++;
-        if (seq.configPage > MAX_CONF_PAGE) seq.configPage = CONF_PAGE_SYNC;
+        SetConfigPage((seq.configPage % MAX_CONF_PAGE) + 1);
       }
-
-      curIndex = 0;
-#if MIDI_HAS_SYSEX
-      if (seq.configPage == CONF_PAGE_SYSEX) seq.setupNeedSaved = FALSE;  //only if sysex
-#endif
-
-      // No debug display, just update the LCD immediately
-
-      needLcdUpdate = TRUE;
     }
   }
   //-------------------Shift button released------------------------------
@@ -541,7 +535,9 @@ void SeqParameter() {
     /////////////////////////////STEP EDIT + PATTERN SELECTION FOR STEP & TAP ///////////////////////////////////////////////////////////////////
 
     if (stepsBtn.justRelease) doublePush = FALSE;
-    if (!lastStepBtn.pressed && !instBtn && !shufBtn.pressed && !extInstEditMode) {  // [zabox] test, [TR-909 STYLE] ext track editing owns the step buttons
+    // [TR-909 STYLE] !seq.configMode: the step buttons pick the config page while that
+    // page is open, so this branch would otherwise change the pattern underneath it.
+    if (!lastStepBtn.pressed && !instBtn && !shufBtn.pressed && !extInstEditMode && !seq.configMode) {  // [zabox] test, [TR-909 STYLE] ext track editing owns the step buttons
       if (curSeqMode == PTRN_STEP && isRunning)                                   //step programming
       {
         pattern[ptrnBuffer].inst[curInst] = InstValueGet(pattern[ptrnBuffer].inst[curInst]);  //cf InstValueGet()
@@ -670,7 +666,7 @@ void SeqParameter() {
 
       if (clearBtn.justRelease) muteInst = prev_muteInst;  // [zabox] unmute
 
-      if (!lastStepBtn.pressed && !instBtn && !clearBtn.pressed && !shufBtn.pressed)  // [zabox] test //[oort] unclear what's tested
+      if (!lastStepBtn.pressed && !instBtn && !clearBtn.pressed && !shufBtn.pressed && !seq.configMode)  // [zabox] test //[oort] unclear what's tested
       {
         static boolean doublePushOH;
         static byte tempVel[16];  //store temp instrument velocity
@@ -854,7 +850,7 @@ void SeqParameter() {
   if (curSeqMode == PTRN_PLAY) {
     //-------------------------------select pattern-----------------------------------
     if (stepsBtn.justRelease) doublePush = FALSE;
-    if (readButtonState) {
+    if (readButtonState && !seq.configMode) {   // config page selection owns the steps
       if (bankBtn.pressed) {                               //[oort] make function instead
         if (FirstBitOn() > MAX_BANK) curBank = MAX_BANK;
         else curBank = FirstBitOn();
@@ -910,7 +906,7 @@ void SeqParameter() {
 
   if (curSeqMode == TRACK_WRITE) {
     //-------------------------------select pattern-----------------------------------
-    if (readButtonState) {
+    if (readButtonState && !seq.configMode) {   // config page selection owns the steps
 
       if (bankBtn.pressed) {
         if (FirstBitOn() >= MAX_BANK) curBank = MAX_BANK;
@@ -1054,7 +1050,7 @@ void SeqParameter() {
       if (curPattern != nextPattern) selectedPatternChanged = TRUE;
       needLcdUpdate = TRUE;
     }
-    if (readButtonState && curSeqMode != MUTE) {
+    if (readButtonState && curSeqMode != MUTE && !seq.configMode) {   // config page selection owns the steps
       trk.next = FirstBitOn();
       selectedTrackChanged = TRUE;
       needLcdUpdate = TRUE;
@@ -1179,7 +1175,7 @@ void SeqParameter() {
   //////////////////////////MODE MUTE//////////////////////////////////////
 
   if (curSeqMode == MUTE) {
-    MuteButtonGet();
+    if (!seq.configMode) MuteButtonGet();   // config page selection owns the steps
     if (encBtn.pressed) { //[oort] reset mute
 #if SHIFT_MUTE_ALL
       // Mute all instruments when shift is pressed
