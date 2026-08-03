@@ -4,80 +4,100 @@
 //-------------------------------------------------
 
 /////////////////////Function//////////////////////
-// Function to enter bootloader mode for ATmega1284
-// Different bootloader implementations may require different addresses or methods
-void EnterBootloaderMode() {
+// Hand the machine to the resident bootloader.
+//
+// This is a one-way door. The jump does not return and nothing after it can execute, so
+// this function is solely responsible for leaving the unit in a state a power cycle can
+// recover from. It works by:
+// 1. Stopping the transport and silencing anything sounding, external notes included
+// 2. Committing every unsaved edit - pattern bank, track, setup, ext note map
+// 3. Stopping the timers, then quiescing the trigger and LED shift registers
+// 4. Disabling interrupts and jumping
+//
+// ON THE JUMP ADDRESS, which is deliberately left as it was: avr-as halves the operand,
+// so `jmp 0x1F000` lands on word 0xF800. Boot sections on this part start at byte 0x1FC00
+// (512 words), 0x1F800 (1024), 0x1F000 (2048) and 0x1E000 (4096), so this address is
+// correct for BOOTSZ=01 and wrong for the other three. Which one applies depends on the
+// BOOTSZ fuses of the individual unit, and nothing in this repository records them - the
+// released Nava0tone_0.90b.syx carries its own loader at 0x1FE00, which is a fourth answer
+// again. Reading hfuse off a unit (avrdude -c usbasp -p m1284p -U hfuse:r:-:h) settles
+// both this and whether BOOTRST makes a power cycle the real entry. Changing the address
+// on any weaker evidence would only be a differently-sourced guess.
+//
+// noinline: this is called from exactly one place, on a page the sequencer cannot be
+// running on, and it never returns - but GCC inlines it into SeqConfiguration(), which
+// runs every pass of loop(). Inlining a function this size into the hot path shifted the
+// sequencer's measured bar period by ~370 cycles (sim/tests/test_timing.c bounds it at
+// 256), for code that executes at most once in the life of a power-on.
+__attribute__((noinline)) void EnterBootloaderMode() {
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Saving...       ");
+  lcd.setCursor(0,1);
+  lcd.print("                ");
+
+  // Stop before saving, not after: the EEPROM writes below block for milliseconds per
+  // page, and a running sequencer would keep triggering voices and emitting MIDI for the
+  // whole of it, with no note-off ever following.
+  if (isRunning) {
+    isRunning = FALSE;
+    isStop = TRUE;
+    if (seq.sync == MASTER) MIDI.sendRealTime(midi::MidiType::Stop);
+    DIN_START_LOW;                 // was left asserted HIGH across the jump
+    dinStartState = LOW;
+  }
+  // Not gated on isRunning: an editor preview or an audition can be sounding while the
+  // transport is stopped, and it has no note-off after this point either.
+  InitMidiNoteOff();
+  SendAllNoteOff();
+
+  // patternBank[] is authoritative over EEPROM until ENTER or a bank change, so without
+  // this the press discarded up to a full bank of edits. The PlatformIO build happened to
+  // survive because the page walk transits the SysEx page, where EnableSysexMode() flushes;
+  // the Arduino IDE build has no SysEx page and lost the lot. Track, setup and the ext note
+  // map have the same exposure and nothing else on this path commits them.
+  if (patternBankNeedsSave) FlushPatternBank();
+  if (trackNeedSaved) {
+    SaveTrack(trk.current);
+    trackNeedSaved = FALSE;
+  }
+  if (seq.setupNeedSaved) {
+    SaveSeqSetup();
+    seq.setupNeedSaved = FALSE;
+  }
+  if (extNotesNeedSaved) {
+    SaveExtTrackNotes();
+    extNotesNeedSaved = FALSE;
+  }
+
   lcd.clear();
   lcd.setCursor(0,0);
   lcd.print("Entering        ");
   lcd.setCursor(0,1);
   lcd.print("Bootloader Mode ");
-
-  // Wait a moment to display the message
   delay(1000);
-  
-  // Finish all pending operations
+
+  MIDI.turnThruOff();
+
+  // Timers must stop BEFORE the trigger word is cleared. Timer2 (trig off) and Timer3
+  // (flam) both re-write the trigger shift register from their ISRs, so a step that fired
+  // within the last 2ms re-asserts it in the gap and cli() then freezes a trigger line
+  // high - the open-trigger state setup() records as making the BD oscillate.
+  TimerStop();
+  TIMSK2 = 0;
+  TIMSK3 = 0;
   SetDoutTrig(0);
   SetDoutLed(0, 0, 0);
-  
-  // Ensure any communication is complete
-  Wire.endTransmission(true);
-  MIDI.turnThruOff();
-  
-  /* IMPORTANT: For ATmega1284p, bootloader sections can be at different addresses
-   * based on BOOTSZ fuse bits:
-   * BOOTSZ1=1, BOOTSZ0=1: 512 words (1024 bytes),  Start address: 0x1FE00
-   * BOOTSZ1=1, BOOTSZ0=0: 1024 words (2048 bytes), Start address: 0x1FC00
-   * BOOTSZ1=0, BOOTSZ0=1: 2048 words (4096 bytes), Start address: 0x1F800
-   * BOOTSZ1=0, BOOTSZ0=0: 4096 words (8192 bytes), Start address: 0x1F000
-   */
-  
-  // Disable interrupts to prevent any interference
+
   cli();
-  
-  // We will try several approaches, in order of most direct to least:
-  
-  // Method 1: Directly set a special signature and jump to the bootloader address
-  // This is the method used by many bootloaders like Optiboot
-  
-  // Define jump function signature
-  // void (*bootloader)(void) = (void (*)(void))0x1F000; // 4K bootloader
-  
-  // Try multiple possible bootloader addresses:
-  // Starting with the 4K bootloader (0x1F000)
-  asm volatile (
-    "jmp 0x1F000\n"
-  );
-  
-  // If we're still here, try 2K bootloader (0x1F800)
-  asm volatile (
-    "jmp 0x1F800\n"
-  );
-  
-  // If we're still here, try 1K bootloader (0x1FC00)
-  asm volatile (
-    "jmp 0x1FC00\n"
-  );
-  
-  // If we're still here, try 512 byte bootloader (0x1FE00)
-  asm volatile (
-    "jmp 0x1FE00\n"
-  );
-  
-  // Method 2: Set specific registers and the EEPROM flag
-  // that the bootloader might check after reset
-  SetBootloaderFlag();
-  
-  // Method 3: Hardware reset via watchdog
-  // Most bootloaders check certain conditions after reset
-  MCUSR = 0; // Clear all reset flags
-  WDTCSR = (1<<WDCE) | (1<<WDE); // Enable watchdog change
-  WDTCSR = (1<<WDE); // Set shortest timeout (16ms)
-  
-  // Wait for watchdog reset
-  while(1) {
-    // asm volatile("nop"); // Do nothing
-  }
+
+  // One jump, and nothing after it. The ladder this replaces tried four addresses in
+  // sequence, commented "if we're still here, try...", which an AVR jmp cannot do - it is
+  // unconditional and does not return, so the three further jumps, the EEPROM flag write
+  // and the watchdog reset were all unreachable. Deleting them changes no behaviour; it
+  // removes ~70 bytes that documented three safety nets none of which existed at runtime.
+  // A fallback, if one is ever wanted, has to be a watchdog reset armed BEFORE the jump.
+  asm volatile ("jmp 0x1F000\n");
 }
 
 // Move to a config page. Every path that changes the page goes through here so the
@@ -155,9 +175,22 @@ void SeqConfiguration()
   }
 #endif
 
-  // Bootloader mode activation - the last config page in either build
-  if (seq.configMode && seq.configPage == CONF_PAGE_BOOT) {
-    if (encBtn.justPressed) {
+  // Bootloader mode activation - the last config page in either build.
+  //
+  // SHIFT qualifies the press. A bare encoder press is what advances the cursor between
+  // fields on every other config page, including CONF_PAGE_EXT_VEL immediately before this
+  // one, so the same finger motion that means "next field" one page back meant "leave the
+  // firmware" here - and with ConfigPageButtons() a single step button now lands on this
+  // page directly. SHIFT+ENC is used nowhere else, so it cannot be reached by that habit,
+  // and it matches the qualified-gesture idiom the panel already uses for destructive
+  // operations (SHIFT+CLEAR to clear, PLAY+STOP held at boot to init EEPROM). The user is
+  // already holding SHIFT to page here, so it costs nothing to perform.
+  //
+  // !isRunning is belt and braces. SeqParameter() closes config mode when the transport
+  // starts, but it runs AFTER this function in loop(), leaving a one-pass window in which
+  // a running sequencer could still be sitting on an armed page.
+  if (seq.configMode && seq.configPage == CONF_PAGE_BOOT && !isRunning) {
+    if (shiftBtn && encBtn.justPressed) {
       EnterBootloaderMode();
     }
   }

@@ -42,14 +42,30 @@ sequence exactly right.
    reads:
 
    ```
-     BOOTLOADER
-   PRESS ENC TO ACTV
+      BOOTLOADER
+   SHIFT+ENC = GO
    ```
 
-4. Press the **encoder button**. The display shows `Entering / Bootloader Mode`, waits
-   one second so you can read it, and jumps to the bootloader at `0x1F000`.
+4. Keeping **SHIFT** held, press the **encoder button**. SHIFT qualifies the press
+   because a bare encoder press moves between fields on every other config page,
+   including the one immediately before this - the same motion one page back would
+   otherwise leave the firmware.
+
+   The unit saves first: pattern bank, track, setup and the ext note map are all
+   committed to EEPROM, and the transport is stopped with note-offs sent, so nothing is
+   left sounding on an external synth. The display shows `Saving...`, then
+   `Entering / Bootloader Mode` for a second, then jumps to the bootloader at `0x1F000`.
 5. Send the `.syx` file. The screen stays as it is; the panel is no longer running the
    firmware, so it will not react until the transfer finishes and the unit restarts.
+
+> **The jump address is unverified.** `0x1F000` is correct only if the unit is fused
+> `BOOTSZ=01`; nothing in this repository records the factory fuses, and the released
+> `Nava0tone_0.90b.syx` carries its own loader at `0x1FE00`. If the jump misses, the panel
+> looks exactly the same as a successful entry - `nava flash` sends pages blind, with no
+> handshake or acknowledgement - and the only symptom is that the firmware is unchanged
+> afterwards. Recovery is a power cycle. `avrdude -c usbasp -p m1284p -U hfuse:r:-:h`
+> reads the fuses and settles both this and whether `BOOTRST` makes a power cycle the
+> real entry.
 
 **In config mode the lit step buttons select the page.** Config mode blinks one step
 LED per available page, and pressing that step button goes straight there - so the table

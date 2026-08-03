@@ -89,21 +89,11 @@ void setup() {
   lcd.createChar(4, font4);
   lcd.createChar(5, font5);
 
-  // First, check if bootloader flag is set in EEPROM
-  if (CheckBootloaderFlag()) {
-    // If bootloader flag is set, immediately enter bootloader
-    lcd.clear();
-    lcd.setCursor(0, 0);
-    lcd.print("Bootloader Mode ");
-    lcd.setCursor(0, 1);
-    lcd.print("Push SysEx File ");
-    
-    // Jump to bootloader
-    asm volatile ("jmp 0x1F000");
-    // Should never reach here
-    while(1) {}
-  }
-
+  // The boot-time bootloader-flag check that used to sit here is gone - see the note in
+  // EEprom.ino where BOOTLOADER_FLAG_ADDR was defined. It read a byte of stored pattern
+  // data, so it could only ever fire on a user's own pattern; and it sat AHEAD of
+  // ScanDinBoot(), so a unit it misfired on could not reach the PLAY+STOP recovery gesture
+  // below. Nothing writes the flag, so nothing is lost by removing the reader.
   ScanDinBoot();
   //Init EEprom-------------------------------------
   if (btnPlayStopByte == (BTN_PLAY | BTN_STOP)) {
