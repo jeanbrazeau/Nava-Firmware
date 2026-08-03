@@ -525,6 +525,35 @@ literal, so reordering the menu is a change to that block alone. `MAX_CONF_PAGE`
 `CONF_PAGE_BOOT`, and the page walk in `Seq.ino` is a single increment-and-wrap rather
 than an if-chain duplicated in both `#if` branches.
 
+### Selecting a config page
+Two ways in, both writing through `SetConfigPage()` so the per-page bookkeeping - the
+cursor reset, and clearing `setupNeedSaved` on the sysex page - cannot drift between
+them. SHIFT+TEMPO cycles forward and wraps; step buttons 1..`MAX_CONF_PAGE` jump
+straight to a page.
+
+The step buttons are the ones config mode already lights: `Led.ino` blinks the
+`(1 << MAX_CONF_PAGE) - 1` mask against the current page, so the panel was advertising
+the mapping before it could be pressed. Buttons past the last page are ignored rather
+than wrapped - they are dark, and wrapping would land on a page the user did not aim at.
+
+`ConfigPageButtons()` derives its edges from a local mask rather than
+`stepsBtn.justPressed`, which is the OR of all sixteen buttons and reports no edge for a
+second step pressed while the first is held. It stands down whenever a qualifier is held
+(SHIFT, INST, TEMPO, BANK, NUM, LAST STEP, SHUFFLE), since those combinations own the
+step buttons, and it keeps tracking the mask while suppressed so a release under a
+qualifier cannot register as a press afterwards.
+
+The other half of the binding is negative: every handler that consumed step buttons is
+now guarded on `!seq.configMode`. Config mode is entered from whatever sequencer mode is
+current and never changed it, so a page press also selected a pattern (PTRN_STEP,
+PTRN_PLAY, TRACK_WRITE), a track (TRACK_PLAY), or a mute (MUTE), and in PTRN_TAP it
+triggered the voice as well. That was true before this feature - config mode simply had
+no reason to press a step button.
+
+`SeqConfigurationExpander()` calls `ConfigPageButtons()` too. It runs its own config
+loop and never reaches `SeqParameter()`, so without the call the expander's config pages
+would be the one place the step buttons stayed dead.
+
 BOOTLOADER sits last deliberately: it is a one-way door out of the firmware, so it is
 past every page that is edited routinely. It is also the reason the setup-save on ENTER
 is guarded on `CONF_PAGE_SYSEX` rather than on the number 3 - ENTER on the sysex page

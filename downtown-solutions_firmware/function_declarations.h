@@ -16,6 +16,8 @@ void InstToStepWord(Pattern* pattern);
 void SetMuxTrigMidi(byte instrument, byte velocity);
 void InitMidiRealTime();
 void SeqConfiguration();
+void SetConfigPage(byte page);
+void ConfigPageButtons();
 void SeqParameter();
 void ExtInstUpdate();
 void ExitExtInstEditMode();
