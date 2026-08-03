@@ -150,6 +150,35 @@ The firmware uses a dual-pattern buffer system (pattern[2]) that allows one patt
 
 Patterns are stored in RAM (patternBank[16]) for quick access, and only saved to EEPROM when changing banks or entering Track Mode, improving performance and reducing EEPROM wear.
 
+### Power-on fill animation
+
+`LcdBootAnimation()` (LCD.ino) lights the panel one dot at a time, in random order,
+until all 32 cells are solid, then the version splash replaces it. It runs at the very
+end of `setup()`: every boot key combo (bootloader jump, EEPROM init, TM2 adjust) puts
+up its own screen and none of them reach that point, so a unit held into one of them is
+never made to wait for the animation.
+
+The panel is 1280 dots but an HD44780 holds only EIGHT programmable glyphs, so the
+animation is a sliding window - eight cells grow at once, each owning one CGRAM slot.
+A finished cell is overprinted with `0xFF`, the ROM's all-dots-on block, and only then
+is its slot handed to the next cell; doing that in the other order would leave the
+finished cell tracking the glyph and emptying itself out again. A cell already
+displaying a CGRAM code re-renders live as that glyph is rewritten, so a dot costs one
+CGRAM row write (`lcd.command(LCD_SETCGRAMADDR | ...)` plus one byte) and no DDRAM
+traffic at all. `BOOT_ANIM_FRAME_US` paces it: the LCD writes alone would finish in
+about half a second, which reads as a flash rather than as something filling up.
+
+`randomSeed()` is called from it, off `micros()` XOR the accent analog input, because
+every code path ahead of it is fixed - unseeded, the fill order would be identical on
+every power-up, and so would `random()` in the sequencer's RANDOM direction mode.
+
+Slots 6 and 7 keep animation leftovers; nothing prints those codes. `font0..font5` are
+restored on the way out.
+
+Boot now takes ~4.25s in the harness, ~1.3s of it the fill, which is what the sim
+tests' `BOOT_CYCLES` (96M) budgets for - `sim/tests/test_ui.c` pins the fill, checking
+raw DDRAM on row 1 because the LCD model aliases CGRAM onto row 0's addresses.
+
 ### Main Loop Architecture
 
 The firmware follows a real-time polling architecture where each loop cycle:
@@ -243,7 +272,8 @@ the loop otherwise - see "Transmission timing" under the EXT_INST section.
 
 #### Output Handling
 - **Led.ino** - LED control via shift registers
-- **LCD.ino** - 16x2 LCD display updates for all modes
+- **LCD.ino** - 16x2 LCD display updates for all modes, plus `LcdBootAnimation()`,
+  the power-on dot fill (see "Power-on fill animation")
 - **Dio.ino** - Digital I/O via SPI shift registers
 - **Mux.ino** - Multiplexer control for routing triggers to drum voices
 

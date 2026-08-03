@@ -23,8 +23,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/* Boot budget: ~500 ms simulated = 8000000 cycles at 16 MHz */
-#define BOOT_CYCLES     64000000ULL
+/* Boot budget: ~6 s simulated at 16 MHz. Boot itself measures ~4.25 s (68M
+ * cycles): the panel fill animation is ~1.3 s of it, then the 2 s version splash,
+ * and the panel is not scanned until both are done. */
+#define BOOT_CYCLES     96000000ULL
 /* One full bar at 120 BPM 4/4 = 16 steps × 2000064 ≈ 32001024 cycles */
 #define ONE_BAR_CYCLES  32100000ULL
 /* Steps per bar in every fixture here (fx_pattern_t.length = 15) */

@@ -116,6 +116,10 @@ const char *fp_lcd_line(const nava_sim_t *ctx, int row) {
     return nava_lcd_get_line(ctx->lcd, row);
 }
 
+const uint8_t *fp_lcd_raw(const nava_sim_t *ctx, int row) {
+    return nava_lcd_get_raw(ctx->lcd, row);
+}
+
 /* ---- LED decoding ---- */
 
 static const sim_event_t *last_led_write(const nava_sim_t *ctx) {

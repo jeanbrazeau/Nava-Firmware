@@ -26,7 +26,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define BOOT_CYCLES     64000000ULL
+/* Boot budget: ~6 s simulated at 16 MHz. Boot itself measures ~4.25 s (68M
+ * cycles): the panel fill animation is ~1.3 s of it, then the 2 s version splash,
+ * and the panel is not scanned until both are done. */
+#define BOOT_CYCLES     96000000ULL
 /* Quiet period before a press so the previous release is fully debounced. */
 #define IDLE_GAP        2000000ULL
 /* Generous: the PTRN transition reloads a pattern over I2C (~12M observed). */
@@ -106,6 +109,41 @@ static int trailing_number(const char *s) {
 }
 
 /* ---- Tests ---- */
+
+/* The power-on animation fills the panel dot by dot and every cell ends as the
+ * ROM block glyph 0xFF, so a fully lit screen is 16 bytes of 0xFF per row.
+ *
+ * Checked on row 1 only. This LCD model keeps CGRAM in the same array as DDRAM
+ * (0x00-0x3F), which is where row 0 lives, so the animation's glyph writes
+ * scribble over row 0's mirror; row 1 starts at 0x40 and no CGRAM write reaches
+ * it. Reading raw bytes rather than the text mirror is what makes the assertion
+ * mean anything: the mirror renders 0xFF and a half-filled glyph identically. */
+static void test_boot_fill_animation(nava_sim_t *ctx) {
+    bool filled = false;
+    uint64_t spent = 0;
+    while (spent < BOOT_CYCLES && !filled) {
+        const uint8_t *raw = fp_lcd_raw(ctx, 1);
+        filled = true;
+        for (int col = 0; col < 16 && filled; col++)
+            if (raw[col] != 0xFF) filled = false;
+        if (!filled) {
+            nava_sim_run_cycles(ctx, POLL_STEP);
+            spent += POLL_STEP;
+        }
+    }
+    if (!filled) {
+        const uint8_t *raw = fp_lcd_raw(ctx, 1);
+        test_fail("ui/bootfill",
+                  "row 1 never reached all-0xFF (last: %02X %02X %02X ... %02X)",
+                  raw[0], raw[1], raw[2], raw[15]);
+        return;
+    }
+
+    /* The fill is a prelude, not the end state: the splash must follow it. */
+    if (!lcd_await(ctx, 1, "solutions", BOOT_CYCLES))
+        test_fail("ui/bootfill", "splash never replaced the fill (row 1: \"%s\")",
+                  fp_lcd_line(ctx, 1));
+}
 
 static void test_boot_screen(nava_sim_t *ctx) {
     boot_wait_ready(ctx, BOOT_CYCLES);
@@ -259,6 +297,8 @@ static void test_config_page_step_buttons(nava_sim_t *ctx) {
 }
 
 int main(void) {
+    TEST_WITH_PATTERN("ui_boot_fill_animation",
+                      test_boot_fill_animation, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ui_boot_screen",
                       test_boot_screen, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ui_mode_transitions_track_pattern",

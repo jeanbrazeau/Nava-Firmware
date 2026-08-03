@@ -25,6 +25,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Boot budget: ~6 s simulated at 16 MHz. Boot itself measures ~4.25 s (68M
+ * cycles): the panel fill animation is ~1.3 s of it, then the 2 s version splash,
+ * and the panel is not scanned until both are done. */
+#define BOOT_CYCLES             96000000ULL
+
 /* Time between injected MIDI clocks.
  * At 120 BPM, MIDI clock period = (60/120)/24 s = 20.83 ms = 333333 cycles.
  * We use this spacing to mimic a 120 BPM external master. */
@@ -48,7 +53,7 @@ static void test_slave_clock_advances_sequencer(nava_sim_t *ctx) {
     free(slave_img);
 
     /* Boot with SLAVE config already in EEPROM */
-    boot_wait_ready(ctx, 64000000ULL);
+    boot_wait_ready(ctx, BOOT_CYCLES);
     event_log_clear(&ctx->log);
 
     /* Inject MIDI start */
@@ -93,7 +98,7 @@ static void test_slave_stop_halts_triggers(nava_sim_t *ctx) {
     nava_sim_seed_eeprom(ctx, slave_img, FX_EEPROM_SIZE);
     free(slave_img);
 
-    boot_wait_ready(ctx, 64000000ULL);
+    boot_wait_ready(ctx, BOOT_CYCLES);
     event_log_clear(&ctx->log);
 
     nava_midi_inject_start(ctx->midi);

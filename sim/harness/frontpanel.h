@@ -67,6 +67,8 @@ uint16_t fp_last_trig_word_value(const nava_sim_t *ctx);
 
 /* Return current LCD line 0 or 1 */
 const char *fp_lcd_line(const nava_sim_t *ctx, int row);
+/* Raw DDRAM bytes of a row - see nava_lcd_get_raw() for when row 0 lies. */
+const uint8_t *fp_lcd_raw(const nava_sim_t *ctx, int row);
 
 /* ---- LED decoding ----
  * SetDoutLed (Dio.ino) shifts out 5 bytes, MSB-first per word:
