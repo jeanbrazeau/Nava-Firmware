@@ -20,7 +20,7 @@ The version found here is called Nava Oortone (0Tone) and draws heavily on the p
 * External Instrument steps have two velocity levels, programmed like the analog voices:
   press a step once for the soft level, again for the loud one, a third time to clear.
   Each of the 16 MIDI tracks keeps its own levels, so one track can accent where another
-  does not. The two MIDI velocities are set on the last config page (SHIFT+TEMPO to it,
+  does not. The two MIDI velocities are set on config page 3 (SHIFT+TEMPO three times,
   encoder button to move between the fields), and default to 63 and 111.
 
 ## Flashing firmware over MIDI SysEx
@@ -46,17 +46,14 @@ sequence exactly right.
 5. Send the `.syx` file. The screen stays as it is; the panel is no longer running the
    firmware, so it will not react until the transfer finishes and the unit restarts.
 
-**Which page BOOTLOADER is on depends on how the firmware was built.** The page exists
-either way, but its position moves:
+**BOOTLOADER is the last page**, so you can also just hold SHIFT and keep pressing TEMPO
+until it appears - one more press wraps back to page 1. Which number it carries depends
+on how the firmware was built:
 
 | Build | Pages | BOOTLOADER page | SHIFT+TEMPO presses |
 |---|---|---|---|
-| PlatformIO (`platformio.ini` sets `-DMIDI_HAS_SYSEX=1`) | 1, 2, 3 = SysEx dump, 4, 5 = ext velocity | **4** | 4 |
-| Arduino IDE (`features.h` leaves `MIDI_HAS_SYSEX` commented out) | 1, 2, 3, 4 = ext velocity | **3** | 3 |
-
-BOOTLOADER is no longer the last page - the ext instrument velocity page sits after it -
-so one press past BOOTLOADER lands on `low hi  ext vel`, and the next wraps back to page
-1. If you overshoot, keep going rather than starting over.
+| PlatformIO (`platformio.ini` sets `-DMIDI_HAS_SYSEX=1`) | 1, 2, 3 = ext velocity, 4 = SysEx dump, 5 | **5** | 5 |
+| Arduino IDE (`features.h` leaves `MIDI_HAS_SYSEX` commented out) | 1, 2, 3 = ext velocity, 4 | **4** | 4 |
 
 ### Building and sending
 

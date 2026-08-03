@@ -502,18 +502,26 @@ read by playback. `InitPattern()` still writes it at the high value so a build p
 this change plays a pattern saved by this one as it did before.
 
 ### Config page: ext instrument velocities
-SHIFT+TEMPO cycles the config pages; the ext velocity page is the last one
-(`CONF_PAGE_EXT_VEL`, 5 with `MIDI_HAS_SYSEX` and 4 without). It shows
+SHIFT+TEMPO cycles the config pages; the ext velocity page is `CONF_PAGE_EXT_VEL`,
+page 3 in either build - the two setup pages, then this one, then sysex (when built),
+then BOOTLOADER last. It shows
 `low hi  ext vel` with the two levels below, the encoder button moves between the two
 fields, and the encoder sets each in 1..127. The floor is 1, not 0: a note-on with
 velocity 0 is a note-off on the wire, so a level of 0 would silence the lane rather than
 make it quiet. The two are not ordered against each other - inverting them is a legitimate
 way to make the second press the softer of the pair.
 
-The page is appended rather than inserted so the sysex and bootloader handlers, which test
-their page number literally, keep the numbers they were written against. `MAX_CONF_PAGE`
-is now derived from it, and the page walk in `Seq.ino` is a single increment-and-wrap
-rather than an if-chain duplicated in both `#if` branches.
+Every page is named in `define.h` (`CONF_PAGE_SYNC`, `CONF_PAGE_MISC`,
+`CONF_PAGE_EXT_VEL`, `CONF_PAGE_SYSEX`, `CONF_PAGE_BOOT`) and nothing tests a page by
+literal, so reordering the menu is a change to that block alone. `MAX_CONF_PAGE` is
+`CONF_PAGE_BOOT`, and the page walk in `Seq.ino` is a single increment-and-wrap rather
+than an if-chain duplicated in both `#if` branches.
+
+BOOTLOADER sits last deliberately: it is a one-way door out of the firmware, so it is
+past every page that is edited routinely. It is also the reason the setup-save on ENTER
+is guarded on `CONF_PAGE_SYSEX` rather than on the number 3 - ENTER on the sysex page
+transmits a dump and must not also save, while the ext velocity page that inherited the
+number 3 does need ENTER to save.
 
 The pair lives in `seq` and persists in the setup EEPROM record (bytes 8-9 of a 64-byte
 block with 8 used). No signature is needed to spot a record written before they existed:
@@ -721,7 +729,7 @@ Real-time bytes are legal anywhere, including between two data bytes of a SysEx
 message, and any receiver has to strip them - `sim/tests/test_sysex.c` does, and so
 does rtmidi under the CLI.
 
-`MAX_CONF_PAGE`-numbered page 3 is the only place the handler is connected, which is
+`CONF_PAGE_SYSEX` (page 4) is the only place the handler is connected, which is
 also why requests are ignored elsewhere. Off that page nothing responds at all.
 
 ## Code Heritage & Contributors

@@ -104,7 +104,7 @@ void EncGet() {
 
   else if (seq.configMode) {  //  [zabox] rewrite for two complete pages & no wrong encoder updates
 
-    if (seq.configPage == 1) {
+    if (seq.configPage == CONF_PAGE_SYNC) {
 
       //---------------------Page 1----------------------------------------------------
 
@@ -159,7 +159,7 @@ void EncGet() {
           }
           break;
       }
-    } else if (seq.configPage == 2) {
+    } else if (seq.configPage == CONF_PAGE_MISC) {
 
       //---------------------Page 2----------------------------------------------------
 
@@ -213,7 +213,7 @@ void EncGet() {
       }
     }
 #if MIDI_HAS_SYSEX
-    else if (seq.configPage == 3) {
+    else if (seq.configPage == CONF_PAGE_SYSEX) {
       switch (curIndex) {
         case 0:
           {

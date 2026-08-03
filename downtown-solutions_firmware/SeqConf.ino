@@ -87,7 +87,14 @@ void SeqConfiguration()
     seq.syncChanged = FALSE;
   }
 
-  if (seq.setupNeedSaved && enterBtn.justPressed && seq.configPage != 3 ){
+  // ENTER on the SysEx page transmits a dump, so it must not be read as a save request
+  // there. Every other page saves on ENTER - including the ext velocity page, which is
+  // where the literal 3 this used to test now points.
+#if MIDI_HAS_SYSEX
+  if (seq.setupNeedSaved && enterBtn.justPressed && seq.configPage != CONF_PAGE_SYSEX ){
+#else
+  if (seq.setupNeedSaved && enterBtn.justPressed ){
+#endif
     SaveSeqSetup();
     seq.setupNeedSaved = FALSE;
     LcdPrintSaved();
@@ -95,34 +102,23 @@ void SeqConfiguration()
 
 #if MIDI_HAS_SYSEX
   // Transmit Midi System Exclusive
-  if ( seq.configMode && seq.configPage == 3 && enterBtn.justPressed )
+  if ( seq.configMode && seq.configPage == CONF_PAGE_SYSEX && enterBtn.justPressed )
   {
     MidiSendSysex(sysExDump, sysExParam);
   }
 #endif
 
-#if MIDI_HAS_SYSEX
-  // Bootloader mode activation - only on page 4 when MIDI_HAS_SYSEX is defined
-  if (seq.configMode && seq.configPage == 4) {
-    // This is the bootloader config page
+  // Bootloader mode activation - the last config page in either build
+  if (seq.configMode && seq.configPage == CONF_PAGE_BOOT) {
     if (encBtn.justPressed) {
       EnterBootloaderMode();
     }
   }
-#else
-  // Bootloader mode activation - on page 3 when MIDI_HAS_SYSEX is not defined
-  if (seq.configMode && seq.configPage == 3) {
-    // This is the bootloader config page
-    if (encBtn.justPressed) {
-      EnterBootloaderMode();
-    }
-  }
-#endif
 
   if (!seq.configMode) seq.setupNeedSaved = FALSE;
 
 #if MIDI_HAS_SYSEX
-  if ( seq.configPage == 3)
+  if ( seq.configPage == CONF_PAGE_SYSEX)
   {
     if ( seq.SysExMode == false )
     {

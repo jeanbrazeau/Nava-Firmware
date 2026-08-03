@@ -94,7 +94,7 @@ void LcdUpdate()
       lcd.setCursor(0,0);
       switch (seq.configPage)
       {
-        case 1:// first page
+        case CONF_PAGE_SYNC:// first page
         {
 #if MIDI_DRUMNOTES_OUT
           lcd.print("syn bpm mTX mRX ");
@@ -127,7 +127,7 @@ void LcdUpdate()
           lcd.print(seq.RXchannel);
           break;
         }
-        case 2:// second page
+        case CONF_PAGE_MISC:// second page
         {
           lcd.print("pCh mte ");
 #if MIDI_EXT_CHANNEL      
@@ -168,8 +168,25 @@ void LcdUpdate()
 #endif        
           break;
         }
+      case CONF_PAGE_EXT_VEL:  // [TR-909 STYLE] ext instrument velocity levels
+        {
+          // Two fields in the first two columns; the rest of the header names the page,
+          // since three-letter abbreviations alone would not say which lane this is.
+          lcd.print("low hi  ext vel ");
+          lcd.setCursor(cursorPos[curIndex],0);
+          lcd.print(letterUpConfPageExtVel[curIndex]);
+          lcd.setCursor(0,1);
+          LcdClearLine();
+          lcd.setCursor(0,1);
+          lcd.print(seq.extVelLow);
+          lcd.setCursor(4,1);
+          lcd.print(seq.extVelHigh);
+          lcd.setCursor(8,1);
+          lcd.print("tap 1/2");  // 7 chars from col 8: the last column stays on screen
+          break;
+        }
 #if MIDI_HAS_SYSEX
-      case 3: // Config page 3
+      case CONF_PAGE_SYSEX: // SysEx dump page
         {
           if ( sysExDump < SYSEX_MAXPARAM )
           {
@@ -204,34 +221,13 @@ void LcdUpdate()
           break;
         }
 #endif
-#if MIDI_HAS_SYSEX
-      case 4: // Bootloader mode page (when MIDI_HAS_SYSEX is defined)
-#else
-      case 3: // Bootloader mode page (when MIDI_HAS_SYSEX is not defined)
-#endif
+      case CONF_PAGE_BOOT: // last page in either build
         {
           lcd.print("  BOOTLOADER     ");
           lcd.setCursor(0,1);
           LcdClearLine();
           lcd.setCursor(0,1);
           lcd.print("PRESS ENC TO ACTV");
-          break;
-        }
-      case CONF_PAGE_EXT_VEL:  // [TR-909 STYLE] ext instrument velocity levels
-        {
-          // Two fields in the first two columns; the rest of the header names the page,
-          // since three-letter abbreviations alone would not say which lane this is.
-          lcd.print("low hi  ext vel ");
-          lcd.setCursor(cursorPos[curIndex],0);
-          lcd.print(letterUpConfPageExtVel[curIndex]);
-          lcd.setCursor(0,1);
-          LcdClearLine();
-          lcd.setCursor(0,1);
-          lcd.print(seq.extVelLow);
-          lcd.setCursor(4,1);
-          lcd.print(seq.extVelHigh);
-          lcd.setCursor(8,1);
-          lcd.print("tap 1/2");  // 7 chars from col 8: the last column stays on screen
           break;
         }
       }

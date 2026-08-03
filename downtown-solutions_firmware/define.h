@@ -75,15 +75,20 @@ byte lcdVal = 0; //[oort] for traces
 //LCD
 #define MAX_CUR_POS 4
 // Config pages, in the order TEMPO cycles them: 1 and 2 are the sequencer setup, then
-// sysex (when built), then the bootloader entry, then the ext instrument velocities.
-// The ext page is appended rather than inserted so the sysex and bootloader handlers,
-// which test their page number literally, keep the numbers they were written against.
+// the ext instrument velocities, then the sysex dump page (when built), and BOOTLOADER
+// last. BOOTLOADER is a one-way door out of the firmware, so it sits past every page
+// that is edited routinely rather than in the middle of the walk.
+// Every page is named here and nowhere tested by literal, so reordering is this block.
+#define CONF_PAGE_SYNC    1
+#define CONF_PAGE_MISC    2
+#define CONF_PAGE_EXT_VEL 3
 #if MIDI_HAS_SYSEX
-#define CONF_PAGE_EXT_VEL 5
+#define CONF_PAGE_SYSEX   4
+#define CONF_PAGE_BOOT    5
 #else
-#define CONF_PAGE_EXT_VEL 4
+#define CONF_PAGE_BOOT    4
 #endif
-#define MAX_CONF_PAGE CONF_PAGE_EXT_VEL
+#define MAX_CONF_PAGE CONF_PAGE_BOOT
 #define MAX_CUR_POS_EXT_VEL 2  // the ext velocity page has two fields, not four
 
 //Utility

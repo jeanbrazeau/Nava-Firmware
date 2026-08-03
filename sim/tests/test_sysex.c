@@ -216,7 +216,7 @@ static void goto_config_page(nava_sim_t *ctx, int page) {
 
 static void enter_sysex_page(nava_sim_t *ctx) {
     boot_wait_ready(ctx, BOOT_CYCLES);
-    goto_config_page(ctx, 3);
+    goto_config_page(ctx, FX_CONF_PAGE_SYSEX);
     /* LCD.ino prints "type    select  " on the SysEx page; if this fails the
      * page numbering moved and every assertion below would be meaningless. */
     assert_lcd_contains("sysex page reached", ctx, 0, "Type");
