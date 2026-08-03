@@ -152,32 +152,45 @@ Patterns are stored in RAM (patternBank[16]) for quick access, and only saved to
 
 ### Power-on fill animation
 
-`LcdBootAnimation()` (LCD.ino) lights the panel one dot at a time, in random order,
-until all 32 cells are solid, then the version splash replaces it. It runs at the very
-end of `setup()`: every boot key combo (bootloader jump, EEPROM init, TM2 adjust) puts
-up its own screen and none of them reach that point, so a unit held into one of them is
-never made to wait for the animation.
+`LcdBootAnimation()` (LCD.ino) dissolves the panel in from blank to fully lit - dots
+appear scattered across all 32 cells at once, in random order - and then the version
+splash replaces it. It runs at the very end of `setup()`: every boot key combo
+(bootloader jump, EEPROM init, TM2 adjust) puts up its own screen and none of them
+reach that point, so a unit held into one of them is never made to wait for it.
 
-The panel is 1280 dots but an HD44780 holds only EIGHT programmable glyphs, so the
-animation is a sliding window - eight cells grow at once, each owning one CGRAM slot.
-A finished cell is overprinted with `0xFF`, the ROM's all-dots-on block, and only then
-is its slot handed to the next cell; doing that in the other order would leave the
-finished cell tracking the glyph and emptying itself out again. A cell already
-displaying a CGRAM code re-renders live as that glyph is rewritten, so a dot costs one
-CGRAM row write (`lcd.command(LCD_SETCGRAMADDR | ...)` plus one byte) and no DDRAM
-traffic at all. `BOOT_ANIM_FRAME_US` paces it: the LCD writes alone would finish in
-about half a second, which reads as a flash rather than as something filling up.
+The hardware fact the design turns on: an HD44780 can display at most EIGHT distinct
+programmable glyphs at any instant, against 1280 dots. So either eight cells own a slot
+each and fill dot by dot - unique patterns, but never more than eight cells in motion,
+which the panel shows as clumps - or every cell shares ONE ladder of eight increasing
+fill levels and walks it on its own schedule, which puts all 32 cells in motion. It is
+the second. The ladder is built from a permutation of the 40 dot positions reshuffled
+every power-up, so the dots a level adds are scattered inside the cell rather than
+sweeping across it, and level L keeps everything level L-1 lit - a cell must never
+appear to lose a dot. Past the top of the ladder a cell is written as `0xFF`, the ROM's
+all-dots-on block, and drops out of the random pick.
+
+The cost of sharing is that two cells at the same level are identical. Nine density
+levels scattered over the panel still read as a dissolve, and no arrangement of eight
+glyphs can do better - the ceiling is the display's, not the algorithm's.
+
+The glyphs are uploaded once and never touched again, so a frame is a single character
+write (~0.9ms). 288 of them would be over in a quarter second, hence `BOOT_ANIM_FRAME_US`.
+`BOOT_ANIM_LEVEL_DOTS()` divides by `BOOT_ANIM_LEVELS + 1` so the top glyph stops short
+of a full cell; otherwise the step onto the block glyph would be invisible.
 
 `randomSeed()` is called from it, off `micros()` XOR the accent analog input, because
-every code path ahead of it is fixed - unseeded, the fill order would be identical on
+every code path ahead of it is fixed - unseeded, the dot order would be identical on
 every power-up, and so would `random()` in the sequencer's RANDOM direction mode.
 
-Slots 6 and 7 keep animation leftovers; nothing prints those codes. `font0..font5` are
-restored on the way out.
+Slots 6 and 7 keep the top two ladder levels; nothing prints those codes. `font0..font5`
+are restored on the way out.
 
-Boot now takes ~4.25s in the harness, ~1.3s of it the fill, which is what the sim
-tests' `BOOT_CYCLES` (96M) budgets for - `sim/tests/test_ui.c` pins the fill, checking
-raw DDRAM on row 1 because the LCD model aliases CGRAM onto row 0's addresses.
+Boot now takes ~4.2s in the harness, ~1.26s of it the dissolve, which is what the sim
+tests' `BOOT_CYCLES` (96M) budgets for. `sim/tests/test_ui.c` pins it against raw DDRAM
+on row 1 (the LCD model aliases CGRAM onto row 0's addresses), asserting both that the
+row ends fully lit and that at least 12 of its 16 cells are mid-fill at once - the
+second is what fails if the animation ever regresses to a per-cell glyph window, whose
+ceiling is 8 across the whole panel.
 
 ### Main Loop Architecture
 
