@@ -15,7 +15,7 @@
 #ifndef NAVA_VERSION_H
 #define NAVA_VERSION_H
 
-#define FIRMWARE_VERSION "0.91b"
+#define FIRMWARE_VERSION "0.92"
 
 // The splash line is " solutions " + the version, on a 16-column display.
 // A version long enough to overflow would silently lose its tail into
