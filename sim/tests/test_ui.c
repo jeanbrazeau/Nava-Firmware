@@ -194,9 +194,11 @@ static void test_tempo_tracks_encoder(nava_sim_t *ctx) {
 /* Config mode lights step LEDs 1..MAX_CONF_PAGE to advertise the pages; those same
  * step buttons select the page directly, alongside the SHIFT+TEMPO cycle.  Page
  * markers are the row-0 headers, in the define.h order: 1 "bpm", 2 "mte",
- * 3 "ext vel", 4 "ype" (sysex), 5 "BOOTLOADER".  The first character of each header
- * is the blinking cursor letter, uppercased in place, so the markers deliberately
- * start past column 0. */
+ * 3 "ext vel", 4 "ype" (sysex).  The first character of each header is the blinking
+ * cursor letter, uppercased in place, so the markers deliberately start past column 0.
+ *
+ * There was a fifth page, BOOTLOADER, which jumped out of the firmware.  It is gone,
+ * and step 5 is asserted below to be inert - that is what pins the removal. */
 static void test_config_page_step_buttons(nava_sim_t *ctx) {
     boot_wait_ready(ctx, BOOT_CYCLES);
     nava_sim_run_cycles(ctx, IDLE_GAP);
@@ -220,14 +222,23 @@ static void test_config_page_step_buttons(nava_sim_t *ctx) {
      * binding.  The sysex page is included because selecting it enables SysEx mode,
      * which flushes the pattern bank; the step route has to reach that the same way
      * the TEMPO route does. */
-    if (!step_await(ctx, 4, "ui/config/step5", "BOOTLOADER")) return;
     if (!step_await(ctx, 1, "ui/config/step2", "mte")) return;
     if (!step_await(ctx, 3, "ui/config/step4", "ype")) return;
     if (!step_await(ctx, 2, "ui/config/step3", "ext vel")) return;
     if (!step_await(ctx, 0, "ui/config/step1", "bpm")) return;
 
     /* Buttons past the last page are dark, and must not wrap onto a page the user
-     * did not aim at. */
+     * did not aim at.  Step 5 is the one the removed BOOTLOADER page used to occupy:
+     * if it ever selects a page again, something has re-added a fifth page. */
+    nava_sim_run_cycles(ctx, IDLE_GAP);
+    fp_press_step(ctx, 4);
+    fp_release_step(ctx, 4);
+    nava_sim_run_cycles(ctx, UI_TIMEOUT / 4);
+    if (!strstr(fp_lcd_line(ctx, 0), "bpm"))
+        test_fail("ui/config/step5_inert",
+                  "step 5 selected a page; BOOTLOADER was removed (row0=\"%s\")",
+                  fp_lcd_line(ctx, 0));
+
     nava_sim_run_cycles(ctx, IDLE_GAP);
     fp_press_step(ctx, 15);
     fp_release_step(ctx, 15);

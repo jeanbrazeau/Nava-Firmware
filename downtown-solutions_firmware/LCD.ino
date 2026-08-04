@@ -221,18 +221,6 @@ void LcdUpdate()
           break;
         }
 #endif
-      case CONF_PAGE_BOOT: // last page in either build
-        {
-          // Both of these were 17 characters on a 16-column display, so the panel showed
-          // "PRESS ENC TO ACT" and the last character went to off-screen DDRAM - the same
-          // bug already fixed for the startup splash in downtown-solutions_firmware.ino.
-          lcd.print("   BOOTLOADER   ");
-          lcd.setCursor(0,1);
-          LcdClearLine();
-          lcd.setCursor(0,1);
-          lcd.print("SHIFT+ENC = GO  ");
-          break;
-        }
       }
     }
     else if (seq.sync == EXPANDER) {                                               // [1.028] Expander
