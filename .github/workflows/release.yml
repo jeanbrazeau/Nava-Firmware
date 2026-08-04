@@ -65,7 +65,15 @@ jobs:
       # PlatformIO on purpose - pip-installed pio runs extra_scripts under this
       # interpreter, so anywhere else would be invisible to the post-action.
       - name: Install PlatformIO and the nava tools
-        run: pip install platformio "git+https://github.com/jeanbrazeau/nava-tools"
+        run: |
+          set -euo pipefail
+          # nava-tools depends on python-rtmidi, which has no wheel for every
+          # interpreter and builds from source when it has none - and that build
+          # wants a MIDI backend's headers. Nothing here sends MIDI; this is the
+          # cost of installing the package whole rather than reasoning about
+          # which of its dependencies the two steps below happen to reach.
+          sudo apt-get update && sudo apt-get install -y libasound2-dev
+          pip install platformio "git+https://github.com/jeanbrazeau/nava-tools"
 
       - name: Build
         run: pio run -e nava_sysex
