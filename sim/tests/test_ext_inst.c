@@ -653,6 +653,84 @@ static void test_ext_last_step_scoped_to_ext_layer(nava_sim_t *ctx) {
     }
 }
 
+/* The ext lane runs the sequencer's direction against ITS OWN length.
+ *
+ * The lane used to borrow curStep whenever extLength happened to equal pattern.length and
+ * fall back to a forward-only counter otherwise, so BACKWARD held only until LAST STEP
+ * shortened the layer - at which point the MIDI tracks silently reversed to forward while
+ * the kit kept running backward, with nothing on the panel to explain it.
+ *
+ * Driven from PTRN_PLAY because seq.dir is global and SHIFT+DIR is its only binding; DIR
+ * also shifts the pattern right on the same press, which is harmless here since
+ * FX_PTRN_BASIC has extTrack[] empty and this test reads the playhead alone.
+ *
+ * With the layer at 4 steps the LED word is a single moving bit, so the ORDER of the
+ * positions is the assertion - a set-union test cannot tell 0,1,2,3 from 3,2,1,0. Sampled
+ * at eighth-step resolution and de-duplicated, which is finer than the blinkFast half-step
+ * so no position can be stepped over. */
+static void test_ext_playhead_honours_direction(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+
+    fp_press_button(ctx, FP_BTN_PTRN);      /* PTRN_STEP -> PTRN_PLAY */
+    fp_release_button(ctx, FP_BTN_PTRN);
+    fp_settle(ctx);
+    fp_press_button(ctx, FP_BTN_SHIFT);     /* SHIFT+DIR: FORWARD -> BACKWARD */
+    fp_press_button(ctx, FP_BTN_DIR);
+    fp_release_button(ctx, FP_BTN_DIR);
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    fp_settle(ctx);
+    fp_press_button(ctx, FP_BTN_PTRN);      /* back to PTRN_STEP */
+    fp_release_button(ctx, FP_BTN_PTRN);
+    fp_settle(ctx);
+
+    enter_ext_edit(ctx);
+
+    fp_press_button(ctx, FP_BTN_LASTSTEP);
+    fp_press_step(ctx, 3);                  /* ext last step index 3 -> a 4-step layer */
+    fp_release_step(ctx, 3);
+    fp_release_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+
+    int seen[8];
+    size_t n = 0;
+    int last = -1;
+    for (int i = 0; i < 512 && n < 8; i++) {
+        nava_sim_run_cycles(ctx, STEP_CYCLES / 8);
+        uint16_t w = fp_step_leds(ctx);
+        int pos = -1;
+        for (int b = 0; b < 16; b++) {
+            if (w == (uint16_t)(1u << b)) { pos = b; break; }
+        }
+        if (pos < 0 || pos == last) continue;   /* dark half of the flash, or no movement */
+        seen[n++] = pos;
+        last = pos;
+    }
+
+    static const int expect[8] = {3, 2, 1, 0, 3, 2, 1, 0};
+    printf("# ext_direction: playhead order =");
+    for (size_t k = 0; k < n; k++) printf(" %d", seen[k]);
+    printf(" (expect 3 2 1 0 3 2 1 0)\n");
+
+    if (n < 8) {
+        test_fail("ext/direction/backward_over_ext_length",
+                  "only %zu playhead positions in 64 steps; the lane is not moving", n);
+        return;
+    }
+    for (size_t k = 0; k < 8; k++) {
+        if (seen[k] != expect[k]) {
+            test_fail("ext/direction/backward_over_ext_length",
+                      "playhead position %zu was %d, expected %d - 0,1,2,3 means the ext "
+                      "lane fell back to a forward counter while the kit ran backward; "
+                      "15,14,13 means it is reversing over the 16-step drum lane",
+                      k, seen[k], expect[k]);
+            return;
+        }
+    }
+}
+
 /* The running playhead in ext edit mode chases the EXT lane, not the drum lane.
  *
  * PTRN_STEP flashes the step LEDs at curStep over the selected instrument's content;
