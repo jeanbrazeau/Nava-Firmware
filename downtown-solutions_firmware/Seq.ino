@@ -493,7 +493,14 @@ void SeqParameter() {
     }
 
     //-------------------scale button------------------------------
-    if (scaleBtn.justPressed) {
+    // [TR-909 STYLE] SHIFT+SCALE transposes the selected ext track up an octave, the
+    // pair to SHIFT+LAST STEP below. Both are qualified by SHIFT so the buttons keep
+    // their unshifted meaning inside the mode - SCALE still sets the pattern scale, and
+    // the octave pair is the one gesture the encoder cannot give quickly: 12 detents.
+    if (extInstEditMode && curSeqMode == PTRN_STEP && shiftBtn && scaleBtn.justPressed) {
+      ExtTransposeTrack(12);
+    }
+    else if (scaleBtn.justPressed) {
       needLcdUpdate = TRUE;
       patternWasEdited = TRUE;
       scaleBtn.counter++;
@@ -515,7 +522,15 @@ void SeqParameter() {
     }
 
     //-------------------last step button------------------------------
-    if (lastStepBtn.pressed && readButtonState) {
+    // [TR-909 STYLE] SHIFT+LAST STEP transposes the selected ext track down an octave.
+    // Paired with SHIFT+SCALE above: SCALE sits left of LAST STEP on the panel, so up is
+    // the left button and down the right, matching the way the step lane reads.
+    if (extInstEditMode && curSeqMode == PTRN_STEP && shiftBtn && lastStepBtn.justPressed) {
+      ExtTransposeTrack(-12);
+    }
+    // SHIFT is excluded from the ext branch below, or the step button still held from a
+    // transpose gesture would also rewrite extLength on the way through.
+    else if (lastStepBtn.pressed && readButtonState && !(extInstEditMode && curSeqMode == PTRN_STEP && shiftBtn)) {
       // [TR-909 STYLE] In ext edit mode LAST STEP sets the ext layer's own last step.
       // Writing pattern.length here would shorten the whole sequencer from inside a
       // page that only shows the MIDI tracks - the kit would change length with no

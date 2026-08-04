@@ -653,6 +653,103 @@ static void test_ext_last_step_scoped_to_ext_layer(nava_sim_t *ctx) {
     }
 }
 
+/* SHIFT+SCALE and SHIFT+LAST STEP transpose the selected ext track by an octave.
+ *
+ * Both buttons keep their unshifted meaning inside the mode, so each half of the test
+ * asserts the transpose AND that the button's own value was left alone:
+ *
+ *   - SCALE: the note-on COUNT over a fixed bar-length window is what separates them.
+ *     A cycled scale (1/16 -> 1/32) halves the step period, so FX_PTRN_EXT's two ext
+ *     steps would fire 4 times in the window instead of 2 - and the pitch assertion
+ *     alone would pass right through that.
+ *   - LAST STEP: asserted through the step LEDs under a later bare LAST STEP hold, the
+ *     same display test_ext_last_step_led_shows_ext_length pins. The gesture is pressed
+ *     with a step button held, which is the only shape that could reach extLength.
+ *
+ * The wire note is asserted rather than only the LCD name: storing the transposed value
+ * and transmitting the old one is exactly the failure a display-only test cannot see.
+ */
+static void test_ext_shift_transposes_octave(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    latch_guide(ctx);
+    enter_ext_edit(ctx);          /* track 1 selected, default wire note 48 = C3 */
+
+    fp_press_button(ctx, FP_BTN_SHIFT);
+    fp_press_button(ctx, FP_BTN_SCALE);
+    fp_release_button(ctx, FP_BTN_SCALE);
+    fp_release_button(ctx, FP_BTN_SHIFT);
+    fp_settle(ctx);
+    assert_lcd_contains("ext/transpose/up_shown", ctx, 1, "C4");
+
+    event_log_clear(&ctx->log);
+    uint64_t t0 = ctx->avr->cycle;
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, BAR_CYCLES);
+
+    size_t up = count_ext_note_ons(&ctx->log, 0x3Cu, t0, t0 + BAR_CYCLES);
+    printf("# ext_transpose: C4 note-ons in one bar = %zu (expect 2)\n", up);
+    if (up == 0) {
+        test_fail("ext/transpose/up_on_wire",
+                  "track 1 never sounded at 60 (C4) after SHIFT+SCALE");
+    }
+    if (up > 3) {
+        test_fail("ext/transpose/scale_untouched",
+                  "%zu note-ons in a bar; a 1/16 pattern fires 2 and a 1/32 pattern 4 - "
+                  "SHIFT+SCALE also cycled the pattern scale", up);
+    }
+    if (nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T0, t0, ctx->avr->cycle)) {
+        test_fail("ext/transpose/old_pitch_gone",
+                  "track 1 still transmitting 48 after being transposed up an octave");
+    }
+
+    fp_press_button(ctx, FP_BTN_STOP);
+    fp_release_button(ctx, FP_BTN_STOP);
+    fp_settle(ctx);
+
+    /* Down two octaves: 60 -> 36 (C2). Twice, so a handler that transposed in the wrong
+     * direction cannot land back on a pitch this test would accept. A step button is
+     * held throughout - the only gesture shape that could reach extLength. */
+    for (int i = 0; i < 2; i++) {
+        fp_press_button(ctx, FP_BTN_SHIFT);
+        fp_press_button(ctx, FP_BTN_LASTSTEP);
+        fp_press_step(ctx, 3);          /* would set ext last step 3 if SHIFT were ignored */
+        fp_release_step(ctx, 3);
+        fp_release_button(ctx, FP_BTN_LASTSTEP);
+        fp_release_button(ctx, FP_BTN_SHIFT);
+        fp_settle(ctx);
+    }
+    assert_lcd_contains("ext/transpose/down_shown", ctx, 1, "C2");
+
+    event_log_clear(&ctx->log);
+    uint64_t t1 = ctx->avr->cycle;
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    nava_sim_run_cycles(ctx, BAR_CYCLES);
+    assert_midi_note_on("ext/transpose/down_on_wire", &ctx->log, EXT_CH, 0x24u,
+                        t1, ctx->avr->cycle);
+
+    fp_press_button(ctx, FP_BTN_STOP);
+    fp_release_button(ctx, FP_BTN_STOP);
+    fp_settle(ctx);
+
+    /* Bare LAST STEP hold displays the ext last step: still 15, not the 3 the transpose
+     * gesture would have written had SHIFT not qualified it. */
+    fp_press_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+    event_log_clear(&ctx->log);
+    nava_sim_run_cycles(ctx, 4000000ULL);
+    uint16_t held = fp_step_leds(ctx);
+    fp_release_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+
+    if (held != (uint16_t)(1u << 15)) {
+        test_fail("ext/transpose/ext_length_untouched",
+                  "step LEDs under LAST STEP = 0x%04X, expected 0x8000 (unedited length "
+                  "15); 0x0008 means SHIFT+LAST STEP also wrote ext last step 3", held);
+    }
+}
+
 /* The running playhead in ext edit mode chases the EXT lane, not the drum lane.
  *
  * PTRN_STEP flashes the step LEDs at curStep over the selected instrument's content;
@@ -950,6 +1047,8 @@ int main(void) {
                       test_ext_encoder_sets_track_note, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_last_step_scoped_to_ext_layer",
                       test_ext_last_step_scoped_to_ext_layer, &FX_PTRN_EXT, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_shift_transposes_octave",
+                      test_ext_shift_transposes_octave, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_playhead_follows_ext_lane",
                       test_ext_playhead_follows_ext_lane, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_last_step_led_shows_ext_length",
