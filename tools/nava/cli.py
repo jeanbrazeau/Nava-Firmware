@@ -104,8 +104,11 @@ def cmd_flash(args) -> int:
     messages = protocol.split_messages(stream)
     print(f"{args.syxfile}: {len(image)} bytes of flash in {len(messages) - 1} pages")
     print(
-        "The Nava must already be in bootloader mode "
-        "(stop the sequencer, SHIFT+TEMPO to the BOOTLOADER page, press the encoder)."
+        "The Nava must already be in bootloader mode. The firmware no longer provides a\n"
+        "way in - the BOOTLOADER config page was removed. If this unit's bootloader runs\n"
+        "at reset, power-cycle it and send within its listen window; otherwise flash over\n"
+        "ISP. Pages are sent blind, so a unit that is not listening looks identical to one\n"
+        "that is. See the README."
     )
 
     with midiio.open_ports(out_spec=args.out) as ports:

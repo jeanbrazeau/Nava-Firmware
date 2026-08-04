@@ -196,11 +196,19 @@ nava build                                     # .pio/build/nava_sysex/firmware.
 nava flash .pio/build/nava_sysex/firmware.syx --out NAVA-909
 ```
 
-Put the unit in bootloader mode first: stop the sequencer, **SHIFT + TEMPO** to
-the `BOOTLOADER` page, then **SHIFT + encoder**. It saves everything to EEPROM and
-silences the transport before jumping. The panel does not react afterwards —
-it is no longer running the firmware — and the unit restarts on its own when the
-transfer finishes.
+The unit must **already be in its bootloader**. The firmware no longer provides a
+way in: the BOOTLOADER config page jumped to an address nothing in this repository
+supports, and the loader in the one released image only stays resident after an
+external reset, so a jump from the application would have bounced back regardless.
+See "Flashing firmware" in the top-level [README](../README.md).
+
+If your unit's bootloader runs at reset (`BOOTRST` programmed), power-cycle it and
+send within its listen window. Otherwise flash over ISP — `pio run -t upload`, which
+`platformio.ini` already configures for a USBasp.
+
+`flash` sends pages blind: no handshake, no acknowledgement, no verify. The panel
+does not react during or afterwards, and that looks identical whether or not the
+unit was ever listening.
 
 The 250 ms default between pages is not politeness. The bootloader commits a
 flash page per message and does not buffer a second one while erasing, so

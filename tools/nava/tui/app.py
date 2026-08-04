@@ -184,10 +184,11 @@ class NavaApp(App):
                         yield Button("Inspect", id="do-inspect")
                         yield Button("Flash", variant="error", id="do-flash")
                     yield Static(
-                        "Put the Nava in bootloader mode first: stop the sequencer, "
-                        "SHIFT+TEMPO to the BOOTLOADER page, press the encoder. "
-                        "The panel will not react afterwards - it is no longer "
-                        "running the firmware.",
+                        "The Nava must already be in bootloader mode - the firmware no "
+                        "longer provides a way in. If this unit's bootloader runs at "
+                        "reset, power-cycle it and send within its listen window; "
+                        "otherwise flash over ISP. Pages are sent blind, so a unit that "
+                        "is not listening looks identical to one that is.",
                         classes="muted",
                     )
                 yield ProgressBar(id="firmware-progress", show_eta=False)

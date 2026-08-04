@@ -101,7 +101,7 @@ void setup() {
     bootElapseTime = millis();
     while (1) {
       ButtonGet();
-      if ((millis() - bootElapseTime) > BOOTLOADER_TIME) break;
+      if ((millis() - bootElapseTime) > EEPROM_INIT_WINDOW) break;
       if (startBtn.pressed && enterBtn.pressed) {
         InitEEprom();
         //InitEEpromTrack();//problem with init pattern 0 to 18: to be solved //[oort] unknown problem

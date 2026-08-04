@@ -155,8 +155,9 @@ Patterns are stored in RAM (patternBank[16]) for quick access, and only saved to
 `LcdBootAnimation()` (LCD.ino) dissolves the panel in from blank to fully lit - dots
 appear scattered across all 32 cells at once, in random order - and then the version
 splash replaces it. It runs at the very end of `setup()`: every boot key combo
-(bootloader jump, EEPROM init, TM2 adjust) puts up its own screen and none of them
-reach that point, so a unit held into one of them is never made to wait for it.
+(EEPROM init, TM2 adjust) puts up its own screen and none of them reach that point, so a
+unit held into one of them is never made to wait for it. There was a third such path, the
+EEPROM bootloader-flag check, which is gone - see the config-page block in `define.h`.
 
 The hardware fact the design turns on: an HD44780 can display at most EIGHT distinct
 programmable glyphs at any instant, against 1280 dots. So either eight cells own a slot
@@ -238,7 +239,7 @@ the loop otherwise - see "Transmission timing" under the EXT_INST section.
 
 ### Main Entry Point
 - **downtown-solutions_firmware.ino** (206 lines)
-  - Setup: Initializes I/O, LCD, MIDI, bootloader check, pattern/track loading
+  - Setup: Initializes I/O, LCD, MIDI, pattern/track loading
   - Loop: Expander mode, MIDI read, button/encoder polling, LED/LCD updates, sequencer configuration
 
 ### Core Modules
@@ -615,8 +616,8 @@ this change plays a pattern saved by this one as it did before.
 
 ### Config page: ext instrument velocities
 SHIFT+TEMPO cycles the config pages; the ext velocity page is `CONF_PAGE_EXT_VEL`,
-page 3 in either build - the two setup pages, then this one, then sysex (when built),
-then BOOTLOADER last. It shows
+page 3 in either build - the two setup pages, then this one, then sysex when the build
+has it. It shows
 `low hi  ext vel` with the two levels below, the encoder button moves between the two
 fields, and the encoder sets each in 1..127. The floor is 1, not 0: a note-on with
 velocity 0 is a note-off on the wire, so a level of 0 would silence the lane rather than
@@ -624,10 +625,10 @@ make it quiet. The two are not ordered against each other - inverting them is a 
 way to make the second press the softer of the pair.
 
 Every page is named in `define.h` (`CONF_PAGE_SYNC`, `CONF_PAGE_MISC`,
-`CONF_PAGE_EXT_VEL`, `CONF_PAGE_SYSEX`, `CONF_PAGE_BOOT`) and nothing tests a page by
-literal, so reordering the menu is a change to that block alone. `MAX_CONF_PAGE` is
-`CONF_PAGE_BOOT`, and the page walk in `Seq.ino` is a single increment-and-wrap rather
-than an if-chain duplicated in both `#if` branches.
+`CONF_PAGE_EXT_VEL`, `CONF_PAGE_SYSEX`) and nothing tests a page by literal, so
+reordering the menu is a change to that block alone. `MAX_CONF_PAGE` is `CONF_PAGE_SYSEX`
+when SysEx is built and `CONF_PAGE_EXT_VEL` otherwise, and the page walk in `Seq.ino` is
+a single increment-and-wrap rather than an if-chain duplicated in both `#if` branches.
 
 ### Selecting a config page
 Two ways in, both writing through `SetConfigPage()` so the per-page bookkeeping - the
@@ -658,11 +659,19 @@ no reason to press a step button.
 loop and never reaches `SeqParameter()`, so without the call the expander's config pages
 would be the one place the step buttons stayed dead.
 
-BOOTLOADER sits last deliberately: it is a one-way door out of the firmware, so it is
-past every page that is edited routinely. It is also the reason the setup-save on ENTER
-is guarded on `CONF_PAGE_SYSEX` rather than on the number 3 - ENTER on the sysex page
-transmits a dump and must not also save, while the ext velocity page that inherited the
-number 3 does need ENTER to save.
+The setup-save on ENTER is guarded on `CONF_PAGE_SYSEX` rather than on the number 3:
+ENTER on the sysex page transmits a dump and must not also save, while the ext velocity
+page that inherited the number 3 does need ENTER to save.
+
+There was a BOOTLOADER page after sysex, which jumped to `0x1F000` to hand control to a
+resident loader. It is removed, along with `EnterBootloaderMode()`, the EEPROM flag it
+used, and the boot-time check that read it. The address was correct only for `BOOTSZ=01`
+and was derived from a comment table that computed every boot-section start as if bytes
+equalled words; nothing records this hardware's fuses; and the loader in the released
+`Nava0tone_0.90b.syx` sits at `0x1FE00` and gates on `EXTRF`, so it only stays resident
+after an external reset and would have bounced a jump from the application straight back.
+`sim/tests/test_ui.c` asserts step button 5 is now inert, which is what pins the removal.
+Reinstating an entry path needs a fuse read first - see README.md.
 
 The pair lives in `seq` and persists in the setup EEPROM record (bytes 8-9 of a 64-byte
 block with 8 used). No signature is needed to spot a record written before they existed:

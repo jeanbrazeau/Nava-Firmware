@@ -75,20 +75,25 @@ byte lcdVal = 0; //[oort] for traces
 //LCD
 #define MAX_CUR_POS 4
 // Config pages, in the order TEMPO cycles them: 1 and 2 are the sequencer setup, then
-// the ext instrument velocities, then the sysex dump page (when built), and BOOTLOADER
-// last. BOOTLOADER is a one-way door out of the firmware, so it sits past every page
-// that is edited routinely rather than in the middle of the walk.
+// the ext instrument velocities, then the sysex dump page when the build has it.
 // Every page is named here and nowhere tested by literal, so reordering is this block.
+//
+// There was a BOOTLOADER page last, which jumped out of the firmware to a resident
+// loader. It is gone: the address it jumped to (0x1F000) is correct only for BOOTSZ=01,
+// nothing records this hardware's fuses, and the released Nava0tone_0.90b.syx carries its
+// own loader at 0x1FE00 - so the one address the firmware actually used had nothing at it
+// in the only image available to check against. Flashing over SysEx still works if the
+// unit reaches its loader by some other means; the firmware simply no longer claims to
+// provide one. See README.md.
 #define CONF_PAGE_SYNC    1
 #define CONF_PAGE_MISC    2
 #define CONF_PAGE_EXT_VEL 3
 #if MIDI_HAS_SYSEX
 #define CONF_PAGE_SYSEX   4
-#define CONF_PAGE_BOOT    5
+#define MAX_CONF_PAGE CONF_PAGE_SYSEX
 #else
-#define CONF_PAGE_BOOT    4
+#define MAX_CONF_PAGE CONF_PAGE_EXT_VEL
 #endif
-#define MAX_CONF_PAGE CONF_PAGE_BOOT
 #define MAX_CUR_POS_EXT_VEL 2  // the ext velocity page has two fields, not four
 
 //Utility
@@ -98,7 +103,11 @@ byte lcdVal = 0; //[oort] for traces
 #define FALSE 0
 #define ON 1
 #define OFF 0
-#define BOOTLOADER_TIME 5000  // time staying in bootloader
+// How long the PLAY+STOP EEPROM-init prompt stays up at boot waiting for the START+ENTER
+// confirm. This was called BOOTLOADER_TIME and commented "time staying in bootloader",
+// which described a resident loader rather than anything this firmware does - its only
+// use has always been that prompt.
+#define EEPROM_INIT_WINDOW 5000
 
 //Sequencer
 #define NBR_INST 16
