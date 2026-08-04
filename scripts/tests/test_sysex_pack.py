@@ -1,10 +1,10 @@
 """Compile the firmware's own packing header natively and check it against the
 host implementation.
 
-The two sides of this transfer are written in different languages and only agree
-by construction, so agreement is asserted rather than assumed. Without the AVR
-toolchain this is also the only executable check on any firmware code, which is
-why it drives the real header rather than a transcription of it.
+The two sides of this transfer are written in different languages, in separate
+repositories, and only agree by construction - so agreement is asserted rather
+than assumed. It drives the real `sysex_pack.h` rather than a transcription of
+it, which is what makes a native compiler enough to check firmware code with.
 """
 
 import ctypes

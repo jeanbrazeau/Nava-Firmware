@@ -1,7 +1,11 @@
 """The firmware and the host tool each define the protocol's numbers in their own
 language. Parsing the headers and comparing keeps them from drifting apart - a
 mismatch here would show up on hardware as a backup that silently reads the wrong
-EEPROM record, which nothing else in either test suite would catch."""
+EEPROM record, which nothing else in either test suite would catch.
+
+The two live in separate repositories now, which is exactly why this runs here:
+the headers are the side that cannot be fetched, so the check has to be where
+they are, and it installs nava-tools to get the other half."""
 
 import os
 import re
@@ -66,7 +70,7 @@ def define_h():
     ],
 )
 def test_sysex_header_agrees(sysex_h, name, value):
-    assert sysex_h[name] == value, f"{name} disagrees with tools/nava/protocol.py"
+    assert sysex_h[name] == value, f"{name} disagrees with nava/protocol.py in nava-tools"
 
 
 @pytest.mark.parametrize(
@@ -78,7 +82,7 @@ def test_sysex_header_agrees(sysex_h, name, value):
     ],
 )
 def test_define_header_agrees(define_h, name, value):
-    assert define_h[name] == value, f"{name} disagrees with tools/nava/protocol.py"
+    assert define_h[name] == value, f"{name} disagrees with nava/protocol.py in nava-tools"
 
 
 def test_bank_count_is_consistent(define_h):

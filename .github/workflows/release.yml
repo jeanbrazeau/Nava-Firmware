@@ -1,6 +1,6 @@
 # Publish a firmware release when a version tag is pushed.
 #
-# `nava release 0.92` bumps version.h, commits, tags and pushes; everything from
+# `scripts/release.py 0.92` bumps version.h, commits, tags and pushes; everything from
 # there happens here. Building on a runner rather than on a laptop is what makes
 # the published .syx traceable: the artifact people flash came from this commit,
 # compiled by this log, not from whatever was in someone's working tree.
@@ -42,7 +42,7 @@ jobs:
           if [ "$version" != "$GITHUB_REF_NAME" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match FIRMWARE_VERSION $version."
             echo "The unit would show $version after being flashed from a release called $GITHUB_REF_NAME."
-            echo "Use \`nava release $GITHUB_REF_NAME\`, which bumps version.h and tags in one step."
+            echo "Use \`python3 scripts/release.py $GITHUB_REF_NAME\`, which bumps version.h and tags in one step."
             exit 1
           fi
 
@@ -59,8 +59,21 @@ jobs:
           key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
           restore-keys: pio-${{ runner.os }}-
 
-      - name: Install PlatformIO
-        run: pip install platformio
+      # nava is a separate repository now, and the build needs it twice: the
+      # post-action converts the .hex to a .syx, and the verification step below
+      # decodes that .syx again. Installed into the same environment as
+      # PlatformIO on purpose - pip-installed pio runs extra_scripts under this
+      # interpreter, so anywhere else would be invisible to the post-action.
+      - name: Install PlatformIO and the nava tools
+        run: |
+          set -euo pipefail
+          # nava-tools depends on python-rtmidi, which has no wheel for every
+          # interpreter and builds from source when it has none - and that build
+          # wants a MIDI backend's headers. Nothing here sends MIDI; this is the
+          # cost of installing the package whole rather than reasoning about
+          # which of its dependencies the two steps below happen to reach.
+          sudo apt-get update && sudo apt-get install -y libasound2-dev
+          pip install platformio "git+https://github.com/jeanbrazeau/nava-tools"
 
       - name: Build
         run: pio run -e nava_sysex
@@ -78,7 +91,6 @@ jobs:
           # the name that also works when running these steps by hand locally.
           python3 - "$asset" <<'PY'
           import sys
-          sys.path.insert(0, "tools")
           from nava import bootloader
           with open(sys.argv[1], "rb") as handle:
               image = bootloader.decode_firmware(handle.read())
@@ -99,7 +111,7 @@ jobs:
           ## Flashing
 
           ```bash
-          uv tool install "git+https://github.com/__REPO__#subdirectory=tools[tui]"
+          uv tool install "git+https://github.com/jeanbrazeau/nava-tools[tui]"
           nava tui        # Firmware tab -> Download (latest) -> Inspect -> Flash
           ```
 
@@ -116,7 +128,7 @@ jobs:
           # Substituting into a second file rather than `sed -i`: in-place editing
           # needs an argument to -i on BSD sed and rejects one on GNU, so a line
           # that works on the runner cannot be run by hand on a Mac.
-          sed "s|__TAG__|${GITHUB_REF_NAME}|g; s|__REPO__|${GITHUB_REPOSITORY}|g; s|__ASSET__|${ASSET}|g" \
+          sed "s|__TAG__|${GITHUB_REF_NAME}|g; s|__ASSET__|${ASSET}|g" \
             notes.tmpl > notes.md
 
       - name: Publish the release

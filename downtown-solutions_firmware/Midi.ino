@@ -318,8 +318,9 @@ void DisconnectMidiHandleRealTime() {
 // one page at a time. Nothing here allocates a record-sized buffer, because a
 // track record is 1KB against about 2.5KB of free RAM.
 //
-// The host counterpart is tools/nava (`nava backup` / `nava restore`), and
-// tools/tests/fakenava.py models this side of the exchange.
+// The host counterpart is the nava package (`nava backup` / `nava restore`)
+// in jeanbrazeau/nava-tools, whose tests/fakenava.py models this side of the
+// exchange.
 //-------------------------------------------------
 
 // 8 packed groups. A multiple of 7 so a chunk boundary is never mid-group, and

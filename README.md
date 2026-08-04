@@ -80,17 +80,23 @@ was built:
 
 ### Building and sending
 
-`tools/` provides a `nava` command that does the whole job - see
-[tools/README.md](tools/README.md) for the full reference.
+The `nava` command does the whole job. It lives in its own repository,
+[jeanbrazeau/nava-tools](https://github.com/jeanbrazeau/nava-tools) - flashing a
+release needs no firmware source, and it should not need a firmware clone either.
 
 ```bash
-uv tool install "git+https://github.com/jeanbrazeau/Nava-Firmware#subdirectory=tools[tui]"
+uv tool install "git+https://github.com/jeanbrazeau/nava-tools[tui]"
 nava build                                                   # compile, emit the .syx
 nava flash .pio/build/nava_sysex/firmware.syx --out NAVA-909
 ```
 
 The bare URL takes the default branch; add `@BRANCH` to install from an unmerged
-one. `pip install -e "tools[tui]"` works too, from a clone.
+one. `pip install -e ".[tui]"` works too, from a clone of that repository.
+
+`nava build` is the one command that wants this checkout: run it from here, and it
+finds the source by `platformio.ini`. The PlatformIO build imports `nava` too, for
+the post-action that writes the `.syx`, so a build with neither installed says so
+before compiling anything.
 
 `nava build` wraps `pio run -e nava_sysex`; the build also writes the `.syx` on its own
 as a post-action. With the Arduino IDE, compile there and convert the `.hex`:

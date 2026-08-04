@@ -1,0 +1,28 @@
+[project]
+name = "nava-firmware-checks"
+version = "0"
+description = "Host-side checks on the firmware sources, and the release script"
+requires-python = ">=3.10"
+# Nothing here is installed or imported by the firmware; these are the checks
+# that need a real interpreter, and the release script needs no dependency at
+# all. Everything a *user* runs - flash, backup, restore - moved to nava-tools.
+dependencies = []
+
+[tool.uv]
+# Not a package: there is nothing to build or install, only tests to run.
+package = false
+
+[dependency-groups]
+# nava-tools is here because two of these tests compare the firmware against the
+# host implementation of the same protocol, and one side has to import the
+# other. It is pinned to a repository rather than a version because the pair is
+# meant to track master: a drift is a bug in whichever side moved last, and this
+# is where it surfaces.
+dev = [
+    "pytest>=7",
+    "nava-tools @ git+https://github.com/jeanbrazeau/nava-tools",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]

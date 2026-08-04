@@ -1,25 +1,32 @@
 """Cutting a firmware release: bump the version, tag it, push.
 
-The counterpart to releases.py, which consumes what this produces. Everything
-after the push happens on GitHub - `.github/workflows/release.yml` builds the
-tag, checks it against the version this wrote, and uploads the `.syx`. Nothing
-here builds or publishes anything itself, which is what keeps the published
-artifact traceable to a runner log rather than to whatever was in someone's
-working tree.
+    python3 scripts/release.py 0.96 --dry-run
+    python3 scripts/release.py 0.96
+
+Everything after the push happens on GitHub - `.github/workflows/release.yml`
+builds the tag, checks it against the version this wrote, and uploads the `.syx`.
+Nothing here builds or publishes anything itself, which is what keeps the
+published artifact traceable to a runner log rather than to whatever was in
+someone's working tree.
 
 The guards are the point. A release is a tag other people flash from, so this
 refuses rather than improvises: no uncommitted changes, no unexpected branch, no
 tag that already exists, no version the splash cannot display.
+
+Deliberately dependency-free, on the standard library alone. This lives in the
+firmware repository rather than in the `nava` tools because it edits `version.h`
+and pushes a tag only this repository's CI answers - and because a release must
+not be blocked on installing anything.
 """
 
 from __future__ import annotations
 
+import argparse
 import os
 import re
 import subprocess
+import sys
 from typing import Callable
-
-from . import building
 
 VERSION_FILE = os.path.join("downtown-solutions_firmware", "version.h")
 VERSION_PATTERN = re.compile(r'(#define\s+FIRMWARE_VERSION\s+")([^"]*)(")')
@@ -36,6 +43,29 @@ DEFAULT_BRANCH = "master"
 
 class PublishError(Exception):
     """A user-facing failure cutting a release."""
+
+
+def checkout_root(root: str | None = None) -> str | None:
+    """The repository root, or None if this is not one.
+
+    Keyed on platformio.ini rather than on `.git`: it is the file that says the
+    firmware is here, and it is what the release CI builds. Searches upward from
+    the working directory so the script can be run from anywhere in the tree.
+    """
+    if root is not None:
+        return root if os.path.exists(os.path.join(root, "platformio.ini")) else None
+
+    current = os.path.abspath(os.getcwd())
+    while True:
+        if os.path.exists(os.path.join(current, "platformio.ini")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+
+    fallback = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return fallback if os.path.exists(os.path.join(fallback, "platformio.ini")) else None
 
 
 def git(args: list[str], root: str, capture: bool = True) -> str:
@@ -161,11 +191,11 @@ def release(
     arrangement exists to prevent. The workflow catches it anyway - belt and
     braces, because that check runs on a machine nobody is watching.
     """
-    checkout = building.checkout_root(root)
+    checkout = checkout_root(root)
     if checkout is None:
         raise PublishError(
-            "no firmware checkout here - `nava release` runs from a clone of "
-            "the repository, not from an installed copy."
+            "no firmware checkout here - run this from a clone of the "
+            "repository, where platformio.ini is."
         )
     check_version(version)
 
@@ -215,3 +245,42 @@ def remote_slug(root: str, remote: str = DEFAULT_REMOTE) -> str | None:
         return None
     match = re.search(r"github\.com[:/](.+?)(?:\.git)?$", url)
     return match.group(1) if match else None
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="scripts/release.py",
+        description="Bump the firmware version, tag it and push; CI publishes.",
+    )
+    parser.add_argument("version", help="the new version, e.g. 0.96")
+    parser.add_argument("--remote", default=DEFAULT_REMOTE,
+                        help="git remote to push to (default: %(default)s)")
+    parser.add_argument("--branch", default=DEFAULT_BRANCH,
+                        help="branch the release is cut from (default: %(default)s)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="show what would happen and change nothing")
+    args = parser.parse_args(argv)
+
+    try:
+        tag = release(args.version, remote=args.remote, branch=args.branch,
+                      dry_run=args.dry_run)
+    except PublishError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if args.dry_run:
+        print("nothing was changed (--dry-run)")
+        return 0
+
+    root = checkout_root()
+    slug = remote_slug(root, args.remote) if root else None
+    if slug:
+        print("\nThe release workflow is building it now:")
+        print(f"  https://github.com/{slug}/actions")
+        print(f"  https://github.com/{slug}/releases/tag/{tag}")
+    print("`nava tui` can download it from the Firmware tab once the run finishes.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

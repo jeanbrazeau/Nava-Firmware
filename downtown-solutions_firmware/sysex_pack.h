@@ -5,8 +5,8 @@
 // Deliberately free of Arduino dependencies: this is the part of the transfer
 // that is easiest to get subtly wrong and hardest to notice - a dropped high bit
 // corrupts a velocity's flam flag rather than producing anything that looks like
-// an error - so tools/tests/test_sysex_pack.py compiles this header natively and
-// checks it against the host implementation in tools/nava/protocol.py.
+// an error - so scripts/tests/test_sysex_pack.py compiles this header natively
+// and checks it against the host implementation, nava/protocol.py in nava-tools.
 //
 // A group is 7 raw bytes sent as 8: one byte carrying their high bits, then the
 // 7 bytes with those bits stripped. Bit k of the leading byte belongs to the k-th

@@ -60,7 +60,7 @@
 #define REPLY_CYCLES 60000000ULL
 #define ACK_CYCLES   40000000ULL
 
-/* ---- 7-in-8 packing, mirroring tools/nava/protocol.py ---- */
+/* ---- 7-in-8 packing, mirroring nava/protocol.py in nava-tools ---- */
 
 static size_t sx_pack(const uint8_t *raw, size_t len, uint8_t *out) {
     size_t o = 0;

@@ -9,7 +9,7 @@
 // worse than no release, because the number on the panel is the only version a
 // user in front of the machine can see.
 //
-// `nava release X.Y` rewrites the string below and pushes the tag; nothing else
+// `scripts/release.py X.Y` rewrites the string below and pushes the tag; nothing else
 // should edit it by hand.
 
 #ifndef NAVA_VERSION_H

@@ -1,21 +1,35 @@
 """PlatformIO post-action: turn the built .hex into a bootloader .syx.
 
-Calls tools/nava in process rather than shelling out to the old Python 2
+Calls nava in process rather than shelling out to the old Python 2
 hex2sysex.py, which cannot run on a current interpreter - the build used to
 report "SysEx conversion failed" and carry on to a successful-looking finish
 with no .syx produced.
+
+nava is a separate package now (jeanbrazeau/nava-tools), so this is an import
+of something that may not be installed. It says what is missing and how to get
+it rather than dying on an ImportError traceback out of a SCons callback, where
+nothing on screen would point at the cause.
+
+The install line quotes THIS interpreter by name because it is rarely the one
+`pip` resolves to: PlatformIO installed from its own script runs extra_scripts
+under ~/.platformio/penv, and a nava installed anywhere else is invisible here.
 """
 
-import os
 import sys
 
 Import("env")  # SCons
 
-# SCons exec()s this script, so __file__ is not defined here - the project
-# directory has to come from the build environment.
-sys.path.insert(0, os.path.join(env.subst("$PROJECT_DIR"), "tools"))
-
-from nava import bootloader, ihex  # noqa: E402 - needs the path set above
+try:
+    from nava import bootloader, ihex
+except ImportError as exc:  # pragma: no cover - exercised by the build, not pytest
+    raise SystemExit(
+        "SysEx conversion needs the nava tools, which are not installed for this "
+        "Python ({}).\n"
+        "    {} -m pip install 'git+https://github.com/jeanbrazeau/nava-tools'\n"
+        "The build stops here rather than after compiling: a .syx that is "
+        "missing goes unnoticed until the unit is already in bootloader "
+        "mode.".format(exc, sys.executable)
+    )
 
 
 def generate_sysex(source, target, env):
