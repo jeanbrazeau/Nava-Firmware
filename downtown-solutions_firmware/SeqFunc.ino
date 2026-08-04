@@ -92,7 +92,11 @@ void InitPattern() {
 }*/
 
 void InitPattern(Pattern* bufferToSet) {
-  if (bufferToSet->extLength >= NBR_STEP) bufferToSet->extLength = bufferToSet->length;
+  // Backstop for any path that reaches a live buffer without going through the EEPROM
+  // read. The scale switch below is silent on a value it does not recognise, so an
+  // unchecked record would leave scaleBtn.counter pointing at some other pattern's
+  // setting while the sequencer divided by a scale it cannot use.
+  SanitizePattern(bufferToSet);
   if (!group.priority && !group.isLoaded) {
     group.length = bufferToSet->groupLength;
     group.firstPattern = curPattern - bufferToSet->groupPos;
@@ -216,6 +220,41 @@ void InstToStepWord_2ndBuffer() {
 
 /////////////////////Other pattern operations //////////////////////
 
+// Force a pattern's four timing fields into the range the sequencer can actually run.
+//
+// These are not cosmetic ranges. scale is the divisor of `ppqn % scale` in CountPPQN()
+// and shuffle is used as `shuffle[pattern.shuffle - 1]`, so a stored 0 in either byte
+// does not play the pattern wrongly - it stops the sequencer dead while leaving
+// isRunning TRUE. The machine latches PLAY, sounds nothing, moves no step LED, and still
+// accepts step programming (which is gated on isRunning alone), so it reads as a
+// firmware fault with nothing on the panel pointing at the pattern. length and flam are
+// index sources too: length past NBR_STEP-1 walks curStep past the end of step[] and
+// past the 16 bits of a step LED word, and flam past MAX_FLAM_TYPE-1 indexes flam[].
+//
+// Called wherever a record reaches a live buffer, because more than one route can carry
+// a bad one: a paste from the copy buffer before anything was copied into it
+// (bufferedPattern is BSS, and a bare MUTE press in TRACK_WRITE pastes), a SysEx restore
+// of a record made elsewhere, or a part that was never fully written - a blank EEPROM
+// reads 0xFF, which is out of range on all four.
+void SanitizePattern(Pattern* p) {
+  if (p->length >= NBR_STEP) p->length = DEFAULT_LEN - 1;
+  // extLength is bounded by its own stored range, not by length: the ext lane is allowed
+  // to loop shorter than the kit.
+  if (p->extLength >= NBR_STEP) p->extLength = p->length;
+  switch (p->scale) {
+    case SCALE_16:
+    case SCALE_32:
+    case SCALE_8t:
+    case SCALE_16t:
+      break;
+    default:
+      p->scale = DEFAULT_SCALE;
+      break;
+  }
+  if (p->shuffle < 1 || p->shuffle > MAX_SHUF_TYPE) p->shuffle = DEFAULT_SHUF;
+  if (p->flam >= MAX_FLAM_TYPE) p->flam = DEFAULT_FLAM;
+}
+
 //copy pattern to buffer //[oort] note: patternNum is never used
 void CopyPatternToBuffer(byte patternNum) {
   for (byte i = 0; i < NBR_INST; i++) {
@@ -256,6 +295,11 @@ void PasteBufferToPattern(byte patternNum) {
   pattern[ptrnBuffer].shuffle = bufferedPattern.shuffle;
   pattern[ptrnBuffer].flam = bufferedPattern.flam;
   pattern[ptrnBuffer].totalAcc = bufferedPattern.totalAcc;
+  // An untouched bufferedPattern is BSS - all zeros - and a bare MUTE press in
+  // TRACK_WRITE pastes it. Without this the paste installs scale 0 and shuffle 0, which
+  // stops the sequencer, and patternWasEdited then commits that to the bank and to
+  // EEPROM, where it survives a reflash.
+  SanitizePattern(&pattern[ptrnBuffer]);
 
   // [TR-909 STYLE] Paste external tracks with their velocity levels. Unlike extLength
   // no guard is needed: every bit pattern is a legal accent mask, and its bits are read

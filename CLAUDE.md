@@ -334,6 +334,35 @@ struct Pattern {
 - **bufferedPattern**: Copy/paste buffer for pattern operations
 - **tempPattern**: Temporary buffer for EEPROM read/write operations
 
+### Pattern timing fields are not trusted from storage
+
+`SanitizePattern()` (SeqFunc.ino) clamps `length`, `scale`, `shuffle` and `flam` on every
+path where a stored record reaches a live buffer: `LoadPattern()`, `LoadTempPattern()`
+(which is also what a SysEx restore comes back through), `PasteBufferToPattern()` and
+`InitPattern()`.
+
+These four are index and divisor sources in the clock ISR, so an out-of-range value does
+not play the pattern wrongly - it stops the sequencer while leaving `isRunning` TRUE.
+`scale` is the divisor of `ppqn % scale`, and `shuffle` is used as
+`shuffle[pattern.shuffle - 1]`, so a stored 0 in either byte gives a machine that latches
+PLAY, sounds nothing and moves no step LED in either the drum lane or EXT INST, while
+still accepting step programming - which is gated on `isRunning` alone. Nothing on the
+panel points at the pattern, so it reads as a firmware fault, and it survives a reflash
+because it is stored data.
+
+Zeros get there by more than one route. `bufferedPattern` is BSS, and a bare MUTE press in
+TRACK_WRITE pastes it, so a paste before any copy installs `scale` 0 and then
+`patternWasEdited` commits it. A restore carries whatever another machine wrote. A part
+that was never fully written reads 0xFF, which is out of range on all four fields.
+`InitEEprom()` is not one of the routes - `sim/tests/test_eeprom_init.c` drives the
+PLAY+STOP -> PLAY+ENTER wipe and checks all 128 records come back at length 15, scale 24,
+shuffle >= 1.
+
+`sim/tests/test_step_edit.c` covers the observables this was reported through: the
+PTRN_STEP playhead, the EXT INST playhead, step-button programming, and a pattern whose
+setup bytes are zeroed. `test_timing.c` asserts the shuffle clamp by timing an
+unshuffled bar; that case used to be quarantined as UB.
+
 ### Track Structure
 ```cpp
 struct Track {
