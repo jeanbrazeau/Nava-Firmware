@@ -130,6 +130,17 @@ void SetLeds()
       // rest only on one pass in four, so the level is read off the panel at a glance.
       unsigned int extStepsOn = pattern[ptrnBuffer].extTrack[currentExtTrack];
       unsigned int extStepsAcc = extStepsOn & pattern[ptrnBuffer].extAccent[currentExtTrack];
+      // Bounded by the ext layer's end, as PTRN_STEP bounds the drum lane by
+      // pattern.length: the panel shows the loop that plays, not the sixteen bits the
+      // word can hold. Steps past the end are only hidden, not cleared - lengthening the
+      // layer again brings them back, which is what makes LAST STEP safe to experiment
+      // with. The mask is computed in 32 bits because extLength 15 shifts a 1 out of a
+      // 16-bit int; the guard covers a stored length no load path should produce.
+      unsigned int extLenMask = (pattern[ptrnBuffer].extLength >= NBR_STEP)
+                                  ? 0xFFFF
+                                  : (unsigned int)((1UL << (pattern[ptrnBuffer].extLength + 1)) - 1);
+      extStepsOn &= extLenMask;
+      extStepsAcc &= extLenMask;
       if (flagLedIntensity >= 3) {  //[oort] Sandor uses 8 instead of 3
         stepLeds = extStepsOn;
         flagLedIntensity = 0;
