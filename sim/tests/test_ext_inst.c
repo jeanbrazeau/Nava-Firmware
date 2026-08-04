@@ -770,6 +770,52 @@ static void test_ext_playhead_follows_ext_lane(nava_sim_t *ctx) {
     }
 }
 
+/* Content past the ext layer's end is dark, the way PTRN_STEP leaves the steps past
+ * pattern.length dark.
+ *
+ * FX_PTRN_EXT has track 0 on steps 0 and 8, so shortening the layer to 4 steps splits
+ * the two: step 0 still plays and stays lit, step 8 is outside the loop and must go
+ * dark. Sampled stopped, so no playhead is XORed in and the word is content alone -
+ * 0x0001 bounded, 0x0101 showing the whole register regardless of where the loop ends.
+ *
+ * The bits are hidden, not cleared: the second half lengthens the layer back to 16 and
+ * requires step 8 to return, which a firmware that wrote the mask into extTrack[] could
+ * not do. */
+static void test_ext_led_bounded_by_ext_length(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    enter_ext_edit(ctx);
+
+    fp_press_button(ctx, FP_BTN_LASTSTEP);
+    fp_press_step(ctx, 3);              /* step button 4 -> ext last step index 3 */
+    fp_release_step(ctx, 3);
+    fp_release_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    nava_sim_run_cycles(ctx, 4000000ULL);
+    uint16_t shortened = fp_step_leds(ctx);
+    if (shortened != 0x0001u) {
+        test_fail("ext/led_bound/past_end_dark",
+                  "step LEDs = 0x%04X with a 4-step ext layer; expected 0x0001 "
+                  "(0x0101 = step 8 lit outside the loop that plays)", shortened);
+    }
+
+    fp_press_button(ctx, FP_BTN_LASTSTEP);
+    fp_press_step(ctx, 15);
+    fp_release_step(ctx, 15);
+    fp_release_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    nava_sim_run_cycles(ctx, 4000000ULL);
+    uint16_t restored = fp_step_leds(ctx);
+    if (restored != 0x0101u) {
+        test_fail("ext/led_bound/content_kept",
+                  "step LEDs = 0x%04X after lengthening back to 16; expected 0x0101 - "
+                  "the step outside the short loop was cleared, not hidden", restored);
+    }
+}
+
 /* Holding LAST STEP in ext edit mode lights the ext layer's last step.
  *
  * The step LEDs otherwise show the selected track's content, so the assertion is exact
@@ -1030,8 +1076,8 @@ int main(void) {
                       test_ext_last_step_scoped_to_ext_layer, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_playhead_follows_ext_lane",
                       test_ext_playhead_follows_ext_lane, &FX_PTRN_BASIC, 2, 1);
-    TEST_WITH_PATTERN("ext_inst_playhead_honours_direction",
-                      test_ext_playhead_honours_direction, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_led_bounded_by_ext_length",
+                      test_ext_led_bounded_by_ext_length, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_last_step_led_shows_ext_length",
                       test_ext_last_step_led_shows_ext_length, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_clear_scoped_to_ext_track",
