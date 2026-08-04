@@ -168,6 +168,19 @@ void SeqParameter() {
       patternWasEdited = TRUE;
     }  //paste copy buffered pattern to the current pattern number
 
+    // [TR-909 STYLE] SHIFT+DIR sets the EXT LANE's direction inside its edit mode. The
+    // sequencer's own SHIFT+DIR lives in the PTRN_PLAY block and never sees PTRN_STEP, so
+    // this takes over a gesture that was dead here rather than shadowing a live one.
+    // Cycles FOLLOW -> FORWARD -> BACKWARD -> PING_PONG -> RANDOM -> FOLLOW, so the
+    // default is one press away again and divergence stays deliberate.
+    if (extInstEditMode && curSeqMode == PTRN_STEP && dirBtn.justPressed) {
+      extDir = (extDir >= MAX_EXT_DIR) ? FORWARD : extDir + 1;
+      extInstSplashKind = EXT_SPLASH_DIR;
+      extInstSplashArmed = TRUE;
+      extInstSplashUntil = millis() + 800;
+      needLcdUpdate = TRUE;
+    }
+
     //sequencer configuration page
     if (tempoBtn.justPressed && !isRunning) {
       if (!seq.configMode) {
@@ -209,8 +222,18 @@ void SeqParameter() {
       seq.configMode = FALSE;
       trackNeedSaved = FALSE;
     }
-    if (tapBtn.justPressed) ShiftLeftPattern();
-    if (dirBtn.justPressed) ShiftRightPattern();
+    // [TR-909 STYLE] Scoped to the ext layer inside its edit mode, the same way CLEAR and
+    // LAST STEP are. Unscoped these rotated inst[]/velocity[][] - the drum lane - from a
+    // page showing nothing but MIDI tracks, so the kit moved under the user with no
+    // visible cause and the track they were looking at did not move at all.
+    if (extInstEditMode && curSeqMode == PTRN_STEP) {
+      if (tapBtn.justPressed) ShiftExtTrackLeft();
+      if (dirBtn.justPressed) ShiftExtTrackRight();
+    }
+    else {
+      if (tapBtn.justPressed) ShiftLeftPattern();
+      if (dirBtn.justPressed) ShiftRightPattern();
+    }
     // [TR-909 STYLE] GUIDE latches external instrument MIDI output on and off. This
     // replaces the metronome, which had no other binding and is now unreachable.
     //

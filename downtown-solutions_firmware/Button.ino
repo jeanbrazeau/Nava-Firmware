@@ -73,6 +73,7 @@ void ButtonGet()
     // ButtonGet() runs from the main loop, so the old delay() splash stopped
     // MIDI.read() for a full second and stalled SLAVE/EXPANDER sync. LcdUpdate()
     // paints the message and clears it once this deadline passes.
+    extInstSplashKind = EXT_SPLASH_MODE;  // or a preceding direction splash would repaint
     extInstSplashUntil = millis() + 800;
     extInstSplashArmed = TRUE;
     needLcdUpdate = TRUE;

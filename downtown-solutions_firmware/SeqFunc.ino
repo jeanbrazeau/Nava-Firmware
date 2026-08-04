@@ -15,6 +15,7 @@ void InitSeq() {
   seq.configMode = FALSE;
   randomSeed(analogRead(0));
   seq.dir = FORWARD;
+  extDir = EXT_DIR_FOLLOW;  // [TR-909 STYLE] reset with seq.dir; neither is persisted
   curSeqMode = seq.BootMode;  //[oort] part of feature CONFIG_BOOTMODE, needs ifdef
   seq.bpm = seq.defaultBpm;
   SetSeqSync();  // [zabox] [1.028] moved
@@ -317,6 +318,28 @@ void PasteBufferToPattern(byte patternNum) {
 }
 
 //shift left pattern
+// [TR-909 STYLE] Rotate the selected ext track, the ext layer's answer to
+// ShiftLeft/ShiftRightPattern. Sixteen bits regardless of extLength, exactly as the drum
+// versions rotate all sixteen regardless of pattern.length: content pushed past the end of
+// a shortened loop is preserved rather than dropped, which is the same promise the step
+// LEDs make by masking the display instead of clearing the word.
+// The accent word rotates with the track so each step keeps the level it was programmed at.
+void ShiftExtTrackRight() {
+  unsigned int *trk = &pattern[ptrnBuffer].extTrack[currentExtTrack];
+  unsigned int *acc = &pattern[ptrnBuffer].extAccent[currentExtTrack];
+  *trk = bitRead(*trk, 15) ? (*trk << 1) | 1 : (*trk << 1);
+  *acc = bitRead(*acc, 15) ? (*acc << 1) | 1 : (*acc << 1);
+  patternWasEdited = TRUE;
+}
+
+void ShiftExtTrackLeft() {
+  unsigned int *trk = &pattern[ptrnBuffer].extTrack[currentExtTrack];
+  unsigned int *acc = &pattern[ptrnBuffer].extAccent[currentExtTrack];
+  *trk = bitRead(*trk, 0) ? (*trk >> 1) | (1 << 15) : (*trk >> 1);
+  *acc = bitRead(*acc, 0) ? (*acc >> 1) | (1 << 15) : (*acc >> 1);
+  patternWasEdited = TRUE;
+}
+
 void ShiftLeftPattern() {
   patternWasEdited = TRUE;
   if (instBtn) {  //only shift selected instruments
