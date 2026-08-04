@@ -565,7 +565,10 @@ running sequencer would collide with and setting the bit first would make every 
 look like a collision.
 
 The step LEDs carry the level the way the drum lane does: accented steps are lit on every
-pass, unaccented ones on one pass in four, so the panel reads at a glance. Running, the
+pass, unaccented ones on one pass in four, so the panel reads at a glance. The display is
+bounded by `extLength`, as PTRN_STEP bounds the drum lane by `pattern.length` - steps past
+the end of the ext loop are dark. They are hidden, not cleared, so lengthening the layer
+again brings the content back and LAST STEP stays safe to experiment with. Running, the
 playhead flashes over that content exactly as PTRN_STEP flashes over the drum lane - but
 from `extCurStep`, not `curStep`. These LEDs show the ext layer, so once LAST STEP has
 shortened it the chase has to wrap where the MIDI tracks wrap; driven from the drum lane
