@@ -162,15 +162,37 @@ void CountPPQN() {
       // (SLAVE runs CountPPQN four times in a row from HandleClock): the older step's
       // notes were about to be cut by this one anyway, and extPendingOff is sticky
       // so the sounding notes still get their note-off.
-      // The ext layer reads its own position. extLength equals length unless LAST STEP
-      // was used inside EXT INST edit mode, in which case the MIDI tracks loop shorter
-      // than the kit and the two lanes phase against each other. Direction is
-      // deliberately not applied here: BACKWARD/PING_PONG/RANDOM are defined against
-      // pattern.length, and re-deriving them from a different length would make the ext
-      // lane disagree with the drums even when the two lengths match.
-      extCurStep = (pattern[ptrnBuffer].extLength == pattern[ptrnBuffer].length)
-                     ? curStep
-                     : extStepCount;
+      // The ext layer reads its own position, derived the same way the kit's is but
+      // against extLength. Borrowing curStep whenever the lengths happened to match was
+      // a cliff: the lane ran backwards with the kit until LAST STEP shortened it by one
+      // step, at which point it silently became forward-only while the kit kept reversing.
+      // Deriving it here holds lockstep by construction instead of by special case -
+      // extStepCount tracks stepCount exactly while the lengths agree, so every branch
+      // below collapses to the kit's own value and nothing changes for a pattern that has
+      // not been shortened.
+      switch (seq.dir) {
+        case FORWARD:
+          extCurStep = extStepCount;
+          break;
+        case BACKWARD:
+          extCurStep = pattern[ptrnBuffer].extLength - extStepCount;
+          break;
+        case PING_PONG:
+          // Turns on extCurStep's previous value, as the kit's turns on curStep's, so the
+          // two reverse on the same step whenever the lengths agree.
+          if (extCurStep == pattern[ptrnBuffer].extLength && extChangeDir == 1) extChangeDir = 0;
+          else if (extCurStep == 0 && extChangeDir == 0) extChangeDir = 1;
+          if (extChangeDir) extCurStep = extStepCount;
+          else extCurStep = pattern[ptrnBuffer].extLength - extStepCount;
+          break;
+        case RANDOM:
+          // Deliberately the kit's step rather than a second random(): RANDOM already
+          // ignores pattern.length and picks over all sixteen steps, so there is no ext
+          // loop for it to respect, and drawing separately would only scatter the MIDI
+          // tracks onto different steps from the drums they are meant to land with.
+          extCurStep = curStep;
+          break;
+      }
 
       // Two levels per track, not one per step: extAccent[] is the second velocity level
       // the step editor programs, so a step can be loud on one track and soft on another.

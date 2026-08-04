@@ -653,100 +653,81 @@ static void test_ext_last_step_scoped_to_ext_layer(nava_sim_t *ctx) {
     }
 }
 
-/* SHIFT+SCALE and SHIFT+LAST STEP transpose the selected ext track by an octave.
+/* The ext lane runs the sequencer's direction against ITS OWN length.
  *
- * Both buttons keep their unshifted meaning inside the mode, so each half of the test
- * asserts the transpose AND that the button's own value was left alone:
+ * The lane used to borrow curStep whenever extLength happened to equal pattern.length and
+ * fall back to a forward-only counter otherwise, so BACKWARD held only until LAST STEP
+ * shortened the layer - at which point the MIDI tracks silently reversed to forward while
+ * the kit kept running backward, with nothing on the panel to explain it.
  *
- *   - SCALE: the note-on COUNT over a fixed bar-length window is what separates them.
- *     A cycled scale (1/16 -> 1/32) halves the step period, so FX_PTRN_EXT's two ext
- *     steps would fire 4 times in the window instead of 2 - and the pitch assertion
- *     alone would pass right through that.
- *   - LAST STEP: asserted through the step LEDs under a later bare LAST STEP hold, the
- *     same display test_ext_last_step_led_shows_ext_length pins. The gesture is pressed
- *     with a step button held, which is the only shape that could reach extLength.
+ * Driven from PTRN_PLAY because seq.dir is global and SHIFT+DIR is its only binding; DIR
+ * also shifts the pattern right on the same press, which is harmless here since
+ * FX_PTRN_BASIC has extTrack[] empty and this test reads the playhead alone.
  *
- * The wire note is asserted rather than only the LCD name: storing the transposed value
- * and transmitting the old one is exactly the failure a display-only test cannot see.
- */
-static void test_ext_shift_transposes_octave(nava_sim_t *ctx) {
+ * With the layer at 4 steps the LED word is a single moving bit, so the ORDER of the
+ * positions is the assertion - a set-union test cannot tell 0,1,2,3 from 3,2,1,0. Sampled
+ * at eighth-step resolution and de-duplicated, which is finer than the blinkFast half-step
+ * so no position can be stepped over. */
+static void test_ext_playhead_honours_direction(nava_sim_t *ctx) {
     boot_wait_ready(ctx, BOOT_CYCLES);
-    latch_guide(ctx);
-    enter_ext_edit(ctx);          /* track 1 selected, default wire note 48 = C3 */
 
-    fp_press_button(ctx, FP_BTN_SHIFT);
-    fp_press_button(ctx, FP_BTN_SCALE);
-    fp_release_button(ctx, FP_BTN_SCALE);
+    fp_press_button(ctx, FP_BTN_PTRN);      /* PTRN_STEP -> PTRN_PLAY */
+    fp_release_button(ctx, FP_BTN_PTRN);
+    fp_settle(ctx);
+    fp_press_button(ctx, FP_BTN_SHIFT);     /* SHIFT+DIR: FORWARD -> BACKWARD */
+    fp_press_button(ctx, FP_BTN_DIR);
+    fp_release_button(ctx, FP_BTN_DIR);
     fp_release_button(ctx, FP_BTN_SHIFT);
     fp_settle(ctx);
-    assert_lcd_contains("ext/transpose/up_shown", ctx, 1, "C4");
-
-    event_log_clear(&ctx->log);
-    uint64_t t0 = ctx->avr->cycle;
-    fp_press_button(ctx, FP_BTN_PLAY);
-    fp_release_button(ctx, FP_BTN_PLAY);
-    nava_sim_run_cycles(ctx, BAR_CYCLES);
-
-    size_t up = count_ext_note_ons(&ctx->log, 0x3Cu, t0, t0 + BAR_CYCLES);
-    printf("# ext_transpose: C4 note-ons in one bar = %zu (expect 2)\n", up);
-    if (up == 0) {
-        test_fail("ext/transpose/up_on_wire",
-                  "track 1 never sounded at 60 (C4) after SHIFT+SCALE");
-    }
-    if (up > 3) {
-        test_fail("ext/transpose/scale_untouched",
-                  "%zu note-ons in a bar; a 1/16 pattern fires 2 and a 1/32 pattern 4 - "
-                  "SHIFT+SCALE also cycled the pattern scale", up);
-    }
-    if (nava_midi_expect_note_on(&ctx->log, EXT_CH, WIRE_T0, t0, ctx->avr->cycle)) {
-        test_fail("ext/transpose/old_pitch_gone",
-                  "track 1 still transmitting 48 after being transposed up an octave");
-    }
-
-    fp_press_button(ctx, FP_BTN_STOP);
-    fp_release_button(ctx, FP_BTN_STOP);
+    fp_press_button(ctx, FP_BTN_PTRN);      /* back to PTRN_STEP */
+    fp_release_button(ctx, FP_BTN_PTRN);
     fp_settle(ctx);
 
-    /* Down two octaves: 60 -> 36 (C2). Twice, so a handler that transposed in the wrong
-     * direction cannot land back on a pitch this test would accept. A step button is
-     * held throughout - the only gesture shape that could reach extLength. */
-    for (int i = 0; i < 2; i++) {
-        fp_press_button(ctx, FP_BTN_SHIFT);
-        fp_press_button(ctx, FP_BTN_LASTSTEP);
-        fp_press_step(ctx, 3);          /* would set ext last step 3 if SHIFT were ignored */
-        fp_release_step(ctx, 3);
-        fp_release_button(ctx, FP_BTN_LASTSTEP);
-        fp_release_button(ctx, FP_BTN_SHIFT);
-        fp_settle(ctx);
-    }
-    assert_lcd_contains("ext/transpose/down_shown", ctx, 1, "C2");
+    enter_ext_edit(ctx);
 
-    event_log_clear(&ctx->log);
-    uint64_t t1 = ctx->avr->cycle;
-    fp_press_button(ctx, FP_BTN_PLAY);
-    fp_release_button(ctx, FP_BTN_PLAY);
-    nava_sim_run_cycles(ctx, BAR_CYCLES);
-    assert_midi_note_on("ext/transpose/down_on_wire", &ctx->log, EXT_CH, 0x24u,
-                        t1, ctx->avr->cycle);
-
-    fp_press_button(ctx, FP_BTN_STOP);
-    fp_release_button(ctx, FP_BTN_STOP);
-    fp_settle(ctx);
-
-    /* Bare LAST STEP hold displays the ext last step: still 15, not the 3 the transpose
-     * gesture would have written had SHIFT not qualified it. */
     fp_press_button(ctx, FP_BTN_LASTSTEP);
-    fp_settle(ctx);
-    event_log_clear(&ctx->log);
-    nava_sim_run_cycles(ctx, 4000000ULL);
-    uint16_t held = fp_step_leds(ctx);
+    fp_press_step(ctx, 3);                  /* ext last step index 3 -> a 4-step layer */
+    fp_release_step(ctx, 3);
     fp_release_button(ctx, FP_BTN_LASTSTEP);
     fp_settle(ctx);
 
-    if (held != (uint16_t)(1u << 15)) {
-        test_fail("ext/transpose/ext_length_untouched",
-                  "step LEDs under LAST STEP = 0x%04X, expected 0x8000 (unedited length "
-                  "15); 0x0008 means SHIFT+LAST STEP also wrote ext last step 3", held);
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+
+    int seen[8];
+    size_t n = 0;
+    int last = -1;
+    for (int i = 0; i < 512 && n < 8; i++) {
+        nava_sim_run_cycles(ctx, STEP_CYCLES / 8);
+        uint16_t w = fp_step_leds(ctx);
+        int pos = -1;
+        for (int b = 0; b < 16; b++) {
+            if (w == (uint16_t)(1u << b)) { pos = b; break; }
+        }
+        if (pos < 0 || pos == last) continue;   /* dark half of the flash, or no movement */
+        seen[n++] = pos;
+        last = pos;
+    }
+
+    static const int expect[8] = {3, 2, 1, 0, 3, 2, 1, 0};
+    printf("# ext_direction: playhead order =");
+    for (size_t k = 0; k < n; k++) printf(" %d", seen[k]);
+    printf(" (expect 3 2 1 0 3 2 1 0)\n");
+
+    if (n < 8) {
+        test_fail("ext/direction/backward_over_ext_length",
+                  "only %zu playhead positions in 64 steps; the lane is not moving", n);
+        return;
+    }
+    for (size_t k = 0; k < 8; k++) {
+        if (seen[k] != expect[k]) {
+            test_fail("ext/direction/backward_over_ext_length",
+                      "playhead position %zu was %d, expected %d - 0,1,2,3 means the ext "
+                      "lane fell back to a forward counter while the kit ran backward; "
+                      "15,14,13 means it is reversing over the 16-step drum lane",
+                      k, seen[k], expect[k]);
+            return;
+        }
     }
 }
 
@@ -786,6 +767,52 @@ static void test_ext_playhead_follows_ext_lane(nava_sim_t *ctx) {
         test_fail("ext/playhead/follows_ext_lane",
                   "playhead visited 0x%04X over a bar; a 4-step ext loop visits 0x000F "
                   "(0xFFFF = chasing the 16-step drum lane, one bit = frozen)", visited);
+    }
+}
+
+/* Content past the ext layer's end is dark, the way PTRN_STEP leaves the steps past
+ * pattern.length dark.
+ *
+ * FX_PTRN_EXT has track 0 on steps 0 and 8, so shortening the layer to 4 steps splits
+ * the two: step 0 still plays and stays lit, step 8 is outside the loop and must go
+ * dark. Sampled stopped, so no playhead is XORed in and the word is content alone -
+ * 0x0001 bounded, 0x0101 showing the whole register regardless of where the loop ends.
+ *
+ * The bits are hidden, not cleared: the second half lengthens the layer back to 16 and
+ * requires step 8 to return, which a firmware that wrote the mask into extTrack[] could
+ * not do. */
+static void test_ext_led_bounded_by_ext_length(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    enter_ext_edit(ctx);
+
+    fp_press_button(ctx, FP_BTN_LASTSTEP);
+    fp_press_step(ctx, 3);              /* step button 4 -> ext last step index 3 */
+    fp_release_step(ctx, 3);
+    fp_release_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    nava_sim_run_cycles(ctx, 4000000ULL);
+    uint16_t shortened = fp_step_leds(ctx);
+    if (shortened != 0x0001u) {
+        test_fail("ext/led_bound/past_end_dark",
+                  "step LEDs = 0x%04X with a 4-step ext layer; expected 0x0001 "
+                  "(0x0101 = step 8 lit outside the loop that plays)", shortened);
+    }
+
+    fp_press_button(ctx, FP_BTN_LASTSTEP);
+    fp_press_step(ctx, 15);
+    fp_release_step(ctx, 15);
+    fp_release_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    nava_sim_run_cycles(ctx, 4000000ULL);
+    uint16_t restored = fp_step_leds(ctx);
+    if (restored != 0x0101u) {
+        test_fail("ext/led_bound/content_kept",
+                  "step LEDs = 0x%04X after lengthening back to 16; expected 0x0101 - "
+                  "the step outside the short loop was cleared, not hidden", restored);
     }
 }
 
@@ -1051,6 +1078,8 @@ int main(void) {
                       test_ext_shift_transposes_octave, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_playhead_follows_ext_lane",
                       test_ext_playhead_follows_ext_lane, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_led_bounded_by_ext_length",
+                      test_ext_led_bounded_by_ext_length, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_last_step_led_shows_ext_length",
                       test_ext_last_step_led_shows_ext_length, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_clear_scoped_to_ext_track",
