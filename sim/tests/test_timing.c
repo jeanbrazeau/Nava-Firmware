@@ -4,7 +4,8 @@
  *   2. Timer2 trigger-off restore at 32000 cycles (2 ms)
  *   3. Timer3 flam delayed hit at (flam[0]+1)*64 = 320000 cycles (20 ms)
  *   4. Shuffle offset: odd steps delayed by shuffle[type][1] PPQN ticks
- *   5. Quarantined: shuffle==0 OOB path documented but not stably asserted
+ *   5. shuffle==0 is clamped by SanitizePattern(), asserted by timing an
+ *      unshuffled bar. This case used to be quarantined as UB.
  *
  * Integer math reference (all values must match define.h / timer.ino):
  *   FREQUENCY = (120*96)/60 = 192

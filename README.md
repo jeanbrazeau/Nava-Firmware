@@ -160,5 +160,15 @@ I am not an expert on embedded systems and have almost completely kept my hands 
 
 If you get strange midi errors it might have to do with IDE-versions or Midi Library versions but unfortunately I don't know exactly when these problems occur but I've seen them.
 
+Since then the firmware has grown a design record and a test harness, neither of
+which is visible from the sources alone:
+
+* [`downtown-solutions_firmware/README.md`](downtown-solutions_firmware/README.md)
+  — why the sequencer, the external instrument editor, the SysEx transfer and the
+  boot animation work the way they do
+* [`sim/README.md`](sim/README.md) — a cycle-accurate simavr harness that runs the
+  production ELF, so timing can be checked without hardware
+* [`scripts/README.md`](scripts/README.md) — what a release refuses to do, and why
+
 
 

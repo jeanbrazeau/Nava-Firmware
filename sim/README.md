@@ -3,83 +3,8 @@
 Self-contained cycle-accurate AVR simulation harness for the Nava TR-909
 firmware, built on simavr (vendored submodule, native arm64 build).
 
-## Prerequisites
-
-- macOS arm64 (Apple Silicon)
-- Xcode Command Line Tools (provides `clang`, `make`)
-- PlatformIO with `atmelavr` platform (provides avr-gcc for firmware build)
-- `libelf` via Homebrew (keg-only; not on default clang search paths after install):
-
-  ```
-  brew install libelf
-  ```
-
-Install PlatformIO core if not present:
-```
-pip install platformio
-pio platform install atmelavr
-```
-
-## Full Build Sequence
-
-```bash
-# 0. Populate the vendored simavr checkout (one-time per clone, needs network).
-#    Once sim/simavr is registered as a submodule, this is:
-git submodule update --init sim/simavr
-#    If it is not registered yet, either register it:
-#      git submodule add https://github.com/buserror/simavr.git sim/simavr
-#    or just clone it in place:
-#      git clone https://github.com/buserror/simavr.git sim/simavr
-#    setup_simavr.sh then checks out the pin recorded in simavr.version.
-
-# 1. Build simavr and the HD44780 part (~2 min; requires step 0 and brew libelf)
-bash sim/scripts/setup_simavr.sh
-
-# 2. Compile the production firmware ELF from the current working tree
-bash sim/scripts/build_firmware.sh
-
-# 3. Build the harness and run all 43 regression tests (TAP output)
-make -C sim test
-```
-
-No external EEPROM fixture file is required.  Test EEPROM state is seeded
-in-process by the C fixtures (`fixtures/patterns.c`) before each test case.
-
-> **Legacy note** — `scripts/gen_eeprom.py` (Python 2) is superseded by the
-> in-process C seed path and is not needed for a normal test run.
-
-## Directory Layout
-
-```
-sim/
-├── harness/        — Peripheral models and sim core (compiled as .o objects)
-│   ├── nava_sim.h/c    — Core: ELF load, EEPROM seed, run loop
-│   ├── event_log.h/c   — Cycle-stamped observable event log
-│   ├── spi_bus.h/c     — 74HC165 input + 74HC595 LED/trig + MCP4822 DAC models
-│   ├── gpio.h/c        — MUX attribution, encoder injection, DIN/TRIG-OUT log
-│   ├── lcd.h/c         — HD44780 4-bit write-only LCD model (screen text mirror)
-│   ├── midi.h/c        — USART1 MIDI TX capture + RX injection
-│   └── frontpanel.h/c  — Named button press/release API + observable accessors
-├── tests/
-│   ├── test_runner.h/c     — TAP test framework + assertion helpers + boot_wait_ready
-│   ├── test_timing.c       — PPQN period, Timer2 trigger-off, Timer3 flam, shuffle
-│   ├── test_pattern_swap.c — Bar-end SYNC/FREE pattern buffer swap
-│   ├── test_ext_inst.c     — Polyphonic EXT_INST MIDI note-on/off + accent bug pin
-│   ├── test_midi_sync.c    — SLAVE sync: injected clock advances sequencer
-│   └── test_ui.c           — Boot dissolve animation, boot screen, modes, LEDs, tempo
-├── fixtures/
-│   └── patterns.h/c        — Reusable C pattern fixtures (all shuffle>=1)
-│                               (EEPROM seeded in-process; no .bin file needed)
-├── scripts/
-│   ├── setup_simavr.sh     — Vendor, pin, and build simavr (requires step 0)
-│   ├── build_firmware.sh   — PlatformIO firmware build + mmcu hint
-│   └── gen_eeprom.py       — LEGACY/OPTIONAL: Python 2 EEPROM generator
-│                               (superseded by in-process C seed; not required)
-├── simavr/         — Git submodule (populate: git submodule update --init sim/simavr)
-├── simavr.version  — Pinned commit: 6a2c268c2e50a4ef0967f8a7bb281df9eed6c2bb
-└── Makefile                — Harness + test build system
-
-```
+Setup and the build sequence are in `CLAUDE.md` beside this file; what follows is
+what the code and the test output do not tell you.
 
 ## Timer Math Reference (bpm=120)
 
@@ -116,19 +41,28 @@ Timer2 restore ~32,000 cycles later). Comparing adjacent TRIG_WORD events
 therefore measures the trigger-off window, not the step period — use
 `event_log_find_step_onset()`, which skips the restore writes.
 
-## Known Firmware Bugs Pinned by Tests
+## Firmware behaviour these tests pin
 
-- **MIDI_ACCENT_VELOCITY=16**: Accent steps produce velocity 16 (quieter than
-  typical 111). Pinned in test_ext_inst.c, not fixed.
-- **shuffle[-1] OOB**: pattern.shuffle==0 causes `shuffle[(0)-1]` out-of-bounds
-  read. All fixtures set shuffle>=1. One quarantined test documents the path.
+Both entries here were once bugs the tests documented rather than caught. They
+are fixed; the tests now assert the fix, which is why they are worth naming - a
+regression would look like a return to behaviour someone might mistake for
+intended.
+
+- **Accent is louder, not quieter.** `TOTAL_ACC` adds `MIDI_ACCENT_VELOCITY` (16)
+  on top of the level a track already carries, clamped at 127, rather than
+  replacing it. An accented step on a high-velocity track sends 127.
+  `test_ext_accent_velocity` in `test_ext_inst.c`.
+- **`shuffle == 0` no longer indexes out of bounds.** `shuffle[pattern.shuffle - 1]`
+  would read `shuffle[-1]`; `SanitizePattern()` now clamps the field on every path
+  that loads a stored record, and `test_shuffle_zero_is_clamped` in `test_timing.c`
+  times an unshuffled bar to prove it. Fixtures still set `shuffle >= 1`.
 
 ## Test Harness Gotchas
 
 Two traps cost real debugging time; both are now handled, but know they exist:
 
 - **Wait for panel scanning, not for the LCD.** The firmware writes its boot
-  splash (`downtown / solutions 0.91b`) long before it starts polling buttons.
+  splash (`downtown / solutions <version>`) long before it starts polling buttons.
   A press injected during the splash is never sampled, so the sequencer simply
   never starts and every timing assertion fails with "no TRIG_WORD events".
   `boot_wait_ready()` waits for real 74HC165 latches (~67M cycles here, most of
