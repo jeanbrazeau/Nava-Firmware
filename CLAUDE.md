@@ -155,8 +155,9 @@ Patterns are stored in RAM (patternBank[16]) for quick access, and only saved to
 `LcdBootAnimation()` (LCD.ino) dissolves the panel in from blank to fully lit - dots
 appear scattered across all 32 cells at once, in random order - and then the version
 splash replaces it. It runs at the very end of `setup()`: every boot key combo
-(bootloader jump, EEPROM init, TM2 adjust) puts up its own screen and none of them
-reach that point, so a unit held into one of them is never made to wait for it.
+(EEPROM init, TM2 adjust) puts up its own screen and none of them reach that point, so a
+unit held into one of them is never made to wait for it. There was a third such path, the
+EEPROM bootloader-flag check, which is gone - see the config-page block in `define.h`.
 
 The hardware fact the design turns on: an HD44780 can display at most EIGHT distinct
 programmable glyphs at any instant, against 1280 dots. So either eight cells own a slot
@@ -238,7 +239,7 @@ the loop otherwise - see "Transmission timing" under the EXT_INST section.
 
 ### Main Entry Point
 - **downtown-solutions_firmware.ino** (206 lines)
-  - Setup: Initializes I/O, LCD, MIDI, bootloader check, pattern/track loading
+  - Setup: Initializes I/O, LCD, MIDI, pattern/track loading
   - Loop: Expander mode, MIDI read, button/encoder polling, LED/LCD updates, sequencer configuration
 
 ### Core Modules
