@@ -53,7 +53,20 @@ void LcdUpdate()
         paintedDeadline = extInstSplashUntil;
         lcd.clear();
         lcd.setCursor(0,0);
-        if (extInstEditMode) {
+        if (extInstSplashKind == EXT_SPLASH_DIR) {
+          // F() throughout: a bare literal handed to Print is copied into RAM at startup,
+          // and six of them cost 57 bytes on a build already at 82%. Flash is at a third.
+          lcd.print(F("EXT TRCK DIR"));
+          lcd.setCursor(0,1);
+          switch (extDir) {
+            case EXT_DIR_FOLLOW: lcd.print(F("FOLLOW SEQ")); break;
+            case FORWARD:        lcd.print(F("FORWARD"));    break;
+            case BACKWARD:       lcd.print(F("BACKWARD"));   break;
+            case PING_PONG:      lcd.print(F("PING PONG"));  break;
+            case RANDOM:         lcd.print(F("RANDOM"));     break;
+          }
+        }
+        else if (extInstEditMode) {
           lcd.print("EXT TRCK EDIT ON");
           lcd.setCursor(0,1);
           // MIDI note number rather than a note name: the pitch depends on the
@@ -301,7 +314,14 @@ ptrn_step:
           lcd.print(char(curBank+65));
           lcd.print(curPattern - (curBank*NBR_PATTERN) + 1);                     // [zabox] step button alignement
           lcd.setCursor(5,1);
-          lcd.print(pattern[ptrnBuffer].length+1);
+          // [TR-909 STYLE] In ext edit mode the len field reports the EXT layer's length,
+          // because that is what LAST STEP writes from this page. Showing the kit's length
+          // here left the panel insisting on 16 while the MIDI tracks looped over four.
+          if (curInst == EXT_INST && extInstEditMode) {
+            lcd.print(pattern[ptrnBuffer].extLength+1);
+            if (pattern[ptrnBuffer].extLength+1 < 10) lcd.print(" ");  // clear the tens column
+          }
+          else lcd.print(pattern[ptrnBuffer].length+1);
           lcd.setCursor(8,1);
           LcdPrintScale();
           lcd.setCursor(12,1);

@@ -770,6 +770,147 @@ static void test_ext_playhead_follows_ext_lane(nava_sim_t *ctx) {
     }
 }
 
+/* The ext lane can be pointed the other way from the kit.
+ *
+ * SHIFT+DIR inside ext edit mode cycles extDir FOLLOW -> FORWARD -> BACKWARD -> ..., so two
+ * presses land on BACKWARD while seq.dir is untouched at its FORWARD default. The kit's own
+ * SHIFT+DIR lives in the PTRN_PLAY block and is never reached from PTRN_STEP.
+ *
+ * Both halves matter. That the ext lane runs backward is equally true of a firmware whose
+ * ext binding wrongly wrote seq.dir - which would reverse the drums too - so the test also
+ * leaves the mode and checks the kit is still counting up. FX_PTRN_BASIC has BD on all
+ * sixteen steps, so out in PTRN_STEP the step word is 0xFFFF with the playhead as the one
+ * CLEAR bit, and ~w isolates it. */
+static void test_ext_direction_independent_of_kit(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    enter_ext_edit(ctx);
+
+    for (int i = 0; i < 2; i++) {           /* FOLLOW -> FORWARD -> BACKWARD */
+        fp_press_button(ctx, FP_BTN_SHIFT);
+        fp_press_button(ctx, FP_BTN_DIR);
+        fp_release_button(ctx, FP_BTN_DIR);
+        fp_release_button(ctx, FP_BTN_SHIFT);
+        fp_settle(ctx);
+    }
+    nava_sim_run_cycles(ctx, 16000000ULL);  /* let the 800ms direction splash expire */
+
+    fp_press_button(ctx, FP_BTN_LASTSTEP);
+    fp_press_step(ctx, 3);
+    fp_release_step(ctx, 3);
+    fp_release_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+
+    int seen[8];
+    size_t n = 0;
+    int last = -1;
+    for (int i = 0; i < 512 && n < 8; i++) {
+        nava_sim_run_cycles(ctx, STEP_CYCLES / 8);
+        uint16_t w = fp_step_leds(ctx);
+        int pos = -1;
+        for (int b = 0; b < 16; b++) if (w == (uint16_t)(1u << b)) { pos = b; break; }
+        if (pos < 0 || pos == last) continue;
+        seen[n++] = pos;
+        last = pos;
+    }
+
+    static const int expect[8] = {3, 2, 1, 0, 3, 2, 1, 0};
+    printf("# ext_dir_indep: ext order =");
+    for (size_t k = 0; k < n; k++) printf(" %d", seen[k]);
+    printf(" (expect 3 2 1 0 3 2 1 0, kit is FORWARD)\n");
+
+    if (n < 8) {
+        test_fail("ext/direction/independent", "only %zu ext positions seen", n);
+        return;
+    }
+    for (size_t k = 0; k < 8; k++) {
+        if (seen[k] != expect[k]) {
+            test_fail("ext/direction/independent",
+                      "ext position %zu was %d, expected %d - 0,1,2,3 means SHIFT+DIR did "
+                      "not reach extDir from inside ext edit mode", k, seen[k], expect[k]);
+            return;
+        }
+    }
+
+    /* Leave the mode and confirm the kit was never reversed with it. */
+    fp_press_button(ctx, FP_BTN_INST);
+    fp_press_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_GUIDE);
+    fp_release_button(ctx, FP_BTN_INST);
+    fp_settle(ctx);
+    nava_sim_run_cycles(ctx, 16000000ULL);   /* exit splash */
+
+    int kit[4];
+    size_t kn = 0;
+    last = -1;
+    for (int i = 0; i < 512 && kn < 4; i++) {
+        nava_sim_run_cycles(ctx, STEP_CYCLES / 8);
+        uint16_t inv = (uint16_t)~fp_step_leds(ctx);
+        int pos = -1;
+        for (int b = 0; b < 16; b++) if (inv == (uint16_t)(1u << b)) { pos = b; break; }
+        if (pos < 0 || pos == last) continue;
+        kit[kn++] = pos;
+        last = pos;
+    }
+    printf("# ext_dir_indep: kit order =");
+    for (size_t k = 0; k < kn; k++) printf(" %d", kit[k]);
+    printf(" (expect consecutive ascending)\n");
+
+    if (kn < 4) {
+        test_fail("ext/direction/kit_untouched",
+                  "only %zu kit positions seen; cannot tell which way the drums run", kn);
+        return;
+    }
+    for (size_t k = 1; k < kn; k++) {
+        if (kit[k] != (kit[k - 1] + 1) % 16) {
+            test_fail("ext/direction/kit_untouched",
+                      "kit went %d -> %d; a forward drum lane steps up by one, so the ext "
+                      "direction binding wrote seq.dir and reversed the whole machine",
+                      kit[k - 1], kit[k]);
+            return;
+        }
+    }
+}
+
+/* Bare DIR rotates the SELECTED EXT TRACK inside ext edit mode, not the drum pattern.
+ *
+ * Unscoped, DIR called ShiftRightPattern(), which touches only inst[] and velocity[][] -
+ * so from a page showing nothing but MIDI tracks the kit moved invisibly and the track
+ * on screen did not move at all. That is what makes the single assertion sufficient:
+ * FX_PTRN_EXT has track 0 on steps 0 and 8 (0x0101), and the old code left the ext LEDs
+ * at 0x0101 because it never wrote extTrack[]. One rotate right must read 0x0202.
+ *
+ * Sampled stopped, so the word is content alone with no playhead XORed in. */
+static void test_ext_shift_rotates_ext_track(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    enter_ext_edit(ctx);
+
+    event_log_clear(&ctx->log);
+    nava_sim_run_cycles(ctx, 4000000ULL);
+    uint16_t before = fp_step_leds(ctx);
+    if (before != 0x0101u) {
+        test_fail("ext/rotate/precondition",
+                  "ext track 0 reads 0x%04X before the rotate, expected 0x0101", before);
+        return;
+    }
+
+    fp_press_button(ctx, FP_BTN_DIR);
+    fp_release_button(ctx, FP_BTN_DIR);
+    fp_settle(ctx);
+
+    event_log_clear(&ctx->log);
+    nava_sim_run_cycles(ctx, 4000000ULL);
+    uint16_t after = fp_step_leds(ctx);
+    printf("# ext_rotate: 0x%04X -> 0x%04X (expect 0x0101 -> 0x0202)\n", before, after);
+    if (after != 0x0202u) {
+        test_fail("ext/rotate/moves_ext_track",
+                  "ext track 0 reads 0x%04X after one DIR press, expected 0x0202 "
+                  "(0x0101 = DIR still rotating the drum pattern instead)", after);
+    }
+}
+
 /* Holding LAST STEP in ext edit mode lights the ext layer's last step.
  *
  * The step LEDs otherwise show the selected track's content, so the assertion is exact
@@ -1032,6 +1173,10 @@ int main(void) {
                       test_ext_playhead_follows_ext_lane, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_playhead_honours_direction",
                       test_ext_playhead_honours_direction, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_direction_independent_of_kit",
+                      test_ext_direction_independent_of_kit, &FX_PTRN_BASIC, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_shift_rotates_ext_track",
+                      test_ext_shift_rotates_ext_track, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_last_step_led_shows_ext_length",
                       test_ext_last_step_led_shows_ext_length, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_clear_scoped_to_ext_track",

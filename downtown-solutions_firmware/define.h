@@ -114,6 +114,13 @@ byte lcdVal = 0; //[oort] for traces
 #define BACKWARD 1
 #define PING_PONG 2
 #define RANDOM 3
+// [TR-909 STYLE] The ext lane's direction, one past the sequencer's own values. FOLLOW
+// resolves to seq.dir, so a lane the user has not deliberately differentiated behaves
+// exactly as it did when it had no direction of its own - the default has to be "follow"
+// rather than FORWARD, or setting the kit BACKWARD would leave the MIDI tracks running
+// the other way for everyone who never touched this.
+#define EXT_DIR_FOLLOW 4
+#define MAX_EXT_DIR EXT_DIR_FOLLOW
 #define MAX_BANK 7  //bank A to H
 #define MAX_PTRN 128
 #define MAX_TRACK 16
@@ -412,6 +419,10 @@ boolean changeDir;  //use to PING PONG change dir
 // turns at pattern.length, and the ext lane turns at extLength, so a shortened layer would
 // have kept walking backwards past its own start waiting for the kit to reach the end.
 boolean extChangeDir;
+// [TR-909 STYLE] Global like seq.dir and, like it, not written to EEPROM - InitSeq()
+// resets both on every boot, so the two stay symmetric rather than one of them
+// surviving a power cycle that the other does not.
+byte extDir = EXT_DIR_FOLLOW;
 volatile boolean endMeasure;
 /*byte seqDir[MAX_SEQ_DIR][NBR_STEP]={//To do
  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
@@ -565,6 +576,12 @@ boolean volatile extReleaseArmed = FALSE;     // [TR-909 STYLE] A step is soundi
 #define EXT_RELEASE_LEAD 2
 unsigned long extInstSplashUntil = 0;         // [TR-909 STYLE] Deadline of the non-blocking EXT INST splash (millis)
 boolean extInstSplashArmed = FALSE;           // [TR-909 STYLE] TRUE while extInstSplashUntil is a live deadline
+// [TR-909 STYLE] Which message the armed splash carries. The ext edit page has no spare
+// field for a direction - all four columns are in use - so a change announces itself for
+// the splash window instead, reusing the deadline the mode toggle already owns.
+#define EXT_SPLASH_MODE 0
+#define EXT_SPLASH_DIR  1
+byte extInstSplashKind = EXT_SPLASH_MODE;
 byte previewNote = 0;                         // [TR-909 STYLE] Note currently held open by the preview
 boolean previewActive = FALSE;                // [TR-909 STYLE] TRUE while a preview note is sounding
 unsigned long previewOffAt = 0;               // [TR-909 STYLE] Preview note-off deadline, 0 = hold until released

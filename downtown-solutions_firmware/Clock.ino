@@ -170,7 +170,11 @@ void CountPPQN() {
       // extStepCount tracks stepCount exactly while the lengths agree, so every branch
       // below collapses to the kit's own value and nothing changes for a pattern that has
       // not been shortened.
-      switch (seq.dir) {
+      // extDir is the ext lane's own setting and defaults to EXT_DIR_FOLLOW, which
+      // resolves to the kit's - so nothing changes for a lane the user has not
+      // deliberately pointed the other way.
+      byte extDirEff = (extDir == EXT_DIR_FOLLOW) ? seq.dir : extDir;
+      switch (extDirEff) {
         case FORWARD:
           extCurStep = extStepCount;
           break;
@@ -186,11 +190,13 @@ void CountPPQN() {
           else extCurStep = pattern[ptrnBuffer].extLength - extStepCount;
           break;
         case RANDOM:
-          // Deliberately the kit's step rather than a second random(): RANDOM already
-          // ignores pattern.length and picks over all sixteen steps, so there is no ext
-          // loop for it to respect, and drawing separately would only scatter the MIDI
-          // tracks onto different steps from the drums they are meant to land with.
-          extCurStep = curStep;
+          // Following, take the kit's own draw: one RANDOM setting has always meant both
+          // lanes land on the same scattered step, and drawing twice would silently break
+          // that for everyone who never set an ext direction. Set explicitly, scattering
+          // the ext lane separately is exactly what was asked for, so it draws its own -
+          // over all sixteen steps rather than extLength, for the same reason the kit is
+          // not bounded by pattern.length here: RANDOM is defined over the whole register.
+          extCurStep = (extDir == EXT_DIR_FOLLOW) ? curStep : random(0, 16);
           break;
       }
 
