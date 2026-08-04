@@ -32,7 +32,7 @@
 
 // ACK parameter: how the last incoming message was handled. The host retries on
 // anything but OK, so these have to separate "lost in transit" from "the device
-// will never accept this" - see request_dump() in tools/nava/midiio.py.
+// will never accept this" - see request_dump() in nava/midiio.py (nava-tools).
 #define NAVA_ACK_OK           0
 #define NAVA_ACK_BAD_CHECKSUM 1
 #define NAVA_ACK_BAD_LENGTH   2
