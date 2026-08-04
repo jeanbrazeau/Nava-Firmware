@@ -1,4 +1,7 @@
-"""Cutting a release.
+"""Cutting a release: scripts/release.py.
+
+Imported as `publish` because that is what this module was called when it lived
+in the tools package, and the assertions read against that name.
 
 Every test runs against a throwaway git repository with a throwaway remote, so
 the push path is exercised for real rather than stubbed - what this code gets
@@ -14,7 +17,7 @@ import subprocess
 
 import pytest
 
-from nava import publish
+import release as publish
 
 VERSION_H = """\
 #ifndef NAVA_VERSION_H
@@ -202,7 +205,7 @@ def test_remote_slug_is_none_for_a_local_remote(checkout):
 
 
 def test_version_file_matches_the_firmware(checkout):
-    """The path publish.py rewrites has to be the file the firmware includes.
+    """The path release.py rewrites has to be the file the firmware includes.
     Renaming one without the other would leave a release that bumps nothing."""
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     real = os.path.join(repo_root, publish.VERSION_FILE)

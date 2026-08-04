@@ -34,34 +34,26 @@ Key hardware systems include:
     - `MemoryFree/`: Memory management utilities
     - `SPI/`: SPI communication library
     - `WireN/`: I2C communication library (custom)
-- `tools/`: the `nava` CLI and TUI (Python 3) - see `tools/README.md`
-  - `nava/bootloader.py`: firmware `.hex` -> bootloader `.syx` (nibblized pages)
-  - `nava/protocol.py`: the pattern/track/setup dump protocol, mirroring `Sysex.h`
-  - `nava/records.py`: decodes the EEPROM records a dump carries. The ONLY place
-    in the tool that knows the pattern layout; the transfer path keeps records
-    opaque so a backup survives firmware revisions that fill in their padding
-  - `nava/render.py`: the step grid, shared by `nava show` and the TUI
-  - `nava/transfer.py`: the backup/restore/flash loops, shared by both front ends
-    so their retry and acknowledge behaviour cannot drift
-  - `nava/midiio.py`: port discovery, retries, ACK handling
-  - `nava/library.py`: reads `.syx` files and tells a firmware image from a backup
-  - `nava/building.py`: PlatformIO build + `.hex` -> `.syx`, shared by `nava build`
-    and the TUI. `checkout_root()` reports None rather than raising when there is no
-    `platformio.ini` beside the package, which is every installed copy - the front
-    ends use it to say why building is unavailable before anything is pressed
-  - `nava/releases.py`: firmware published on the GitHub releases page, over stdlib
-    urllib (a dependency here would land in front of `nava flash` for everyone).
-    Downloads via `.part` + rename, so an interrupted fetch cannot leave a truncated
-    image that flashes as if it were whole
-  - `nava/publish.py`: cuts a release - rewrites `FIRMWARE_VERSION`, commits, tags
-    and pushes. Builds nothing itself; the tag is what starts CI. All guard, no
-    improvisation: a tag other people flash from cannot be re-cut
-  - `nava/cli.py`: `build`, `hex2syx`, `flash`, `backup`, `restore`, `inspect`,
-    `show`, `ports`, `release`, `tui`
-  - `nava/tui/`: the Textual interface. Every MIDI operation runs in a worker
-    thread - mido and the transfer loops are synchronous, and a 20-second flash
-    would otherwise freeze the interface
-  - `tests/`: runs without hardware; `fakenava.py` models the device
+- `scripts/`: what is left of the host side after the tools were split out
+  - `release.py`: cuts a release - rewrites `FIRMWARE_VERSION`, commits, tags and
+    pushes. Builds nothing itself; the tag is what starts CI. All guard, no
+    improvisation: a tag other people flash from cannot be re-cut. Standard library
+    only, deliberately - a release must not be blocked on installing anything
+  - `tests/`: the checks that need the firmware sources in hand.
+    `test_firmware_constants.py` parses `define.h`/`Sysex.h`/`EEprom.ino` and compares
+    the protocol numbers against `nava.protocol`; `test_sysex_pack.py` compiles
+    `sysex_pack.h` natively and drives it against the same package through ctypes;
+    `test_release.py` cuts releases in throwaway repositories. The first two install
+    `nava-tools` from git, which is the only reason this has dependencies at all
+- `sim/`: the simavr harness and its C tests
+
+The `nava` CLI and TUI live in a separate repository,
+[jeanbrazeau/nava-tools](https://github.com/jeanbrazeau/nava-tools). Flashing a
+published release needs no firmware source, so the tool that does it should not
+ship inside the firmware. Two things here still reach for it: `convert_to_sysex.py`
+(the PlatformIO post-action that writes the `.syx`) imports `nava`, and the release
+workflow installs it to verify the image it publishes. Both name the package and the
+interpreter in their failure messages rather than dying on an ImportError.
 
 ## Development Commands
 
@@ -82,14 +74,13 @@ A PlatformIO build emits the `.syx` itself as a post-action (`convert_to_sysex.p
 For an Arduino IDE build, convert the `.hex`:
 
 ```bash
-uv sync --project tools        # or: pip install -e "tools[tui]"
-uv run --project tools nava hex2syx path_to_hex_file.hex -o output.syx
-uv run --project tools nava flash output.syx --out NAVA-909
+uv tool install "git+https://github.com/jeanbrazeau/nava-tools[tui]"
+nava hex2syx path_to_hex_file.hex -o output.syx
+nava flash output.syx --out NAVA-909
 ```
 
-`tools/uv.lock` is committed, so `uv sync` reproduces the environment exactly.
-`nava` is also installable standalone with
-`uv tool install "git+<repo>#subdirectory=tools[tui]"`.
+`uv.lock` is committed in that repository, so a clone of it reproduces the
+environment exactly with `uv sync`.
 
 Note for packaging changes: `nava/tui/app.tcss` is package DATA, not a module, and
 needs the `[tool.setuptools.package-data]` entry. Without it the wheel installs a
@@ -107,15 +98,15 @@ build, and neither does Arduino), so a build needs Rosetta:
 ### Releasing
 
 `downtown-solutions_firmware/version.h` is the only place the version is written
-down. The splash prints `FIRMWARE_VERSION`, `nava release X.Y` rewrites it, and
+down. The splash prints `FIRMWARE_VERSION`, `scripts/release.py X.Y` rewrites it, and
 `.github/workflows/release.yml` refuses to publish a tag that disagrees with it -
 the panel is the only version a user in front of the machine can read, so a
 release whose number differs from the splash is worse than no release. The header
 also fails to compile if the version is too long for the 16-column splash line.
 
 ```bash
-uv run --project tools nava release 0.92 --dry-run
-uv run --project tools nava release 0.92
+python3 scripts/release.py 0.92 --dry-run
+python3 scripts/release.py 0.92
 ```
 
 Pushing the tag is the whole trigger: CI builds with PlatformIO, decodes the
@@ -128,11 +119,24 @@ The stale `.github/workflows/main.yml` (Windows, arduino-cli, named for Nava2021
 is untouched and unrelated; it is `workflow_dispatch` only and builds nothing on
 its own.
 
+### Host-side checks
+
+```bash
+cd scripts && uv run pytest
+# without uv: pip install pytest "git+https://github.com/jeanbrazeau/nava-tools"
+```
+
+Three files, all needing something the `nava` repository does not have: the firmware
+headers. Two of them install `nava-tools` from git to compare against - a protocol
+number that drifts is a bug on whichever side moved last, and this is where it
+surfaces. `test_sysex_pack.py` needs a C compiler and skips without one. The C
+simulator tests are separate and unaffected; see `sim/`.
+
 ### Backing up patterns
 
 `nava backup` / `nava restore` read and write patterns, tracks and the setup record
 over SysEx while the unit sits on the SysEx config page. See the EXT/SysEx notes
-below and `tools/README.md` for the protocol.
+below, and the nava-tools README for the protocol.
 
 ## Key Components
 
@@ -822,8 +826,8 @@ loop fallback without stalling the sequencer.
 
 `Sysex.h` has defined the command set since the code was imported, but
 `HandleSystemExclusive()` and `MidiSendSysex()` were empty stubs, so nothing could
-ever be read off the machine. Both are implemented now, with `tools/nava` as the
-host counterpart.
+ever be read off the machine. Both are implemented now, with the `nava` package
+(jeanbrazeau/nava-tools) as the host counterpart.
 
 Messages are `F0 7D 07 1A <cmd> <param> <packed payload> <checksum> F7`. The
 bootloader's `7D 08` (see the flashing section) is a different family, so a firmware
@@ -836,8 +840,8 @@ Payloads are 7-in-8 packed (`sysex_pack.h`), not nibblized like the bootloader's
 Nibblizing would double a 1KB track record and push the largest message past what
 the MIDI library can reassemble in the RAM left on this board. The checksum covers
 the RAW bytes, so mis-unpacking fails instead of storing garbage. `sysex_pack.h`
-carries no Arduino dependency precisely so the host test suite can compile it
-natively and check it against `tools/nava/protocol.py` in both directions.
+carries no Arduino dependency precisely so `scripts/tests/test_sysex_pack.py` can
+compile it natively and check it against `nava.protocol` in both directions.
 
 Neither direction buffers a whole record. A dump streams out of EEPROM 56 bytes at
 a time (a multiple of 7, so a chunk boundary is never mid-group) straight to the
