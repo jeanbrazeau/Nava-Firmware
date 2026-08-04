@@ -26,9 +26,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Boot budget: ~6 s simulated at 16 MHz. Boot itself measures ~4.25 s (68M
- * cycles): the panel fill animation is ~1.3 s of it, then the 2 s version splash,
- * and the panel is not scanned until both are done. */
+/* Boot budget: ~6 s simulated at 16 MHz. Boot itself measures ~4.2 s (67M
+ * cycles): the panel dissolve animation is ~1.26 s of it, then the 2 s version
+ * splash, and the panel is not scanned until both are done. */
 #define BOOT_CYCLES     96000000ULL
 /* Quiet period before a press so the previous release is fully debounced. */
 #define IDLE_GAP        2000000ULL
@@ -110,27 +110,48 @@ static int trailing_number(const char *s) {
 
 /* ---- Tests ---- */
 
-/* The power-on animation fills the panel dot by dot and every cell ends as the
- * ROM block glyph 0xFF, so a fully lit screen is 16 bytes of 0xFF per row.
+/* The power-on animation dissolves the panel in and every cell ends as the ROM
+ * block glyph 0xFF, so a fully lit screen is 16 bytes of 0xFF per row.
+ *
+ * Two things are asserted, and the second is the point of the design. A cell
+ * part way up the fill ladder shows a custom glyph, code 0-7, so counting those
+ * on a row counts the cells in motion at that instant. An implementation that
+ * hands each cell its own glyph can never have more than EIGHT cells mid-fill
+ * across the whole panel; the shared ladder puts nearly every cell in motion at
+ * once, which is what makes it read as a dissolve rather than as clumps.
  *
  * Checked on row 1 only. This LCD model keeps CGRAM in the same array as DDRAM
- * (0x00-0x3F), which is where row 0 lives, so the animation's glyph writes
- * scribble over row 0's mirror; row 1 starts at 0x40 and no CGRAM write reaches
- * it. Reading raw bytes rather than the text mirror is what makes the assertion
- * mean anything: the mirror renders 0xFF and a half-filled glyph identically. */
+ * (0x00-0x3F), which is where row 0 lives, so the ladder upload scribbles over
+ * row 0's mirror; row 1 starts at 0x40 and no CGRAM write reaches it. Reading
+ * raw bytes rather than the text mirror is what makes any of this assertable:
+ * the mirror renders 0xFF and a half-filled glyph identically as '.'. */
+#define BOOT_FILL_MIN_CONCURRENT 12   /* of 16 on the row; 8 is the per-cell-glyph ceiling */
+
 static void test_boot_fill_animation(nava_sim_t *ctx) {
     bool filled = false;
     uint64_t spent = 0;
+    int peak_partial = 0;
     while (spent < BOOT_CYCLES && !filled) {
         const uint8_t *raw = fp_lcd_raw(ctx, 1);
+        int partial = 0;
         filled = true;
-        for (int col = 0; col < 16 && filled; col++)
+        for (int col = 0; col < 16; col++) {
             if (raw[col] != 0xFF) filled = false;
+            if (raw[col] < 8) partial++;      /* custom glyph: cell is mid-fill */
+        }
+        if (partial > peak_partial) peak_partial = partial;
         if (!filled) {
             nava_sim_run_cycles(ctx, POLL_STEP);
             spent += POLL_STEP;
         }
     }
+    if (peak_partial < BOOT_FILL_MIN_CONCURRENT)
+        test_fail("ui/bootfill",
+                  "only %d of 16 cells on row 1 were ever mid-fill at once "
+                  "(want >= %d) — the fill is running in clumps, not dissolving",
+                  peak_partial, BOOT_FILL_MIN_CONCURRENT);
+    else
+        printf("# ui/bootfill: %d of 16 cells mid-fill at the peak\n", peak_partial);
     if (!filled) {
         const uint8_t *raw = fp_lcd_raw(ctx, 1);
         test_fail("ui/bootfill",

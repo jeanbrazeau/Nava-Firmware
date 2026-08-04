@@ -66,7 +66,7 @@ sim/
 │   ├── test_pattern_swap.c — Bar-end SYNC/FREE pattern buffer swap
 │   ├── test_ext_inst.c     — Polyphonic EXT_INST MIDI note-on/off + accent bug pin
 │   ├── test_midi_sync.c    — SLAVE sync: injected clock advances sequencer
-│   └── test_ui.c           — Boot fill animation, boot screen, modes, LEDs, tempo
+│   └── test_ui.c           — Boot dissolve animation, boot screen, modes, LEDs, tempo
 ├── fixtures/
 │   └── patterns.h/c        — Reusable C pattern fixtures (all shuffle>=1)
 │                               (EEPROM seeded in-process; no .bin file needed)
@@ -131,8 +131,9 @@ Two traps cost real debugging time; both are now handled, but know they exist:
   splash (`downtown / solutions 0.91b`) long before it starts polling buttons.
   A press injected during the splash is never sampled, so the sequencer simply
   never starts and every timing assertion fails with "no TRIG_WORD events".
-  `boot_wait_ready()` waits for real 74HC165 latches (~68M cycles here, most of it the boot animation and splash), which
-  is the only signal the firmware can actually see input.
+  `boot_wait_ready()` waits for real 74HC165 latches (~67M cycles here, most of
+  it the boot animation and splash), which is the only signal the firmware can
+  actually see input.
 - **A fixture must be able to exercise its assertion.** The shuffle fixture
   originally triggered steps 0,4,8,12 — all even — while the shuffle offset
   applies to *odd* steps, so the swing was unobservable by construction.
@@ -150,12 +151,14 @@ Two traps cost real debugging time; both are now handled, but know they exist:
 - **Raw screen bytes**: `fp_lcd_raw(ctx, row)` returns the 16 DDRAM bytes
   unsubstituted. `fp_lcd_line` renders every non-ASCII code as `.`, which cannot
   tell the all-dots-on block (`0xFF`) from a custom glyph (codes 0-7) — the boot
-  fill animation is made entirely of that distinction. Note that the HD44780
-  model stores CGRAM at the same addresses as row 0 (`0x00-0x3F`), so while
-  glyphs are being written row 0's mirror is scribbled over; row 1 sits at
-  `0x40` and is always trustworthy.
+  dissolve animation is made entirely of that distinction. The test also counts
+  how many cells hold a custom glyph at once, which is how many are mid-fill;
+  the text mirror cannot express that at all. Note that the HD44780 model stores
+  CGRAM at the same addresses as row 0 (`0x00-0x3F`), so while glyphs are being
+  written row 0's mirror is scribbled over; row 1 sits at `0x40` and is always
+  trustworthy.
 
-Boot now costs ~4.25 s of simulated time — ~1.3 s of panel fill animation, then
+Boot now costs ~4.2 s of simulated time — ~1.26 s of panel dissolve animation, then
 the 2 s version splash — and the panel is not scanned until both finish. That is
 what `BOOT_CYCLES` (96M) budgets for; a boot budget below it fails every test in
 the file at once with "firmware not polling the front panel".
