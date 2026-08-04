@@ -46,6 +46,18 @@ void ExtSetTrackNote(byte note)
   needLcdUpdate = TRUE;
 }
 
+// Shift the selected track by whole octaves (SHIFT+SCALE up, SHIFT+LAST STEP down).
+// Declined rather than clamped when the octave would leave the MIDI range: clamping to
+// 0 or 127 would land on a different pitch class than the one the gesture names, so the
+// track would come back out of tune with itself after an up/down pair. Refusing leaves
+// the note where it was, which the LCD already shows.
+void ExtTransposeTrack(int semitones)
+{
+  int note = (int)extTrackNote[currentExtTrack] + semitones;
+  if (note < 0 || note > 127) return;
+  ExtSetTrackNote((byte)note);
+}
+
 // Preview notes are started from the main loop, so they can never be closed with a
 // delay(): ExtPreviewCheck() retires them instead. Only one preview may sound at a
 // time, otherwise a second track select strands the first note on the synth.

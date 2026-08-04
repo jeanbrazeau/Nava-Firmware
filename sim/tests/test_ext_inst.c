@@ -1074,6 +1074,8 @@ int main(void) {
                       test_ext_encoder_sets_track_note, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_last_step_scoped_to_ext_layer",
                       test_ext_last_step_scoped_to_ext_layer, &FX_PTRN_EXT, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_shift_transposes_octave",
+                      test_ext_shift_transposes_octave, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_playhead_follows_ext_lane",
                       test_ext_playhead_follows_ext_lane, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_led_bounded_by_ext_length",

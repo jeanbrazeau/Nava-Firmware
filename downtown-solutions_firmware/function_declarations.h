@@ -28,6 +28,7 @@ void ExtPreviewOn(byte note, unsigned long holdMs);
 void ExtPreviewOff();
 void ExtPreviewCheck();
 void ExtSetTrackNote(byte note);
+void ExtTransposeTrack(int semitones);
 byte LcdPrintNoteName(byte note);
 void LcdBootAnimation();
 void SaveExtTrackNotes();

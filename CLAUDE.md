@@ -753,6 +753,28 @@ lengths match. TOTAL_ACC stays on `curStep` for the same reason it always did - 
 accents the whole machine at that moment, so it has to line up with the kit rather than
 with the ext loop.
 
+### Octave transpose: SHIFT+SCALE and SHIFT+LAST STEP
+Inside edit mode these shift the selected track's note by ±12 - SCALE up, LAST STEP down,
+which puts up on the left button and down on the right as the panel reads. The encoder
+already sets the note a semitone at a time; the octave is the one move it cannot make
+quickly, at 12 detents (24, since `EncGet()` wants two per increment).
+
+Both are qualified by SHIFT so the buttons keep their unshifted meaning inside the mode:
+SCALE still cycles the pattern scale, LAST STEP still sets `extLength`. The `extLength`
+branch is guarded on `!shiftBtn` as well, since that gesture only fires with a step button
+held and SHIFT+LAST STEP+step would otherwise write the last step on the way through.
+
+`ExtTransposeTrack()` (key.ino) declines an octave that would leave 0..127 rather than
+clamping to the boundary: a clamp lands on a different pitch class than the gesture names,
+so an up/down pair near the ends of the range would leave the track detuned from where it
+started. It writes through `ExtSetTrackNote()`, so the audition, the `extNotesNeedSaved`
+deferral and the LCD refresh are the encoder's, not a second copy.
+
+`sim/tests/test_ext_inst.c` asserts the transposed pitch on the wire - storing the new note
+and transmitting the old is invisible to an LCD-only check - and asserts each button's own
+value survived: the note-on COUNT over a bar (a cycled 1/32 scale doubles it) for SCALE,
+and the step LEDs under a later bare LAST STEP hold for `extLength`.
+
 ### Playback
 `CountPPQN()` records the step into a queue: a track bitmask, an accent mask naming the
 tracks that take the high level, the two velocities and a sticky note-off request
