@@ -49,3 +49,8 @@ tools/dist/
 
 # Editor leftovers; a tracked SeqConf.ino.tmp once shadowed a stale page-number literal
 *.ino.tmp
+
+# Deliberately not committed. It would pin nava-tools to one commit, and the
+# whole point of these checks is that the firmware and the host tool track each
+# other's master - a drift is what they exist to report.
+scripts/uv.lock
