@@ -653,6 +653,45 @@ static void test_ext_last_step_scoped_to_ext_layer(nava_sim_t *ctx) {
     }
 }
 
+/* The running playhead in ext edit mode chases the EXT lane, not the drum lane.
+ *
+ * PTRN_STEP flashes the step LEDs at curStep over the selected instrument's content;
+ * ext edit mode is the same display one layer down, so its chase has to run over the
+ * lane it is showing. The two positions are identical until LAST STEP shortens the ext
+ * layer, which is why the test shortens it to 4 steps and leaves the kit at 16.
+ *
+ * FX_PTRN_BASIC has extTrack[] empty, so with no content underneath the step LED word is
+ * the playhead alone: the union over a bar is exactly the set of positions it visited.
+ * 0x000F is the 4-step ext loop; 0xFFFF is a chase driven from the 16-step drum lane,
+ * and a frozen chase collapses to one bit. Sampling at quarter-step resolution catches
+ * every step at both blinkFast phases. */
+static void test_ext_playhead_follows_ext_lane(nava_sim_t *ctx) {
+    boot_wait_ready(ctx, BOOT_CYCLES);
+    enter_ext_edit(ctx);
+
+    fp_press_button(ctx, FP_BTN_LASTSTEP);
+    fp_press_step(ctx, 3);              /* step button 4 -> ext last step index 3 */
+    fp_release_step(ctx, 3);
+    fp_release_button(ctx, FP_BTN_LASTSTEP);
+    fp_settle(ctx);
+
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+
+    uint16_t visited = 0;
+    for (int i = 0; i < 64; i++) {      /* one 16-step bar = four ext loops */
+        nava_sim_run_cycles(ctx, STEP_CYCLES / 4);
+        visited |= fp_step_leds(ctx);
+    }
+
+    printf("# ext_playhead: steps visited in one bar = 0x%04X (expect 0x000F)\n", visited);
+    if (visited != 0x000Fu) {
+        test_fail("ext/playhead/follows_ext_lane",
+                  "playhead visited 0x%04X over a bar; a 4-step ext loop visits 0x000F "
+                  "(0xFFFF = chasing the 16-step drum lane, one bit = frozen)", visited);
+    }
+}
+
 /* Holding LAST STEP in ext edit mode lights the ext layer's last step.
  *
  * The step LEDs otherwise show the selected track's content, so the assertion is exact
@@ -911,6 +950,8 @@ int main(void) {
                       test_ext_encoder_sets_track_note, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_last_step_scoped_to_ext_layer",
                       test_ext_last_step_scoped_to_ext_layer, &FX_PTRN_EXT, 2, 1);
+    TEST_WITH_PATTERN("ext_inst_playhead_follows_ext_lane",
+                      test_ext_playhead_follows_ext_lane, &FX_PTRN_BASIC, 2, 1);
     TEST_WITH_PATTERN("ext_inst_last_step_led_shows_ext_length",
                       test_ext_last_step_led_shows_ext_length, &FX_PTRN_EXT, 2, 1);
     TEST_WITH_PATTERN("ext_inst_clear_scoped_to_ext_track",

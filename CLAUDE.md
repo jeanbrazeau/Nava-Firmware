@@ -536,7 +536,12 @@ running sequencer would collide with and setting the bit first would make every 
 look like a collision.
 
 The step LEDs carry the level the way the drum lane does: accented steps are lit on every
-pass, unaccented ones on one pass in four, so the panel reads at a glance.
+pass, unaccented ones on one pass in four, so the panel reads at a glance. Running, the
+playhead flashes over that content exactly as PTRN_STEP flashes over the drum lane - but
+from `extCurStep`, not `curStep`. These LEDs show the ext layer, so once LAST STEP has
+shortened it the chase has to wrap where the MIDI tracks wrap; driven from the drum lane
+it ran past the end of the loop being displayed. The two are the same value whenever the
+lengths match, which is every pattern that has not been shortened.
 
 The encoder sets the selected track's note via `ExtSetTrackNote()`, which auditions the
 new pitch and moves an open sustained preview to it. Holding TEMPO yields the encoder

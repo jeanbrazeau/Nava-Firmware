@@ -139,9 +139,14 @@ void SetLeds()
         flagLedIntensity++;
       }
 
-      // Flash current step when running
+      // Flash current step when running, the way PTRN_STEP does for the drum lane -
+      // driven from extCurStep, not curStep. These LEDs show the ext layer, which wraps
+      // on extLength and phases against the kit whenever LAST STEP has shortened it, so
+      // a chase taken from the drum lane ran past the end of the loop the panel was
+      // displaying and lit steps the MIDI tracks never reached. The two are the same
+      // value when the lengths match, which is every pattern that has not been shortened.
       if (isRunning) {
-        stepLeds ^= (blinkFast << curStep);
+        stepLeds ^= ((unsigned int)blinkFast << extCurStep);
       }
 
       // Flash all LEDs when INST held (track select mode)
