@@ -183,6 +183,12 @@ void LoadPattern(byte patternNbr)
   pattern[!ptrnBuffer].groupPos = Wire.read();
   pattern[!ptrnBuffer].groupLength = Wire.read();
   pattern[!ptrnBuffer].totalAcc = Wire.read();
+  // Stored bytes are not trusted: scale 0 divides by zero in CountPPQN() and shuffle 0
+  // indexes shuffle[-1]. prevShuf/prevFlam are re-read from the corrected values, or the
+  // LCD's incremental erase would target a marker position the pattern never had.
+  SanitizePattern(&pattern[!ptrnBuffer]);
+  prevShuf = pattern[!ptrnBuffer].shuffle;
+  prevFlam = pattern[!ptrnBuffer].flam;
   for(int a = 0; a < 24; a++){
     Wire.read();
   }
@@ -252,6 +258,12 @@ void LoadTempPattern(byte patternNbr)
   tempPattern.groupPos = Wire.read();
   tempPattern.groupLength = Wire.read();
   tempPattern.totalAcc = Wire.read();
+  // Same guard as LoadPattern(). This is the path LoadPatternBank() uses, so it is also
+  // what a SysEx restore comes back through - a record written by another machine has
+  // no more claim to a legal scale than a half-written part does.
+  SanitizePattern(&tempPattern);
+  prevShuf = tempPattern.shuffle;
+  prevFlam = tempPattern.flam;
   for(int a = 0; a < 24; a++){
     Wire.read();
   }

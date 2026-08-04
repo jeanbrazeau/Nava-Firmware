@@ -11,6 +11,9 @@ void InitSeq();
 void LoadPatternBank(byte bankNmbr);
 void FlushPatternBank();
 void InitPattern(Pattern* pattern);
+// Clamps the four timing fields a stored record can carry out of range. Declared here
+// because EEprom.ino calls it and .ino files are concatenated in name order.
+void SanitizePattern(Pattern* p);
 void SetHHPattern(Pattern* pattern);
 void InstToStepWord(Pattern* pattern);
 void SetMuxTrigMidi(byte instrument, byte velocity);

@@ -223,23 +223,33 @@ static void test_shuffle_offset(nava_sim_t *ctx) {
                          delta, expected_shuffled, CYCLE_TOLERANCE * 16);
 }
 
-/* Quarantined: document shuffle==0 OOB without asserting stable output.
- * This test intentionally does NOT call test_fail on the result — it only
- * confirms the simulator does not hang or crash. */
-static void test_shuffle_zero_oob_quarantine(nava_sim_t *ctx) {
-    /* WARNING: shuffle==0 causes shuffle[(0)-1] = shuffle[-1] in firmware.
-     * This is undefined behavior.  We run it to document current behavior
-     * but DO NOT assert cycle-exact output. */
+/* A stored shuffle of 0 used to index shuffle[-1] in CountPPQN(), so this ran as a
+ * quarantine case: it asserted nothing beyond "the CPU did not stop".  SanitizePattern()
+ * (SeqFunc.ino) now clamps the field on the way out of EEPROM, so the value can no
+ * longer reach the ISR and the timing is defined — an unshuffled bar at the nominal step
+ * period.  Asserting that is what keeps the clamp from being dropped later: the OOB
+ * itself is invisible on this hardware, but the timing it produces is not. */
+static void test_shuffle_zero_is_clamped(nava_sim_t *ctx) {
     boot_wait_ready(ctx, BOOT_CYCLES);
-    /* If the AVR crashes, nava_sim_run_cycles returns 0; we note it but pass. */
-    uint64_t result = nava_sim_run_cycles(ctx, ONE_BAR_CYCLES);
-    if (result == 0) {
-        printf("# QUARANTINED: shuffle==0 caused AVR crash (OOB read)\n");
-    } else {
-        printf("# QUARANTINED: shuffle==0 completed without crash "
-               "(UB may have produced arbitrary timing)\n");
+    event_log_clear(&ctx->log);
+
+    fp_press_button(ctx, FP_BTN_PLAY);
+    fp_release_button(ctx, FP_BTN_PLAY);
+    uint64_t t0 = ctx->avr->cycle;
+    nava_sim_run_cycles(ctx, ONE_BAR_CYCLES);
+
+    /* DEFAULT_SHUF is 1, whose table entry is {0}: no offset on either polarity, so
+     * consecutive steps sit a clean step period apart. */
+    const sim_event_t *step0 = event_log_find_step_onset(&ctx->log, t0, 0);
+    const sim_event_t *step1 = event_log_find_step_onset(&ctx->log, t0, 1);
+    if (!step0 || !step1) {
+        test_fail("shuffle/zero_clamped",
+                  "a pattern stored with shuffle 0 produced fewer than 2 steps");
+        return;
     }
-    /* Test always 'passes' — it documents behavior, not correctness. */
+    assert_cycle_within("shuffle/zero_clamped",
+                         step1->cycle - step0->cycle,
+                         24ULL * NAVA_PPQN_PERIOD_CYCLES, CYCLE_TOLERANCE * 16);
 }
 
 int main(void) {
@@ -257,15 +267,16 @@ int main(void) {
     TEST_WITH_PATTERN("shuffle_odd_step_early",
                       test_shuffle_offset, &FX_PTRN_SHUFFLED, 2, 1);
 
-    /* Quarantined: builds a special EEPROM with shuffle=0 (do NOT copy
-     * this pattern — always keep production fixtures at shuffle>=1). */
+    /* Deliberately stores shuffle=0, which the firmware must clamp on load. Other
+     * fixtures keep shuffle >= 1 because they are testing something else and should not
+     * depend on the clamp; this one exists to exercise it. */
     static const fx_pattern_t SHUFFLE_ZERO_FIXTURE = {
         .length=15, .scale=FX_SCALE_16, .shuffle=0, .flam=0,
         .inst = { [FX_BD] = 0xFFFFu },
         .velocity = { [FX_BD] = {50,50,50,50,50,50,50,50,50,50,50,50,50,50,50,50} },
     };
-    TEST_WITH_PATTERN("QUARANTINE_shuffle_zero_oob",
-                      test_shuffle_zero_oob_quarantine, &SHUFFLE_ZERO_FIXTURE, 2, 1);
+    TEST_WITH_PATTERN("shuffle_zero_clamped_to_default",
+                      test_shuffle_zero_is_clamped, &SHUFFLE_ZERO_FIXTURE, 2, 1);
 
     return test_run_all(NAVA_ELF_PATH);
 }
