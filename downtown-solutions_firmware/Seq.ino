@@ -47,6 +47,7 @@ void SeqParameter() {
       sequencerJustStarted = TRUE;  //[oort] some increments need special attention after start
       stopBtn.counter = 0;
       changeDir = 1;     //restart Forward
+      extChangeDir = 1;  // [TR-909 STYLE] the ext lane restarts forward with the kit
       shufPolarity = 0;  //Init shuffle polarity
       blinkTempo = 0;    // [zabox] looks more consistent
 

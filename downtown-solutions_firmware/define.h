@@ -408,6 +408,10 @@ volatile unsigned int stepValue = 0;      // [oort] compared to int in code so b
 volatile unsigned int stepValueFlam = 0;  // [zabox] [1.028] flam
 //byte seqDirMode;
 boolean changeDir;  //use to PING PONG change dir
+// [TR-909 STYLE] The ext layer's own PING PONG state. It cannot share changeDir: that one
+// turns at pattern.length, and the ext lane turns at extLength, so a shortened layer would
+// have kept walking backwards past its own start waiting for the kit to reach the end.
+boolean extChangeDir;
 volatile boolean endMeasure;
 /*byte seqDir[MAX_SEQ_DIR][NBR_STEP]={//To do
  {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
