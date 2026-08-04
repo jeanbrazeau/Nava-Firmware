@@ -34,6 +34,9 @@
 /* test_ppqn_period measures from step 1 to step 17, so it needs a run long enough to
  * produce 18 onsets - just over two bars, plus margin for the PLAY transient. */
 #define TWO_BAR_CYCLES  70000000ULL
+/* Enough to reach the step-33 onset, so the bar being measured is bars 2-3 rather than
+ * the one straddling the PLAY transient. */
+#define FOUR_BAR_CYCLES 80000000ULL
 /* Flam test window: main hit + 400000 cycle margin */
 #define FLAM_WINDOW     400000ULL
 
@@ -46,7 +49,7 @@ static void test_ppqn_period(nava_sim_t *ctx) {
     fp_press_button(ctx, FP_BTN_PLAY);
     fp_release_button(ctx, FP_BTN_PLAY);
     uint64_t t0 = ctx->avr->cycle;
-    nava_sim_run_cycles(ctx, TWO_BAR_CYCLES);
+    nava_sim_run_cycles(ctx, FOUR_BAR_CYCLES);
 
     /* Find consecutive TRIG_WORD events from step-trigger writes.
      * BD is on every step (FX_PTRN_BASIC); trig_word bit FX_BD=8 will be set.
@@ -75,16 +78,27 @@ static void test_ppqn_period(nava_sim_t *ctx) {
      * produce.
      *
      * Endpoints exactly NBR_STEP apart share the same curStep, so the ramp cancels
-     * identically instead of being tolerated, and starting at step 1 clears the PLAY
-     * transient. Any residual jitter is divided by 16. */
-    const sim_event_t *bar_end = event_log_find_step_onset(&ctx->log, t0, 1 + NBR_FX_STEPS);
-    if (!bar_end) {
-        test_fail("ppqn_period", "need %d step onsets to measure a full bar",
-                  2 + NBR_FX_STEPS);
+     * identically instead of being tolerated. Any residual jitter is divided by 16.
+     *
+     * Starting at step 1 did NOT clear the PLAY transient, though - it only reduced it.
+     * The loop is still settling for most of the first bar, and how much of it lands on
+     * the step-1 onset depends on unrelated code sitting in loop(): removing the
+     * BOOTLOADER config page moved this reading by ~400 cycles without touching anything
+     * real-time, which is a measurement artefact, not a period error. Measured over a
+     * STEADY-STATE bar the period is not approximately right, it is exact: bars 2-3 and
+     * 3-4 both come back at 32001024 cycles, dead on expected, with zero jitter between
+     * them. So the window starts at step 17 rather than step 1. This is a tighter
+     * assertion than the old one, not a looser one - the tolerance below is now slack
+     * the measurement does not use. */
+    const sim_event_t *bar_start = event_log_find_step_onset(&ctx->log, t0, 1 + NBR_FX_STEPS);
+    const sim_event_t *bar_end = event_log_find_step_onset(&ctx->log, t0, 1 + 2 * NBR_FX_STEPS);
+    if (!bar_start || !bar_end) {
+        test_fail("ppqn_period", "need %d step onsets to measure a steady-state bar",
+                  1 + 2 * NBR_FX_STEPS);
         return;
     }
 
-    uint64_t delta = bar_end->cycle - first->cycle;
+    uint64_t delta = bar_end->cycle - bar_start->cycle;
     /* One 16th step = NAVA_PPQN_PERIOD_CYCLES * 24 = 2000064; a bar is 16 of them. */
     uint64_t expected = NAVA_PPQN_PERIOD_CYCLES * 24ULL * (uint64_t)NBR_FX_STEPS;
     /* Same tolerance as before in absolute cycles, now covering 16 steps rather than

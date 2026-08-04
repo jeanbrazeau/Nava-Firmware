@@ -26,57 +26,62 @@ The version found here is called Nava Oortone (0Tone) and draws heavily on the p
   mode, or SHIFT+TEMPO three times; encoder button moves between the fields), and
   default to 63 and 111.
 
-## Flashing firmware over MIDI SysEx
+## Flashing firmware
 
-The Nava is updated by putting it into bootloader mode and pushing a `.syx` file at it
-over MIDI. Nothing on the panel confirms success afterwards, so it is worth getting the
-sequence exactly right.
+### Over ISP - the supported route
 
-### Entering bootloader mode
+`platformio.ini` is configured for a USBasp, and this is the path that is known to work:
 
-1. **Stop the sequencer.** Config mode cannot be entered while it is running, and it
-   closes itself if you start playback (`Seq.ino`).
-2. Hold **SHIFT** and press **TEMPO**. This opens config page 1.
-3. Press the **last step button** (5 on a PlatformIO build, 4 on an Arduino IDE one),
-   or keep pressing **SHIFT + TEMPO** to step through the pages, until the display
-   reads:
+```bash
+uv run --project tools nava build     # or: pio run
+pio run -t upload
+```
 
-   ```
-      BOOTLOADER
-   SHIFT+ENC = GO
-   ```
+### Over MIDI SysEx
 
-4. Keeping **SHIFT** held, press the **encoder button**. SHIFT qualifies the press
-   because a bare encoder press moves between fields on every other config page,
-   including the one immediately before this - the same motion one page back would
-   otherwise leave the firmware.
+`nava flash` pushes a `.syx` at a unit that is **already sitting in its bootloader**. It
+sends pages blind - no handshake, no acknowledgement, no verify - so it cannot tell you
+whether the unit was listening.
 
-   The unit saves first: pattern bank, track, setup and the ext note map are all
-   committed to EEPROM, and the transport is stopped with note-offs sent, so nothing is
-   left sounding on an external synth. The display shows `Saving...`, then
-   `Entering / Bootloader Mode` for a second, then jumps to the bootloader at `0x1F000`.
-5. Send the `.syx` file. The screen stays as it is; the panel is no longer running the
-   firmware, so it will not react until the transfer finishes and the unit restarts.
+**The firmware no longer provides a way in.** There used to be a BOOTLOADER config page
+that jumped to `0x1F000`; it has been removed, because nothing supports that address:
 
-> **The jump address is unverified.** `0x1F000` is correct only if the unit is fused
-> `BOOTSZ=01`; nothing in this repository records the factory fuses, and the released
-> `Nava0tone_0.90b.syx` carries its own loader at `0x1FE00`. If the jump misses, the panel
-> looks exactly the same as a successful entry - `nava flash` sends pages blind, with no
-> handshake or acknowledgement - and the only symptom is that the firmware is unchanged
-> afterwards. Recovery is a power cycle. `avrdude -c usbasp -p m1284p -U hfuse:r:-:h`
-> reads the fuses and settles both this and whether `BOOTRST` makes a power cycle the
-> real entry.
+- `avr-as` halves the operand, so `jmp 0x1F000` lands on word `0xF800`, which is the boot
+  section start only for `BOOTSZ=01`. The comment table the address came from computed
+  every boot-section start as if bytes equalled words, so all four of its rows named the
+  section half their stated size.
+- Nothing in this repository records the hardware's fuses.
+- The released `Nava0tone_0.90b.syx` carries its own loader at `0x1FE00`, and its image is
+  empty at `0x1F000`, `0x1F800` and `0x1FC00` - so the one address the firmware actually
+  jumped to had nothing at it in the only image available to check against.
+- The loader in that image begins `in r2,MCUSR` / `sbrs r2,1` / `rjmp`, and MCUSR bit 1 is
+  `EXTRF`. It only stays resident after an **external reset**; entered by a jump from the
+  application, which sets no reset flag, it leaves immediately. So even a correctly-aimed
+  jump would have bounced straight back.
+
+A jump that missed was indistinguishable from success: the panel stops responding either
+way, which is also what a successful entry looks like.
+
+If your unit has a bootloader that runs at reset (`BOOTRST` programmed), power-cycling and
+sending within its listen window is the entry, and `nava flash` works unchanged. To find
+out, read the fuses:
+
+```bash
+avrdude -c usbasp -p m1284p -U hfuse:r:-:h
+```
+
+`BOOTRST` tells you whether reset entry works; `BOOTSZ` tells you where the boot section
+actually starts. With that answered, a jump-based entry could be reinstated on evidence
+rather than on a misread table.
 
 **In config mode the lit step buttons select the page.** Config mode blinks one step
-LED per available page, and pressing that step button goes straight there - so the table
-below doubles as the step-button map. SHIFT + TEMPO still cycles forward and wraps back
-to page 1 past the last one. Which number BOOTLOADER carries depends on how the firmware
-was built:
+LED per available page, and pressing that step button goes straight there. SHIFT + TEMPO
+still cycles forward and wraps back to page 1 past the last one:
 
-| Build | Pages | BOOTLOADER page | Step button / SHIFT+TEMPO presses |
-|---|---|---|---|
-| PlatformIO (`platformio.ini` sets `-DMIDI_HAS_SYSEX=1`) | 1, 2, 3 = ext velocity, 4 = SysEx dump, 5 | **5** | 5 |
-| Arduino IDE (`features.h` leaves `MIDI_HAS_SYSEX` commented out) | 1, 2, 3 = ext velocity, 4 | **4** | 4 |
+| Build | Pages | Last page |
+|---|---|---|
+| PlatformIO (`platformio.ini` sets `-DMIDI_HAS_SYSEX=1`) | 1, 2, 3 = ext velocity, 4 = SysEx dump | **4** |
+| Arduino IDE (`features.h` leaves `MIDI_HAS_SYSEX` commented out) | 1, 2, 3 = ext velocity | **3** |
 
 ### Building and sending
 
