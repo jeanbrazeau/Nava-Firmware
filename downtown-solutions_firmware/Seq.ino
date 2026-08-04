@@ -631,7 +631,12 @@ void SeqParameter() {
         if (clearBtn.justPressed) prev_muteInst = muteInst;  // [zabox] save mute state
         if (readButtonState) {
 
-          byte clearInst;
+          // NOT_RESOLVED rather than an uninitialised byte: the CH cases below stand
+          // down while doublePush marks the pair as an OH press, so releasing one of
+          // the two CH buttons without releasing the other left this holding stack
+          // garbage, which then indexed inst[] and shifted muteInst out of range.
+          const byte NOT_RESOLVED = 0xFF;
+          byte clearInst = NOT_RESOLVED;
 
           switch (FirstBitOn()) {
             case BD_BTN:
@@ -678,13 +683,14 @@ void SeqParameter() {
             doublePush = 1;
           }
 
+          if (clearInst != NOT_RESOLVED) {
+            muteInst = prev_muteInst | (1 << clearInst);  // [zabox] mute inst
 
-          muteInst = prev_muteInst | (1 << clearInst);  // [zabox] mute inst
-
-          bitClear(pattern[ptrnBuffer].inst[clearInst], curStep);
-          pattern[ptrnBuffer].velocity[clearInst][curStep] = instVelLow[clearInst];   // [zabox] was missing here
-          if (clearInst == CH) pattern[ptrnBuffer].velocity[CH][curStep] = HIGH_VEL;  //update HH velocity that OH is trigged correctly
-          patternWasEdited = TRUE;
+            bitClear(pattern[ptrnBuffer].inst[clearInst], curStep);
+            pattern[ptrnBuffer].velocity[clearInst][curStep] = instVelLow[clearInst];   // [zabox] was missing here
+            if (clearInst == CH) pattern[ptrnBuffer].velocity[CH][curStep] = HIGH_VEL;  //update HH velocity that OH is trigged correctly
+            patternWasEdited = TRUE;
+          }
         } else if (muteInst != prev_muteInst) muteInst = prev_muteInst;  // [zabox] unmute
       }
 
@@ -862,7 +868,11 @@ void SeqParameter() {
         }
         SetHHPattern(&pattern[ptrnBuffer]);
         InstToStepWord(&pattern[ptrnBuffer]);
-        memcpy(&bufferedPattern, &pattern[ptrnBuffer], sizeof(Pattern));  //[oort] a bit heavy but must do since it's cleared at "endMeasure"
+        // The mirror into bufferedPattern that used to live here fed the TAP commit
+        // branch, which is gone. bufferedPattern is the SHIFT+BANK copy buffer, so
+        // mirroring taps into it also destroyed whatever the user had copied - and it
+        // cost a 393-byte memcpy on every pass once anything had been tapped, since
+        // buttonTapped is set once and never cleared.
       }
     }  //END IF PTRN_TAP MODE
   }    //ENDIF MODE STEP & TAP EDIT
@@ -1111,15 +1121,20 @@ void SeqParameter() {
     patternWasEdited = FALSE;
 
     patternBankNeedsSave = TRUE; //[oort] not yet TO DO
-    if (curSeqMode == PTRN_TAP) {  //[oort] in tap mode we are one step behind, see: endMeasure
-      editedPatterns[curPattern - curBank * NBR_PATTERN] = TRUE;  //[oort] pattern of this index needs to be saved to EEprom
-      memcpy(&patternBank[curPattern - curBank * NBR_PATTERN], &bufferedPattern, sizeof(Pattern)); //[oort] edits saved in patternBank RAM
-    } else {
-      SetHHPattern(&pattern[ptrnBuffer]);
-      InstToStepWord(&pattern[ptrnBuffer]);
-      editedPatterns[curPattern - curBank * NBR_PATTERN] = TRUE; //[oort] pattern of this index needs to be saved to EEprom
-      memcpy(&patternBank[curPattern - curBank * NBR_PATTERN], &pattern[ptrnBuffer], sizeof(Pattern)); //[oort] edits saved in patternBank RAM
-    }
+    // One commit source for every mode: the play buffer, which is the only thing any
+    // edit path writes. PTRN_TAP used to commit bufferedPattern instead, and that copy
+    // is refreshed ONLY by the tap handler - so every non-tap edit made in TAP mode
+    // (CLEAR+inst, SHIFT+CLEAR, LAST STEP, SHUFFLE, SCALE, paste) was committed as
+    // whatever bufferedPattern last held. Before the first tap of a session that is BSS
+    // zeros, so holding CLEAR over a lane wrote an EMPTY pattern into the bank and took
+    // the other instruments with it; after a SHIFT+BANK copy it wrote the copied pattern
+    // back, which reads as the erase silently undoing itself. The edit stayed audible
+    // until the pattern was reloaded from the bank, which is why it looked like a
+    // save/recall fault rather than an edit one.
+    SetHHPattern(&pattern[ptrnBuffer]);   // no-op body in PTRN_TAP beyond inst[HH]; idempotent
+    InstToStepWord(&pattern[ptrnBuffer]);
+    editedPatterns[curPattern - curBank * NBR_PATTERN] = TRUE; //[oort] pattern of this index needs to be saved to EEprom
+    memcpy(&patternBank[curPattern - curBank * NBR_PATTERN], &pattern[ptrnBuffer], sizeof(Pattern)); //[oort] edits saved in patternBank RAM
     needLcdUpdate = TRUE;
   }
 
@@ -1161,8 +1176,9 @@ void SeqParameter() {
         int nextIndex = nextPattern - curBank * NBR_PATTERN;
         if (nextIndex > 15) nextIndex = 15;                                       //[oort] rudimentary safety, this should never happen
         memcpy(&pattern[!ptrnBuffer], &patternBank[nextIndex], sizeof(Pattern));  //load into twin buffer
-        if (curSeqMode == PTRN_TAP)
-          memcpy(&bufferedPattern, &patternBank[nextIndex], sizeof(Pattern));     //tap needs extra buffer
+        // No second copy for PTRN_TAP: it seeded the buffer the TAP commit branch read,
+        // and that branch is gone. Selecting a pattern must not overwrite the copy
+        // buffer either.
       }
     }
 
