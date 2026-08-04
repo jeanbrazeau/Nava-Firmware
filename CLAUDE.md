@@ -363,6 +363,34 @@ PTRN_STEP playhead, the EXT INST playhead, step-button programming, and a patter
 setup bytes are zeroed. `test_timing.c` asserts the shuffle clamp by timing an
 unshuffled bar; that case used to be quarantined as UB.
 
+### Every mode commits the play buffer
+
+`patternWasEdited` is the single commit trigger, and it copies `pattern[ptrnBuffer]` into
+`patternBank[]`. PTRN_TAP used to be special-cased to commit `bufferedPattern` instead,
+and that is the copy/paste buffer - refreshed only by the tap handler, which mirrored the
+play buffer into it after merging a tap.
+
+Every edit path writes `pattern[ptrnBuffer]`, including the ones reachable in TAP mode
+that are not taps: CLEAR+inst, SHIFT+CLEAR, LAST STEP, SHUFFLE, SCALE, paste. Committing
+a different buffer meant those were committed as whatever `bufferedPattern` last held.
+Before the first tap of a session that is BSS zeros, so holding CLEAR over one lane wrote
+an EMPTY pattern into the bank and took the other instruments with it; after a SHIFT+BANK
+copy it wrote the copied pattern back, so the erase silently undid itself. Either way the
+edit stayed audible - `pattern[ptrnBuffer]` still had it - until the pattern was reloaded
+from the bank, which is what made it read as a save/recall fault rather than an edit one.
+`sim/tests/test_tap_clear.c` pins it, and a fixture with TWO instruments is what makes the
+test meaningful: erasing the only lane a pattern carries looks identical to wiping the
+whole pattern.
+
+The mirror into `bufferedPattern` is gone with the branch that read it. It was also
+destroying the user's copy buffer on every tap, and costing a 393-byte memcpy on every
+loop pass once anything had been tapped - `buttonTapped` is set once and never cleared,
+so its guard stops guarding after the first tap of a session.
+
+`SetHHPattern()`/`InstToStepWord()` now run on the commit for TAP too. Both are
+idempotent, and `SetHHPattern()`'s body is `inst[HH] = inst[CH] | inst[OH]` alone in
+PTRN_TAP - it tests `curSeqMode` and skips the CH/OH exclusivity pass.
+
 ### Track Structure
 ```cpp
 struct Track {
