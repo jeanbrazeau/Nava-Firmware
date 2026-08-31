@@ -142,3 +142,56 @@ jobs:
             --notes-file notes.md \
             --generate-notes \
             "$ASSET"
+
+      # The web tool's "Get an image" serves the current release from a copy
+      # committed beside its page (nava-tools web/firmware/), because a browser
+      # cannot fetch a release asset cross-origin. This step is what keeps that
+      # copy current: it commits the image just published above into the tools
+      # repository and dispatches its Pages deploy, so the live page and any
+      # local checkout carry the new release without an upload.
+      #
+      # Needs a secret the default token cannot replace: GITHUB_TOKEN is scoped
+      # to this repository. Create a fine-grained PAT for jeanbrazeau/nava-tools
+      # with Contents and Actions set to read-and-write, and save it in this
+      # repository's secrets as NAVA_TOOLS_TOKEN. Without it this step warns and
+      # skips; the release itself is already published and unaffected.
+      - name: Push the image to nava-tools
+        env:
+          GH_TOKEN: ${{ secrets.NAVA_TOOLS_TOKEN }}
+          ASSET: ${{ steps.image.outputs.asset }}
+          TOOLS_REPO: jeanbrazeau/nava-tools
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::NAVA_TOOLS_TOKEN is not set; $TOOLS_REPO keeps its previous image. Add a fine-grained PAT (Contents + Actions: read-and-write on $TOOLS_REPO) as a secret named NAVA_TOOLS_TOKEN."
+            exit 0
+          fi
+          size=$(wc -c < "$ASSET" | tr -d ' ')
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/${TOOLS_REPO}.git" tools-checkout
+          mkdir -p tools-checkout/web/firmware
+          # One image beside the page, not an accumulating archive - older
+          # releases stay reachable through the page's tag lookup.
+          rm -f tools-checkout/web/firmware/*.syx
+          cp "$ASSET" tools-checkout/web/firmware/
+          # Same manifest shape the tools repository's Pages workflow writes on
+          # its fallback path, and the page reads: releases.js bundled().
+          jq -n --arg repo "$GITHUB_REPOSITORY" --arg tag "$GITHUB_REF_NAME" \
+                --arg name "Nava $GITHUB_REF_NAME" --arg file "$ASSET" \
+                --arg published "$(date -u +%Y-%m-%d)" --argjson size "$size" \
+                '{repo: $repo, tag: $tag, name: $name, published: $published, file: $file, size: $size}' \
+            > tools-checkout/web/firmware/index.json
+          cd tools-checkout
+          git config user.name "github-actions[bot]"
+          git config user.email "41898270+github-actions[bot]@users.noreply.github.com"
+          git add web/firmware
+          if git diff --cached --quiet; then
+            echo "$TOOLS_REPO already carries $ASSET"
+          else
+            git commit -m "Ship firmware $GITHUB_REF_NAME beside the web tool"
+            git push
+          fi
+          # Redeploy so the live site serves the new image now rather than on
+          # the next hand-run deploy. Best effort: the commit above is the
+          # durable part, and the next deploy from any trigger picks it up.
+          gh workflow run pages.yml -R "$TOOLS_REPO" ||
+            echo "::warning::could not dispatch the Pages deploy on $TOOLS_REPO; run it from the Actions tab"
